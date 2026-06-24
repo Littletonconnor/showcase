@@ -145,9 +145,16 @@ export default function App() {
             <Brand />
             <UpdateBanner />
             <div id="sessionList">
-              {sessionGroups.map((group) => (
+              {sessionGroups.map((group, gi) => (
                 <div key={group.label} style={{ display: "contents" }}>
-                  <div className="sess-group">{group.label}</div>
+                  <div
+                    className={cx(
+                      "px-2.5 pb-1 text-[10.5px] font-medium uppercase tracking-[0.06em] text-faint",
+                      gi === 0 ? "pt-1.5" : "pt-3",
+                    )}
+                  >
+                    {group.label}
+                  </div>
                   {group.sessions.map((s) => (
                     <SessionItem session={s} key={s.id} />
                   ))}
@@ -354,18 +361,20 @@ function SessionItem(props: { session: SessionRow }) {
   const selected = useBoard((s) => s.selected);
   const unread = useBoard((s) => s.unread);
   const label = sessionLabel(props.session);
+  const isSel = props.session.id === selected;
+  const isUnread = unread.has(props.session.id);
+  const isVacant = props.session.surfaceCount === 0;
   return (
     <div
       className={cx(
-        "sess",
-        props.session.id === selected && "sel",
-        unread.has(props.session.id) && "unread",
-        props.session.surfaceCount === 0 && "vacant",
+        "group relative mb-0.5 cursor-pointer rounded-lg px-2.5 py-2 transition-colors",
+        "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand",
+        isSel ? "bg-brand-subtle shadow-[inset_2px_0_0_var(--color-brand)]" : "hover:bg-hover",
       )}
       data-id={props.session.id}
       role="button"
       tabIndex={0}
-      aria-current={props.session.id === selected ? "true" : undefined}
+      aria-current={isSel ? "true" : undefined}
       onClick={() => select(props.session.id)}
       onKeyDown={(e) => {
         if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
@@ -374,20 +383,39 @@ function SessionItem(props: { session: SessionRow }) {
         }
       }}
     >
-      <div className="sess-title">
+      <div
+        className={cx(
+          "truncate pr-5 text-[13px]",
+          isSel
+            ? "font-semibold text-brand"
+            : isVacant
+              ? "font-normal text-muted-foreground"
+              : "font-medium text-foreground",
+        )}
+      >
         {label}
         {props.session.surfaceCount > 0 ? (
-          <span className="sess-count"> ({props.session.surfaceCount})</span>
+          <span className={cx("font-normal", isSel ? "text-brand/70" : "text-faint")}>
+            {" "}
+            ({props.session.surfaceCount})
+          </span>
         ) : null}
       </div>
-      <div className="sess-meta">
+      <div
+        className={cx(
+          "mt-px flex items-center text-xs",
+          isVacant && !isSel ? "text-faint/80" : "text-faint",
+        )}
+      >
         <AgentMark agent={props.session.agent} />
         {props.session.agent} · {relTime(props.session.lastActiveAt)}
       </div>
-      <span className="dot"></span>
+      {isUnread ? (
+        <span className="absolute right-2.5 top-3 size-[7px] rounded-full bg-brand group-hover:hidden" />
+      ) : null}
       {!isReadonly() ? (
         <button
-          className="x"
+          className="absolute right-1.5 top-2 rounded-[5px] px-1 py-0.5 text-[13px] text-faint opacity-0 transition group-hover:opacity-100 hover:bg-hover hover:text-foreground"
           title="Delete session"
           aria-label={`Delete session "${label}"`}
           onClick={async (e) => {

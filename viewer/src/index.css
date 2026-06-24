@@ -38,6 +38,14 @@
   --color-input: var(--border);
   --color-ring: var(--accent);
 
+  /* showcase palette tokens (no shadcn equivalent) so Tailwind can express the
+     whole chrome: bg-panel, bg-hover, text-faint, text-brand, bg-brand-subtle. */
+  --color-panel: var(--panel);
+  --color-hover: var(--hover);
+  --color-faint: var(--faint);
+  --color-brand: var(--accent);
+  --color-brand-subtle: var(--accent-bg);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
