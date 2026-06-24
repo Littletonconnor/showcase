@@ -53,7 +53,7 @@ test("a user comment appears live in the surface thread", async ({ page, request
   });
 
   // It streams into the card's thread via SSE without a reload: a user comment
-  // row (light-DOM chrome around the sandboxed text frame) appears.
+  // bubble (`.cmt.user`, its text a plain light-DOM node) appears with the text.
   await expect(card.locator(".thread .cmt.user")).toBeVisible({ timeout: 10_000 });
-  await expect(card.locator(".thread .cmt.user .who")).toHaveText("you");
+  await expect(card.locator(".thread .cmt.user")).toContainText("why two axes here?");
 });

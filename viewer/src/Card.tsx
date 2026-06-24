@@ -4,7 +4,6 @@ import {
   appPath,
   isReadonly,
   relTime,
-  sessionLabel,
   type DiffPart as DiffPartData,
   type ImagePart as ImagePartData,
   type JsonPart as JsonPartData,
@@ -30,7 +29,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cx } from "./cx.ts";
 import { DiffPart } from "./DiffPart.tsx";
-import { ArrowUp, Copy, ExternalLink, Link2, MessageSquare, Trash2 } from "lucide-react";
+import { ArrowUp, ExternalLink, Link2, MessageSquare, Trash2 } from "lucide-react";
 import { ImagePart } from "./ImagePart.tsx";
 import { JsonPart } from "./JsonPart.tsx";
 import { MarkdownPart } from "./MarkdownPart.tsx";
@@ -46,7 +45,6 @@ import { TracePart } from "./TracePart.tsx";
 import {
   focusSurface,
   sendComment,
-  sessionsNow,
   setScrollTarget,
   toast,
   useBoard,
@@ -469,38 +467,19 @@ function Thread(props: {
   );
 }
 
-// The paste block a copied comment puts on the clipboard — enough context
-// for an agent to act on the comment when handed it directly.
-function pasteBlock(c: ViewComment): string {
-  if (c.surfaceId) {
-    return `showcase comment on “${c.surfaceTitle ?? "a surface"}” (surface ${c.surfaceId}):\n“${c.text}”`;
-  }
-  const s = sessionsNow().find((x) => x.id === c.sessionId);
-  return `showcase comment, session “${s ? sessionLabel(s) : c.sessionId}”:\n“${c.text}”`;
-}
-
 function CommentRow(props: { comment: ViewComment; startsRun: boolean }) {
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(pasteBlock(props.comment));
-      toast("Copied — paste it to your agent");
-    } catch {
-      toast("Couldn't copy to clipboard");
-    }
-  };
   const isUser = props.comment.author === "user";
-  // `cmt` + `user` and the `.who` text "you" are oracle hooks (the e2e suite
-  // asserts `.thread .cmt.user .who` reads "you") — keep them as marker classes.
-  // A single user comment always starts its run, so `.who` renders for the
-  // oracle. The comment text is plain text rendered as a React text node: it
-  // escapes by construction and never becomes HTML, so it's the sanctioned
-  // non-iframe path for agent-authored *data* and needs no sandbox.
+  // `cmt` + `user` are oracle hooks (the e2e suite asserts `.thread .cmt.user`).
+  // Sender is conveyed by alignment + colour — no label. The comment text is
+  // plain text rendered as a React text node: it escapes by construction and
+  // never becomes HTML, so it's the sanctioned non-iframe path for
+  // agent-authored *data* and needs no sandbox. The timestamp is a hover title.
   return (
     <div
       className={cx(
         "cmt group/cmt flex flex-col",
         // Continuations within a run hug the previous bubble; a new run gets air.
-        props.startsRun ? "mt-3 gap-1 first:mt-0" : "mt-0.5 gap-0.5",
+        props.startsRun ? "mt-3 first:mt-0" : "mt-0.5",
         isUser ? "user items-end" : "items-start",
         // Pending bubbles pulse; settled ones get a quick one-shot enter. Both
         // yield to prefers-reduced-motion.
@@ -510,38 +489,14 @@ function CommentRow(props: { comment: ViewComment; startsRun: boolean }) {
       )}
       data-cid={props.comment.id}
     >
-      {props.startsRun ? (
-        <div className="flex items-baseline gap-2 px-1">
-          <span
-            className={cx(
-              "who text-[11px] font-medium",
-              isUser ? "text-brand" : "text-muted-foreground",
-            )}
-          >
-            {isUser ? "you" : props.comment.author}
-          </span>
-        </div>
-      ) : null}
-      <div className={cx("flex max-w-[88%] items-end gap-1", isUser && "flex-row-reverse")}>
-        <div
-          className={cx(
-            "min-w-0 rounded-2xl px-3 py-1.5 text-[13px] leading-snug break-words whitespace-pre-wrap",
-            isUser ? "bg-brand text-primary-foreground" : "bg-muted text-foreground",
-          )}
-          title={relTime(props.comment.createdAt)}
-        >
-          {props.comment.text}
-        </div>
-        {isUser && !props.comment.pending ? (
-          <button
-            className="mb-1 flex size-5 flex-none items-center justify-center rounded text-faint opacity-0 transition-opacity group-hover/cmt:opacity-100 hover:bg-hover hover:text-foreground focus-visible:opacity-100 [&_svg]:size-3 [@media(hover:none)]:opacity-100"
-            title="Copy for pasting to your agent"
-            aria-label="Copy comment"
-            onClick={copy}
-          >
-            <Copy />
-          </button>
-        ) : null}
+      <div
+        className={cx(
+          "max-w-[88%] rounded-2xl px-3 py-1.5 text-[13px] leading-snug break-words whitespace-pre-wrap",
+          isUser ? "bg-brand text-primary-foreground" : "bg-muted text-foreground",
+        )}
+        title={relTime(props.comment.createdAt)}
+      >
+        {props.comment.text}
       </div>
     </div>
   );

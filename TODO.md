@@ -101,8 +101,8 @@ The agent receives it when it next touches showcase:
 - **The oracle is the merge gate.** `e2e/loop.spec.ts` (Playwright) drives a real
   browser through publish → render → comment. Run `npx playwright test`. It
   asserts only on trusted-origin DOM hooks (`.card[data-id]`, per-part
-  `<iframe>`s, `.thread .cmt.user .who`="you") so it survives a restyle but
-  catches a broken change. **Keep these hooks intact.** (Gap: desktop-chromium
+  `<iframe>`s, and `.thread .cmt.user` carrying the comment text) so it survives
+  a restyle but catches a broken change. **Keep these hooks intact.** (Gap: desktop-chromium
   only — see Pillar E.)
 - **Verify before reporting done** (all must pass): `npm run typecheck`
   (node + viewer tsc), `npm run lint` (oxlint, warnings = errors),
@@ -223,7 +223,7 @@ look at how claude.ai does it.
   bridge. Add shadcn components with `npx shadcn@latest add <name>` (they land in
   `viewer/src/components/ui` via the `@/` alias).
 - **Keep the oracle hooks intact:** `.card[data-id="…"]`, `.card-title`, per-part
-  `<iframe>`s, and `.thread .cmt.user .who` reading `you`. Keep the sandbox
+  `<iframe>`s, and `.thread .cmt.user` carrying the comment text. Keep the sandbox
   invariant (§3).
 - Verify before merging: `npm run typecheck` + `npm run lint` + `npm run
 build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
@@ -249,7 +249,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
 - [x] **F2 — Per-session overflow menu (rename / delete / copy link).** Replace
       the hover `✕` with a shadcn `DropdownMenu` on a `SidebarMenuAction` (`⋯`)
       revealed on hover/active, like claude.ai. `npx shadcn@latest add
-    dropdown-menu`. Items: **Rename** (inline edit or a small `Dialog` →
+  dropdown-menu`. Items: **Rename** (inline edit or a small `Dialog` →
       `PUT /api/sessions/:id` title), **Delete** (confirm → existing
       `DELETE /api/sessions/:id`), **Copy link** (the session deep link).
       _Acceptance:_ hover a chat → `⋯` appears → menu works; delete confirms and
@@ -287,9 +287,9 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
       between parts. Keep `.card`/`.card-title` hooks.
 - [x] **F9 — Chat thread micro-polish.** Enter-to-send affordance + a send
       **icon** button (lucide) instead of the "Comment" label; group consecutive
-      same-sender bubbles (one label, tighter stack); auto-scroll to the newest
-      message; refined optimistic/pending bubble; timestamps on hover. Keep
-      `.thread .cmt.user .who`=`you`.
+      same-sender bubbles (tighter stack); auto-scroll to the newest message;
+      refined optimistic/pending bubble; timestamps on hover. Keep
+      `.thread .cmt.user` carrying the comment text (no sender label).
 - [x] **F10 — Empty & loading states.** `Skeleton` placeholders for the session
       list and the stream while loading; a polished empty board, empty session,
       and the onboarding/connect card. _Acceptance:_ nothing ever looks blank or
@@ -310,7 +310,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
 - [x] **F14 — Type & spacing system.** A consistent type scale and spacing rhythm
       across sidebar, header, cards, and chat — the unifying pass once F1–F13 land.
 - [x] **F15 — Dark-mode review.** Walk every screen in dark (`prefers-color-
-    scheme: dark`) after the above and fix contrast/elevation. The theme bridge
+  scheme: dark`) after the above and fix contrast/elevation. The theme bridge
       means most adapts automatically — this catches the gaps.
 
 #### Tech-debt sweeps (independent, low-risk; good warm-ups)
