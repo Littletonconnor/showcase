@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { MoreHorizontal, Link2, Pencil, Search, Trash2, X } from "lucide-react";
+import {
+  BookOpen,
+  Link2,
+  MoreHorizontal,
+  Pencil,
+  Plug,
+  Search,
+  Settings2,
+  Terminal,
+  Trash2,
+  X,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { AgentMark } from "./agentMarks.tsx";
 import {
@@ -93,9 +104,10 @@ function Brand(props?: { className?: string }) {
     >
       <span
         className={cx(
-          "size-[7px] flex-none rounded-full transition-colors duration-300",
-          live ? "bg-[#4caf78]" : "bg-faint",
+          "size-[7px] flex-none rounded-full transition-all duration-300",
+          live ? "bg-[#4caf78] shadow-[0_0_0_3px_rgba(76,175,120,0.18)]" : "bg-faint",
         )}
+        title={live ? "Live" : "Reconnecting…"}
       ></span>
       <span className="truncate group-data-[collapsible=icon]:hidden">showcase</span>
     </button>
@@ -144,6 +156,49 @@ function SessionSearch(props: { query: string; onQuery: (q: string) => void }) {
         </button>
       ) : null}
     </div>
+  );
+}
+
+// The footer's tidy "Help & resources" cluster: one quiet SidebarMenuButton that
+// opens a DropdownMenu of the guide/setup/connect links. Collapses to a single
+// icon on the rail (with a tooltip), so the footer never reads as leftover text.
+function FooterMenu(props: { onConnect: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <SidebarMenuButton
+          tooltip="Help & resources"
+          className="text-muted-foreground data-[state=open]:bg-hover"
+        >
+          <Settings2 />
+          <span>Help &amp; resources</span>
+        </SidebarMenuButton>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start" className="w-52">
+        <DropdownMenuItem asChild>
+          <a href="/guide" target="_blank" rel="noreferrer">
+            <BookOpen />
+            Design guide
+          </a>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <a href="/setup" target="_blank" rel="noreferrer">
+            <Terminal />
+            Agent setup
+          </a>
+        </DropdownMenuItem>
+        {!isReadonly() ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={props.onConnect}>
+              <Plug />
+              Connect Claude Code
+            </DropdownMenuItem>
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -283,30 +338,12 @@ export default function App() {
               </div>
             ) : null}
           </SidebarContent>
-          <SidebarFooter className="border-t-[0.5px] border-border px-3 py-3 text-xs text-faint group-data-[collapsible=icon]:hidden [&_a]:text-muted-foreground [&_a]:no-underline [&_a:hover]:text-foreground">
-            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-              <a href="/guide" target="_blank">
-                design guide
-              </a>
-              <span className="text-faint/60">·</span>
-              <a href="/setup" target="_blank">
-                agent setup
-              </a>
-              {!isReadonly() ? (
-                <>
-                  <span className="text-faint/60">·</span>
-                  <a
-                    href="#"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setConnectOpen(true);
-                    }}
-                  >
-                    connect Claude Code
-                  </a>
-                </>
-              ) : null}
-            </div>
+          <SidebarFooter className="border-t-[0.5px] border-border p-1.5">
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <FooterMenu onConnect={() => setConnectOpen(true)} />
+              </SidebarMenuItem>
+            </SidebarMenu>
           </SidebarFooter>
         </Sidebar>
         <SidebarInset className="min-w-0">

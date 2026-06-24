@@ -271,7 +271,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
       (size, tracking, spacing); tune row density and the scroll area
       (`ScrollArea` if it improves the look). _Acceptance:_ the list reads as a
       calm, scannable history.
-- [ ] **F6 — Sidebar header & footer.** Polish the `showcase` wordmark + live
+- [x] **F6 — Sidebar header & footer.** Polish the `showcase` wordmark + live
       dot; place the collapse `SidebarTrigger` cleanly; fold the footer links
       (design guide / agent setup / connect Claude Code) into a tidy cluster or a
       footer `DropdownMenu`/settings affordance. _Acceptance:_ header and footer
