@@ -201,15 +201,134 @@ jsdelivr/cdnjs/unpkg, so CDN libs work today.
   check; consider a CI workflow (none today) so background changes are gated
   automatically.
 
-### Polish / tech debt
+### Pillar F ⭐ — Design polish (background-agent backlog)
 
-- The agent guide (`guide/AGENT_HOWTO.md`, `DESIGN_GUIDE.md`) still has light
-  stale wording (e.g. the trace part "timeline") — sweep for references to the
-  removed theming/timeline.
-- The theme engine is dormant-but-present (fixed GitHub now, no switcher) — fine,
-  but if multi-theme never returns, it could be simplified.
-- A dedicated aesthetic polish pass (header, type scale, motion, empty states) —
-  cheap now that the viewer is all-Tailwind.
+A deep visual-polish pass to bring showcase up to **claude.ai-grade**. Built as
+an ordered list of small, independent tasks so a background agent can work
+through them one at a time. Reference target: the claude.ai sidebar — calm,
+content-first, a collapsible rail, hover affordances, per-item overflow menus,
+generous-but-tight spacing, restrained type.
+
+**North star (the taste to hold across every task):** refined-minimal. The
+chrome recedes; surfaces are the star. Hairline borders + soft shadows, not
+heavy lines. One accent (the theme `--accent`). Tabular-ish calm. Motion is
+subtle and fast (120–180ms) and respects `prefers-reduced-motion`. When unsure,
+look at how claude.ai does it.
+
+**Rules every task in this backlog follows** (don't restate them per task):
+
+- One task = one branch off `main` = one commit; merge (fast-forward) when green.
+- Style with Tailwind utilities + shadcn components on the JSX. **Never** add
+  rules to `styles.css`; new palette tokens go through the `index.css` `@theme`
+  bridge. Add shadcn components with `npx shadcn@latest add <name>` (they land in
+  `viewer/src/components/ui` via the `@/` alias).
+- **Keep the oracle hooks intact:** `.card[data-id="…"]`, `.card-title`, per-part
+  `<iframe>`s, and `.thread .cmt.user .who` reading `you`. Keep the sandbox
+  invariant (§3).
+- Verify before merging: `npm run typecheck` + `npm run lint` + `npm run
+build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
+  mobile viewport** with a headless Playwright script and actually look at both.
+  `npm run format` last.
+
+#### Foundation (do first, in order — later tasks build on these)
+
+- [ ] **F1 — Adopt the shadcn `Sidebar` primitive.** Replace the hand-rolled
+      `<aside>` + the bespoke `max-[700px]` mobile-drawer logic in `App.tsx` with
+      shadcn's `Sidebar` (collapsible rail + built-in mobile offcanvas + a11y +
+      persisted collapsed state). `npx shadcn@latest add sidebar` (pulls
+      `Sheet`/`Tooltip`/`Skeleton`/`Separator`/`useIsMobile`). Wrap the app in
+      `<SidebarProvider>`; build `<Sidebar collapsible="icon">` with
+      `SidebarHeader` (wordmark + `SidebarTrigger`), `SidebarContent`
+      (the session groups), `SidebarFooter` (the links). Map `sessionGroups` →
+      `SidebarGroup`/`SidebarGroupLabel`/`SidebarMenu`/`SidebarMenuItem`/
+      `SidebarMenuButton`. Remove the old `navOpen`/body-drawer code it replaces.
+      _Acceptance:_ a toggle collapses the sidebar to an icon rail and the state
+      persists across reload; mobile offcanvas opens/closes; the session list,
+      groups, and active highlight all render; oracle green; desktop + mobile +
+      collapsed screenshots look right.
+- [ ] **F2 — Per-session overflow menu (rename / delete / copy link).** Replace
+      the hover `✕` with a shadcn `DropdownMenu` on a `SidebarMenuAction` (`⋯`)
+      revealed on hover/active, like claude.ai. `npx shadcn@latest add
+    dropdown-menu`. Items: **Rename** (inline edit or a small `Dialog` →
+      `PUT /api/sessions/:id` title), **Delete** (confirm → existing
+      `DELETE /api/sessions/:id`), **Copy link** (the session deep link).
+      _Acceptance:_ hover a chat → `⋯` appears → menu works; delete confirms and
+      removes; rename persists; keyboard-accessible; oracle green.
+- [ ] **F3 — Search / filter chats.** A search affordance in `SidebarHeader`
+      (icon that expands to an `Input`, or a `Command` palette on Cmd/Ctrl-K)
+      that live-filters sessions by title, with a "no matches" empty state.
+      _Acceptance:_ typing filters the list; clearing restores; focus management
+      and Escape behave.
+
+#### Sidebar refinement
+
+- [ ] **F4 — Session row polish.** On the `SidebarMenuButton`: calm hover/active/
+      focus-visible states, the agent mark, title truncation with the
+      surface-count as a quiet parenthetical, a refined unread dot, vacant-session
+      dimming. Match claude.ai spacing/type. _Acceptance:_ rows feel responsive
+      and quiet; active state is unmistakable but not loud.
+- [ ] **F5 — Group headers & density.** Refine the Today/Yesterday/Earlier labels
+      (size, tracking, spacing); tune row density and the scroll area
+      (`ScrollArea` if it improves the look). _Acceptance:_ the list reads as a
+      calm, scannable history.
+- [ ] **F6 — Sidebar header & footer.** Polish the `showcase` wordmark + live
+      dot; place the collapse `SidebarTrigger` cleanly; fold the footer links
+      (design guide / agent setup / connect Claude Code) into a tidy cluster or a
+      footer `DropdownMenu`/settings affordance. _Acceptance:_ header and footer
+      feel intentional, not leftover.
+
+#### Broader viewer polish
+
+- [ ] **F7 — Top header bar.** The session-title row (`SessionView` head):
+      typography for the editable title, the meta line, spacing, and a home for
+      per-session actions if they move here. Make it a proper app header.
+- [ ] **F8 — Surface card refinement.** Tune card elevation/radius/spacing, the
+      `card-head` (title + version `Select` sizing + timestamp), and the spacing
+      between parts. Keep `.card`/`.card-title` hooks.
+- [ ] **F9 — Chat thread micro-polish.** Enter-to-send affordance + a send
+      **icon** button (lucide) instead of the "Comment" label; group consecutive
+      same-sender bubbles (one label, tighter stack); auto-scroll to the newest
+      message; refined optimistic/pending bubble; timestamps on hover. Keep
+      `.thread .cmt.user .who`=`you`.
+- [ ] **F10 — Empty & loading states.** `Skeleton` placeholders for the session
+      list and the stream while loading; a polished empty board, empty session,
+      and the onboarding/connect card. _Acceptance:_ nothing ever looks blank or
+      janky on first paint.
+
+#### Systemic polish (apply across the app)
+
+- [ ] **F11 — Icon consistency.** Replace ad-hoc glyphs (`✕`, `⧉`, `☰`, the
+      comment/link/open/trash inline SVGs in `icons.tsx`) with a consistent
+      `lucide-react` set (already a dep). Uniform sizing/stroke/alignment.
+- [ ] **F12 — Motion pass.** Subtle, fast enter animations for cards and chat
+      messages (use `tw-animate-css`, already imported), hover transitions, and
+      the sidebar collapse easing. Gate everything behind
+      `motion-reduce:` / `prefers-reduced-motion`.
+- [ ] **F13 — Toasts → shadcn `Sonner`.** Replace the hand-rolled `#toast` in
+      `App.tsx` + the `toast()` in `state.ts` with shadcn `Sonner`
+      (`npx shadcn@latest add sonner`). _Acceptance:_ same call sites, nicer toasts.
+- [ ] **F14 — Type & spacing system.** A consistent type scale and spacing rhythm
+      across sidebar, header, cards, and chat — the unifying pass once F1–F13 land.
+- [ ] **F15 — Dark-mode review.** Walk every screen in dark (`prefers-color-
+    scheme: dark`) after the above and fix contrast/elevation. The theme bridge
+      means most adapts automatically — this catches the gaps.
+
+#### Tech-debt sweeps (independent, low-risk; good warm-ups)
+
+- [ ] **F16 — Guide freshness.** Sweep `guide/AGENT_HOWTO.md` + `DESIGN_GUIDE.md`
+      for stale wording left by the theming/timeline removal (e.g. the trace part
+      described as a "timeline").
+- [ ] **F17 — Theme engine simplification (optional).** The multi-theme registry
+      is dormant (fixed GitHub, no switcher). If multi-theme isn't coming back,
+      `server/themes.ts` could be trimmed to one palette. Confirm with the user
+      before doing this one — it's a product decision, not pure cleanup.
+
+**Running this backlog autonomously:** go top-to-bottom (F1 first — it's load-
+bearing). For each: branch, implement, run the verify suite, screenshot desktop
+
+- mobile and look, fix until it's genuinely polished (not just functional), then
+  merge to `main` and move on. Pause and ask the user only on the items marked
+  "confirm with the user" (F17) or if a task can't keep the oracle green.
 
 ---
 
