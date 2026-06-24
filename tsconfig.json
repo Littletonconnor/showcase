@@ -12,7 +12,11 @@
     "verbatimModuleSyntax": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    // Viewer alias mirrored here (inert for server code, which never imports
+    // `@/`) so the shadcn CLI — which reads the default tsconfig — places
+    // generated components under viewer/src instead of a literal `@/` dir.
+    "paths": { "@/*": ["./viewer/src/*"] }
   },
   "include": ["server", "mcp", "test"]
 }

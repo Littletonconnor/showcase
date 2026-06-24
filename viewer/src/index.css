@@ -1,0 +1,45 @@
+/* Tailwind v4 + shadcn, bridged to showcase's theme-token system.
+ *
+ * The colour tokens below resolve to the live chrome vars that
+ * server/themes.ts injects per theme (--bg, --text, --accent, …), so every
+ * shadcn/Tailwind utility re-themes with the board and no palette is
+ * duplicated — server/themes.ts stays the single source of truth. The
+ * sandboxed part-iframes are unaffected (their CSS is server-side). */
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* showcase swaps the underlying vars for dark mode (media query / pinned mode),
+ * so the semantic tokens below already adapt; `dark:` utilities follow the OS
+ * scheme to match. */
+@custom-variant dark (@media (prefers-color-scheme: dark));
+
+:root {
+  --radius: 0.625rem;
+}
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--panel);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--panel);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--hover);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--danger);
+  --color-destructive-foreground: #ffffff;
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--accent);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}

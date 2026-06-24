@@ -8,6 +8,7 @@
     "moduleResolution": "bundler",
     "types": ["vite/client", "react", "react-dom"],
     "jsx": "react-jsx",
+    "paths": { "@/*": ["./viewer/src/*"] },
     "strict": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
