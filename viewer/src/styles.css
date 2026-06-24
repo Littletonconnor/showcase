@@ -377,18 +377,34 @@ main {
   background: var(--surface);
   border: 0.5px solid var(--border);
   border-radius: 12px;
-  margin-bottom: 22px;
+  margin-bottom: 20px;
   overflow: hidden;
+  /* Calm elevation: a hairline border paired with a soft, two-step shadow so a
+     card reads as a lifted surface without shouting. It deepens slightly on
+     hover to confirm the card is a live, interactive object. */
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 2px 6px rgba(0, 0, 0, 0.05);
+  transition:
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+}
+.card:hover {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 6px 16px rgba(0, 0, 0, 0.07);
 }
 .card-head {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 13px 16px;
 }
 .card-title {
-  font-weight: 500;
+  font-weight: 550;
   font-size: 14px;
+  letter-spacing: -0.006em;
+  color: var(--text);
 }
 .vbadge {
   font-size: 11px;
@@ -747,7 +763,8 @@ iframe {
   outline: none;
 }
 .composer input:focus {
-  border-color: var(--border-2);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
 }
 .composer input::placeholder {
   color: var(--faint);
