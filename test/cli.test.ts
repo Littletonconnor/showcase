@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -223,108 +223,6 @@ test("kits lists the board's available kits", async () => {
     const kits = JSON.parse(stdout);
     assert.ok(kits.some((k: any) => k.id === "issues"));
     assert.ok(kits.some((k: any) => k.id === "slides"));
-  } finally {
-    await server.close();
-  }
-});
-
-test("install-hook --print emits a Stop hook that runs `showcase hook`", async () => {
-  const { code, stdout } = await run("install-hook", "--print");
-  assert.equal(code, 0);
-  const cfg = JSON.parse(stdout);
-  const cmd = cfg.hooks.Stop[0].hooks[0].command;
-  assert.equal(cfg.hooks.Stop[0].hooks[0].type, "command");
-  assert.match(cmd, /showcase(\.js)?["']?\s+hook\b/);
-});
-
-test("install-hook merges into existing Stop hooks and is idempotent", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "showcase-hook-"));
-  const settings = join(dir, ".claude", "settings.local.json");
-  // first install — the CLI creates .claude/ and the settings file
-  await runWith({ cwd: dir }, "install-hook");
-  // splice in a pre-existing, unrelated Stop hook whose path contains both
-  // "showcase" and "hook" — install must not mistake it for its own and skip.
-  let cfg = JSON.parse(readFileSync(settings, "utf8"));
-  cfg.hooks.Stop.unshift({
-    hooks: [{ type: "command", command: 'node ".../showcase-stop-hook.mjs" check' }],
-  });
-  writeFileSync(settings, JSON.stringify(cfg));
-
-  // re-running sees our own entry already present → idempotent, no duplicate,
-  // and the unrelated feedback hook is preserved.
-  const again = await runWith({ cwd: dir }, "install-hook");
-  assert.match(again.stdout, /already-installed/);
-  cfg = JSON.parse(readFileSync(settings, "utf8"));
-  const cmds = cfg.hooks.Stop.flatMap((g: any) => g.hooks.map((h: any) => h.command));
-  assert.equal(cmds.filter((c: string) => /showcase(\.js)?["']?\s+hook\b/.test(c)).length, 1);
-  assert.ok(cmds.some((c: string) => c.includes("showcase-stop-hook.mjs")));
-});
-
-test("hook reads its stdin payload and syncs the trace for the matching cwd", async () => {
-  const server = await serveApp();
-  try {
-    const projectCwd = "/tmp/showcase-hook-project";
-    const session = await post(`${server.url}/api/sessions`, {
-      agent: "e2e",
-      title: "Hooked",
-      cwd: projectCwd,
-    });
-
-    // a minimal Claude Code transcript: two prompts around a tool call
-    const transcript = join(mkdtempSync(join(tmpdir(), "showcase-tx-")), "t.jsonl");
-    writeFileSync(
-      transcript,
-      [
-        `{"timestamp":"2026-06-18T00:00:00.000Z","message":{"role":"user","content":[{"type":"text","text":"draw me a card"}]}}`,
-        `{"timestamp":"2026-06-18T00:00:01.000Z","message":{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"echo hi"}}]}}`,
-        `{"timestamp":"2026-06-18T00:00:02.000Z","message":{"role":"user","content":[{"type":"text","text":"make it blue"}]}}`,
-      ].join("\n"),
-    );
-
-    const payload = JSON.stringify({
-      hook_event_name: "Stop",
-      transcript_path: transcript,
-      cwd: projectCwd,
-    });
-    // no --session: the hook resolves it purely from the payload cwd
-    const { code, stdout } = await runWith(
-      { env: { SHOWCASE_URL: server.url }, stdin: payload },
-      "hook",
-    );
-    assert.equal(code, 0); // never disturbs the agent
-    assert.equal(stdout, ""); // a Stop hook's stdout is parsed as JSON — must be empty
-
-    const got = (await fetch(`${server.url}/api/sessions/${session.id}/trace`).then((r) =>
-      r.json(),
-    )) as any;
-    const kinds = got.steps.map((s: any) => s.kind);
-    assert.deepEqual(kinds, ["prompt", "run", "prompt"]);
-    assert.equal(got.steps[0].label, "draw me a card");
-  } finally {
-    await server.close();
-  }
-});
-
-test("hook stays silent when no showcase session owns the cwd", async () => {
-  const server = await serveApp();
-  try {
-    const transcript = join(mkdtempSync(join(tmpdir(), "showcase-tx-")), "t.jsonl");
-    writeFileSync(
-      transcript,
-      `{"timestamp":"2026-06-18T00:00:00.000Z","message":{"role":"user","content":"hi"}}`,
-    );
-    const payload = JSON.stringify({
-      hook_event_name: "Stop",
-      transcript_path: transcript,
-      cwd: "/tmp/no-such-showcase-session",
-    });
-    const { code, stdout, stderr } = await runWith(
-      { env: { SHOWCASE_URL: server.url }, stdin: payload },
-      "hook",
-    );
-    assert.equal(code, 0);
-    assert.equal(stdout, "");
-    assert.equal(stderr, "");
   } finally {
     await server.close();
   }

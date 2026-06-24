@@ -18,7 +18,6 @@ import {
   type Store,
   type Surface,
   type SurfacePart,
-  type TraceStep,
 } from "./types.ts";
 import { validateSurfaceParts } from "./surfaceParts.ts";
 
@@ -32,11 +31,6 @@ const MAX_WAIT_SECONDS = 300;
 // uploaded over MCP, ~4/3 of the 5 MiB asset cap — while still bounding a flood.
 // The /api/assets route's own 5 MiB streaming cap is stricter and still applies.
 const MAX_BODY_BYTES = 16 * 1024 * 1024;
-// Bound the session trace: each step's detail is truncated and the per-session
-// list rolls, so memory stays flat no matter how long the agent runs.
-const MAX_TRACE_STEPS = 2000;
-const MAX_STEP_DETAIL = 4000;
-const MAX_STEP_LABEL = 500;
 // A comment's text and a surface's title both ride the feedback channel back to
 // the agent (feedbackView below), re-sent on every poll — so cap them at the
 // edge to keep one oversize value from bloating the agent's context forever.
@@ -668,43 +662,6 @@ export function createApp({
   };
   app.get("/api/sessions/:id/surfaces", listSessionSurfaces);
   app.get("/api/sessions/:id/snippets", listSessionSurfaces); // legacy alias
-
-  // --- session trace ---
-
-  app.get("/api/sessions/:id/trace", async (c) => {
-    const session = await store.getSession(c.req.param("id"));
-    if (!session) return c.json({ error: "session not found" }, 404);
-    return c.json({ steps: await store.listTrace(session.id) });
-  });
-
-  // Ingest a batch of trace steps (the sync sends a windowed slice, or the tail
-  // since a cursor). `reset: true` replaces the list, for a full re-sync. Steps
-  // are sanitized and the per-session list is capped.
-  app.post("/api/sessions/:id/trace", async (c) => {
-    const session = await store.getSession(c.req.param("id"));
-    if (!session) return c.json({ error: "session not found" }, 404);
-    const body = await c.req.json().catch(() => null);
-    if (!body || !Array.isArray(body.steps)) {
-      return c.json({ error: 'body must include "steps" array' }, 400);
-    }
-    const clean: TraceStep[] = [];
-    for (const s of body.steps) {
-      if (!s || typeof s.label !== "string") continue;
-      clean.push({
-        label: s.label.slice(0, MAX_STEP_LABEL),
-        ...(typeof s.kind === "string" && { kind: s.kind.slice(0, 40) }),
-        ...(typeof s.detail === "string" && { detail: s.detail.slice(0, MAX_STEP_DETAIL) }),
-        ...(typeof s.ts === "string" && { ts: s.ts }),
-      });
-    }
-    const prior = body.reset === true ? [] : await store.listTrace(session.id);
-    const merged = prior.concat(clean);
-    // roll the list so a long session keeps only its most recent steps
-    const bounded = merged.length > MAX_TRACE_STEPS ? merged.slice(-MAX_TRACE_STEPS) : merged;
-    await store.setTrace(session.id, bounded);
-    bus.broadcast({ type: "trace-updated", sessionId: session.id, count: bounded.length });
-    return c.json({ ok: true, added: clean.length, count: bounded.length });
-  });
 
   // --- surfaces ---
 
