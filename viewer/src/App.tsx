@@ -55,6 +55,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Toaster } from "@/components/ui/sonner";
 import { applyFrameHeight } from "./SandboxedPart.tsx";
 import { renderNotes } from "./notes.ts";
 import { initTheme } from "./theme.ts";
@@ -216,8 +217,6 @@ export default function App() {
   const sessionsLoading = useBoard((s) => s.sessionsLoading);
   const unread = useBoard((s) => s.unread);
   const pillTarget = useBoard((s) => s.pillTarget);
-  const toastShow = useBoard((s) => s.toastShow);
-  const toastText = useBoard((s) => s.toastText);
 
   // Escape closes the integrations modal while it is open.
   useEffect(() => {
@@ -309,7 +308,7 @@ export default function App() {
         >
           <SessionView />
         </main>
-        <Toast show={toastShow} text={toastText} />
+        <Toaster />
         <NewSurfacePill target={pillTarget} />
       </>
     );
@@ -401,27 +400,9 @@ export default function App() {
         </SidebarInset>
       </SidebarProvider>
       {connectOpen ? <ConnectModal onClose={() => setConnectOpen(false)} /> : null}
-      <Toast show={toastShow} text={toastText} />
+      <Toaster />
       <NewSurfacePill target={pillTarget} />
     </>
-  );
-}
-
-// The global status toast — pinned bottom-center, fades in. Shared by both
-// layouts (stream and full board).
-function Toast(props: { show: boolean; text: string }) {
-  return (
-    <div
-      id="toast"
-      role="status"
-      aria-live="polite"
-      className={cx(
-        "pointer-events-none fixed bottom-[26px] left-1/2 z-50 max-w-[600px] -translate-x-1/2 translate-y-2 rounded-[10px] border-[0.5px] border-[var(--border-2)] bg-card px-3.5 py-[9px] text-[13px] opacity-0 shadow-[0_6px_20px_rgba(0,0,0,0.14)] transition-[opacity,transform] duration-200",
-        props.show && "pointer-events-auto translate-y-0 opacity-100",
-      )}
-    >
-      {props.text}
-    </div>
   );
 }
 

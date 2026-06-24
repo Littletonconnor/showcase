@@ -7,6 +7,7 @@
 // updates merge into existing rows so React keys stay stable across refetches
 // (cards/iframes persist, drafts and focus survive).
 import { create } from "zustand";
+import { toast as sonnerToast } from "sonner";
 import {
   api,
   appPath,
@@ -50,8 +51,6 @@ interface BoardState {
   // Surface id the "new surface ↓" pill jumps to — set instead of scrolling
   // when the user is reading further up.
   pillTarget: string | null;
-  toastText: string;
-  toastShow: boolean;
   // Update notice: shown when the server reports a newer release the user has
   // not dismissed. Dismissal stores the version, not a flag, so dismissing
   // 0.4.0 keeps it gone until 0.5.0 actually ships.
@@ -74,8 +73,6 @@ export const useBoard = create<BoardState>(() => ({
   live: false,
   scrollTarget: null,
   pillTarget: null,
-  toastText: "",
-  toastShow: false,
   versionInfo: null,
   dismissedUpdate: localStorage.getItem(DISMISSED_UPDATE_KEY),
   activeTheme: "",
@@ -155,12 +152,11 @@ export function clearUnread(id: string) {
   });
 }
 
-let toastTimer: ReturnType<typeof setTimeout> | undefined;
-
+// One toast helper for the whole app, now backed by shadcn Sonner. Call sites
+// are unchanged (`toast("…")`); the rendering moved from the hand-rolled #toast
+// div to the <Toaster/> mounted in App.
 export function toast(text: string) {
-  set({ toastText: text, toastShow: true });
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => set({ toastShow: false }), 4000);
+  sonnerToast(text);
 }
 
 function markUnread(sessionId: string) {

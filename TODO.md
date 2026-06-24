@@ -304,7 +304,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
       messages (use `tw-animate-css`, already imported), hover transitions, and
       the sidebar collapse easing. Gate everything behind
       `motion-reduce:` / `prefers-reduced-motion`.
-- [ ] **F13 — Toasts → shadcn `Sonner`.** Replace the hand-rolled `#toast` in
+- [x] **F13 — Toasts → shadcn `Sonner`.** Replace the hand-rolled `#toast` in
       `App.tsx` + the `toast()` in `state.ts` with shadcn `Sonner`
       (`npx shadcn@latest add sonner`). _Acceptance:_ same call sites, nicer toasts.
 - [ ] **F14 — Type & spacing system.** A consistent type scale and spacing rhythm
