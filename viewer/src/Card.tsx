@@ -272,7 +272,7 @@ export function Card(props: { surface: Surface }) {
 
   return (
     <div
-      className="card mb-4 overflow-hidden rounded-xl border-[0.5px] border-border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.035),0_1px_3px_rgba(0,0,0,0.045)] transition-[box-shadow,border-color] duration-200 ease-out hover:border-[var(--border-2)] hover:shadow-[0_1px_2px_rgba(0,0,0,0.05),0_8px_20px_rgba(0,0,0,0.07)]"
+      className="card mb-4 animate-in overflow-hidden rounded-xl border-[0.5px] border-border bg-card fade-in-0 slide-in-from-bottom-1 shadow-[0_1px_2px_rgba(0,0,0,0.035),0_1px_3px_rgba(0,0,0,0.045)] transition-[box-shadow,border-color] duration-200 ease-out hover:border-[var(--border-2)] hover:shadow-[0_1px_2px_rgba(0,0,0,0.05),0_8px_20px_rgba(0,0,0,0.07)] motion-reduce:animate-none"
       data-id={surfaceId}
       ref={cardRef}
     >
@@ -502,7 +502,11 @@ function CommentRow(props: { comment: ViewComment; startsRun: boolean }) {
         // Continuations within a run hug the previous bubble; a new run gets air.
         props.startsRun ? "mt-3 gap-1 first:mt-0" : "mt-0.5 gap-0.5",
         isUser ? "user items-end" : "items-start",
-        !!props.comment.pending && "animate-pulse opacity-60",
+        // Pending bubbles pulse; settled ones get a quick one-shot enter. Both
+        // yield to prefers-reduced-motion.
+        props.comment.pending
+          ? "animate-pulse opacity-60 motion-reduce:animate-none"
+          : "animate-in fade-in-0 slide-in-from-bottom-1 duration-150 motion-reduce:animate-none",
       )}
       data-cid={props.comment.id}
     >
