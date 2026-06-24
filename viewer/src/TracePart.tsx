@@ -1,63 +1,58 @@
-import { createSignal, For, onMount, Show } from "solid-js";
+import { useEffect, useState } from "react";
 import type { TracePart as TracePartData, TraceStep } from "./api.ts";
+import { cx } from "./cx.ts";
 
 // Render an agent trace as a step timeline the user can scan beside the surface.
 // Steps may travel inline in the part, or live in an uploaded JSON/JSONL asset
 // (assetId) — which we also offer for download. When only an assetId is given we
 // fetch it and render it if it parses to an array of steps.
 export function TracePart(props: { part: TracePartData }) {
-  const [steps, setSteps] = createSignal<TraceStep[]>(props.part.steps ?? []);
-  const [note, setNote] = createSignal<string | null>(null);
+  const [steps, setSteps] = useState<TraceStep[]>(props.part.steps ?? []);
+  const [note, setNote] = useState<string | null>(null);
 
-  onMount(() => {
+  useEffect(() => {
     if ((props.part.steps?.length ?? 0) > 0 || !props.part.assetId) return;
     void fetch(`/a/${props.part.assetId}`)
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
       .then((text) => setSteps(parseTrace(text)))
       .catch(() => setNote("Trace file unavailable — it may have been evicted."));
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
-    <div class="tracepart">
-      <div class="trace-head">
-        <span class="trace-title">{props.part.title ?? "Agent trace"}</span>
-        <Show when={props.part.assetId}>
-          <a class="trace-dl" href={`/a/${props.part.assetId}`} target="_blank" rel="noopener">
+    <div className="tracepart">
+      <div className="trace-head">
+        <span className="trace-title">{props.part.title ?? "Agent trace"}</span>
+        {props.part.assetId ? (
+          <a className="trace-dl" href={`/a/${props.part.assetId}`} target="_blank" rel="noopener">
             download ↓
           </a>
-        </Show>
+        ) : null}
       </div>
-      <Show when={note()}>
-        <div class="asset-gone">{note()}</div>
-      </Show>
-      <ol class="trace-steps">
-        <For each={steps()}>{(step) => <TraceRow step={step} />}</For>
+      {note ? <div className="asset-gone">{note}</div> : null}
+      <ol className="trace-steps">
+        {steps.map((step, i) => (
+          <TraceRow step={step} key={i} />
+        ))}
       </ol>
     </div>
   );
 }
 
 function TraceRow(props: { step: TraceStep }) {
-  const [open, setOpen] = createSignal(false);
-  const hasDetail = () => !!props.step.detail;
+  const [open, setOpen] = useState(false);
+  const hasDetail = !!props.step.detail;
   return (
-    <li class="trace-step" classList={{ open: open() }}>
+    <li className={cx("trace-step", open && "open")}>
       <div
-        class="trace-row"
-        classList={{ clickable: hasDetail() }}
-        onClick={() => hasDetail() && setOpen(!open())}
+        className={cx("trace-row", hasDetail && "clickable")}
+        onClick={() => hasDetail && setOpen(!open)}
       >
-        <Show when={props.step.kind}>
-          <span class="trace-kind">{props.step.kind}</span>
-        </Show>
-        <span class="trace-label">{props.step.label}</span>
-        <Show when={props.step.ts}>
-          <span class="trace-ts">{props.step.ts}</span>
-        </Show>
+        {props.step.kind ? <span className="trace-kind">{props.step.kind}</span> : null}
+        <span className="trace-label">{props.step.label}</span>
+        {props.step.ts ? <span className="trace-ts">{props.step.ts}</span> : null}
       </div>
-      <Show when={hasDetail() && open()}>
-        <pre class="trace-detail">{props.step.detail}</pre>
-      </Show>
+      {hasDetail && open ? <pre className="trace-detail">{props.step.detail}</pre> : null}
     </li>
   );
 }

@@ -1,8 +1,8 @@
-import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import { useEffect, useState } from "react";
 import type { CodePart as CodePartData } from "./api.ts";
 import { themeById } from "../../server/themes.ts";
 import { SandboxedPart } from "./SandboxedPart.tsx";
-import { activeTheme, resolvedMode } from "./theme.ts";
+import { useActiveTheme, useResolvedMode } from "./theme.ts";
 import { setCurrentThemes, highlight, loadLangs, shikiSchemeCss } from "./highlight.ts";
 
 // Styles shipped INTO the sandbox iframe. shiki produces <pre class="shiki">
@@ -116,66 +116,69 @@ function plainHtml(code: string): string {
     .join("")}</code></pre>`;
 }
 
+function buildBody(part: CodePartData): string {
+  const code = part.code ?? "";
+  const lang = part.language ?? "text";
+  const lineStart = part.lineStart ?? 1;
+  const highlighted = highlight(code, lang);
+  // shiki's HTML has literal newlines between <span class="line"> elements
+  // inside <pre>; those render as blank lines and get selected on drag.
+  // Strip the inter-line whitespace so only the .line blocks remain.
+  const pre = highlighted
+    ? highlighted.replace(/\n*(<\/span>)\n*(<span class="line")/g, "$1$2")
+    : plainHtml(code);
+  // counter-reset starts the counter at lineStart-1 so the first .line
+  // increments to lineStart. Merged into the <pre> as an inline style —
+  // shiki emits its own `style` (and multiple classes), so prepend the
+  // declaration to any existing style attribute, or add one when absent.
+  const preWithStart =
+    lineStart > 1
+      ? pre.replace(/<pre\b[^>]*>/, (open) => {
+          const decl = `counter-reset:line ${lineStart - 1};`;
+          return /\sstyle="/.test(open)
+            ? open.replace(/\sstyle="/, ` style="${decl}`)
+            : open.replace(/<pre\b/, `<pre style="${decl}"`);
+        })
+      : pre;
+  const hasHead = !!(part.title || (lang && lang !== "text"));
+  const wrapClass = hasHead ? "code-wrap code-wrap-head" : "code-wrap";
+  const lineEnd = lineStart + code.split("\n").length - 1;
+  const range = lineStart > 1 ? `:${lineStart}-${lineEnd}` : "";
+  const filename = part.title
+    ? `<span class="code-filename">${escapeHtml(part.title)}${escapeHtml(range)}</span>`
+    : hasHead
+      ? `<span class="code-filename"></span>`
+      : "";
+  const langBadge =
+    lang && lang !== "text" ? `<span class="code-lang">${escapeHtml(lang)}</span>` : "";
+  const copyBtn = `<button class="copy-btn" onclick="__codeCopy(this)">Copy</button>`;
+  const head = hasHead ? `<div class="code-head">${filename}${langBadge}${copyBtn}</div>` : copyBtn;
+  // Embed the raw code as a JS string for the copy handler. Escape < so a
+  // </script> in the code can't break out of the inline script tag.
+  const codeJs = JSON.stringify(code).replace(/</g, "\\u003c");
+  return `<div class="${wrapClass}">${head}${preWithStart}<script>(function(){var c=${codeJs};window.__codeCopy=function(b){copyToClipboard(c);b.textContent="Copied!";b.classList.add("copied");setTimeout(function(){b.textContent="Copy";b.classList.remove("copied")},1500)}})();</script></div>`;
+}
+
 export function CodePart(props: { part: CodePartData }) {
-  const [html, setHtml] = createSignal("");
-
-  const buildBody = (): string => {
-    const code = props.part.code ?? "";
-    const lang = props.part.language ?? "text";
-    const lineStart = props.part.lineStart ?? 1;
-    const highlighted = highlight(code, lang);
-    // shiki's HTML has literal newlines between <span class="line"> elements
-    // inside <pre>; those render as blank lines and get selected on drag.
-    // Strip the inter-line whitespace so only the .line blocks remain.
-    const pre = highlighted
-      ? highlighted.replace(/\n*(<\/span>)\n*(<span class="line")/g, "$1$2")
-      : plainHtml(code);
-    // counter-reset starts the counter at lineStart-1 so the first .line
-    // increments to lineStart. Merged into the <pre> as an inline style —
-    // shiki emits its own `style` (and multiple classes), so prepend the
-    // declaration to any existing style attribute, or add one when absent.
-    const preWithStart =
-      lineStart > 1
-        ? pre.replace(/<pre\b[^>]*>/, (open) => {
-            const decl = `counter-reset:line ${lineStart - 1};`;
-            return /\sstyle="/.test(open)
-              ? open.replace(/\sstyle="/, ` style="${decl}`)
-              : open.replace(/<pre\b/, `<pre style="${decl}"`);
-          })
-        : pre;
-    const hasHead = !!(props.part.title || (lang && lang !== "text"));
-    const wrapClass = hasHead ? "code-wrap code-wrap-head" : "code-wrap";
-    const lineEnd = lineStart + code.split("\n").length - 1;
-    const range = lineStart > 1 ? `:${lineStart}-${lineEnd}` : "";
-    const filename = props.part.title
-      ? `<span class="code-filename">${escapeHtml(props.part.title)}${escapeHtml(range)}</span>`
-      : hasHead
-        ? `<span class="code-filename"></span>`
-        : "";
-    const langBadge =
-      lang && lang !== "text" ? `<span class="code-lang">${escapeHtml(lang)}</span>` : "";
-    const copyBtn = `<button class="copy-btn" onclick="__codeCopy(this)">Copy</button>`;
-    const head = hasHead
-      ? `<div class="code-head">${filename}${langBadge}${copyBtn}</div>`
-      : copyBtn;
-    // Embed the raw code as a JS string for the copy handler. Escape < so a
-    // </script> in the code can't break out of the inline script tag.
-    const codeJs = JSON.stringify(code).replace(/</g, "\\u003c");
-    return `<div class="${wrapClass}">${head}${preWithStart}<script>(function(){var c=${codeJs};window.__codeCopy=function(b){copyToClipboard(c);b.textContent="Copied!";b.classList.add("copied");setTimeout(function(){b.textContent="Copy";b.classList.remove("copied")},1500)}})();</script></div>`;
-  };
-
-  const render = () => setHtml(buildBody());
-
-  // Re-highlight when the board theme changes (shiki pair swap).
-  createEffect(() => {
-    setCurrentThemes(themeById(activeTheme()).shiki);
-    render();
+  const activeTheme = useActiveTheme();
+  const mode = useResolvedMode();
+  const [html, setHtml] = useState(() => {
+    setCurrentThemes(themeById(activeTheme).shiki);
+    return buildBody(props.part);
   });
 
-  onMount(() => {
+  const render = () => setHtml(buildBody(props.part));
+
+  // Re-highlight when the board theme changes (shiki pair swap).
+  useEffect(() => {
+    setCurrentThemes(themeById(activeTheme).shiki);
+    render();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTheme]);
+
+  // Upgrade to highlighted output once the language grammar is loaded.
+  useEffect(() => {
     let disposed = false;
-    onCleanup(() => (disposed = true));
-    render(); // initial paint (plain text if lang not yet loaded)
     const lang = props.part.language;
     if (lang && lang !== "text") {
       void (async () => {
@@ -183,13 +186,13 @@ export function CodePart(props: { part: CodePartData }) {
         if (!disposed) render();
       })();
     }
-  });
+    return () => {
+      disposed = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.part.language]);
 
   return (
-    <SandboxedPart
-      class="partframe codeframe"
-      body={html()}
-      css={CODE_CSS + shikiSchemeCss(resolvedMode())}
-    />
+    <SandboxedPart class="partframe codeframe" body={html} css={CODE_CSS + shikiSchemeCss(mode)} />
   );
 }

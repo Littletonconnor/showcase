@@ -1,82 +1,75 @@
-import { createSignal, For, Show } from "solid-js";
+import { useState } from "react";
 import type { JsonPart as JsonPartData } from "./api.ts";
 
 export function JsonPart(props: { part: JsonPartData }) {
   return (
-    <div class="jsonpart">
+    <div className="jsonpart">
       <JsonNode value={props.part.data} depth={0} />
     </div>
   );
 }
 
 function JsonNode(props: { value: unknown; depth: number }) {
-  const isContainer = () => typeof props.value === "object" && props.value !== null;
-
-  return (
-    <Show when={isContainer()} fallback={<Primitive value={props.value} />}>
-      <Container value={props.value as object} depth={props.depth} />
-    </Show>
+  const isContainer = typeof props.value === "object" && props.value !== null;
+  return isContainer ? (
+    <Container value={props.value as object} depth={props.depth} />
+  ) : (
+    <Primitive value={props.value} />
   );
 }
 
 type Entry = readonly [string, unknown];
 
 function Container(props: { value: object; depth: number }) {
-  const [open, setOpen] = createSignal(props.depth === 0);
-  const isArray = () => Array.isArray(props.value);
-  const entries = (): Entry[] =>
-    isArray()
-      ? (props.value as unknown[]).map((v, i) => [String(i), v] as const)
-      : Object.entries(props.value as Record<string, unknown>);
-  const count = () => entries().length;
-  const openCh = () => (isArray() ? "[" : "{");
-  const closeCh = () => (isArray() ? "]" : "}");
-  const summary = () =>
-    isArray()
-      ? `${count()} item${count() === 1 ? "" : "s"}`
-      : `${count()} key${count() === 1 ? "" : "s"}`;
+  const [open, setOpen] = useState(props.depth === 0);
+  const isArray = Array.isArray(props.value);
+  const entries: Entry[] = isArray
+    ? (props.value as unknown[]).map((v, i) => [String(i), v] as const)
+    : Object.entries(props.value as Record<string, unknown>);
+  const count = entries.length;
+  const openCh = isArray ? "[" : "{";
+  const closeCh = isArray ? "]" : "}";
+  const summary = isArray
+    ? `${count} item${count === 1 ? "" : "s"}`
+    : `${count} key${count === 1 ? "" : "s"}`;
+
+  if (count === 0) {
+    return (
+      <span className="json-empty">
+        {openCh}
+        {closeCh}
+      </span>
+    );
+  }
 
   return (
-    <Show
-      when={count() > 0}
-      fallback={
-        <span class="json-empty">
-          {openCh()}
-          {closeCh()}
-        </span>
-      }
-    >
-      <span class="json-toggle" onClick={() => setOpen(!open())}>
-        {open() ? "\u25BE" : "\u25B8"} {openCh()}
+    <>
+      <span className="json-toggle" onClick={() => setOpen(!open)}>
+        {open ? "▾" : "▸"} {openCh}
       </span>
-      <Show
-        when={open()}
-        fallback={
-          <span class="json-summary">
-            {" "}
-            {summary()} {closeCh()}
-          </span>
-        }
-      >
-        <span class="json-children">
-          <For each={entries()}>
-            {([key, val], i) => (
-              <span class="json-child">
-                <Show when={!isArray()}>
-                  <span class="json-key">"{key}"</span>
-                  <span class="json-colon">: </span>
-                </Show>
-                <JsonNode value={val} depth={props.depth + 1} />
-                <Show when={i() < entries().length - 1}>
-                  <span class="json-comma">,</span>
-                </Show>
-              </span>
-            )}
-          </For>
-          <span class="json-close">{closeCh()}</span>
+      {open ? (
+        <span className="json-children">
+          {entries.map(([key, val], i) => (
+            <span className="json-child" key={key}>
+              {!isArray ? (
+                <>
+                  <span className="json-key">"{key}"</span>
+                  <span className="json-colon">: </span>
+                </>
+              ) : null}
+              <JsonNode value={val} depth={props.depth + 1} />
+              {i < entries.length - 1 ? <span className="json-comma">,</span> : null}
+            </span>
+          ))}
+          <span className="json-close">{closeCh}</span>
         </span>
-      </Show>
-    </Show>
+      ) : (
+        <span className="json-summary">
+          {" "}
+          {summary} {closeCh}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -94,5 +87,5 @@ function Primitive(props: { value: unknown }) {
     return String(props.value);
   };
 
-  return <span class={`json-value json-${type()}`}>{display()}</span>;
+  return <span className={`json-value json-${type()}`}>{display()}</span>;
 }

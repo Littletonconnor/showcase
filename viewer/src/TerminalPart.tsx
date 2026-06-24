@@ -1,4 +1,4 @@
-import { createMemo } from "solid-js";
+import { useMemo } from "react";
 import { AnsiUp } from "ansi_up";
 import { escapeHtml } from "../../server/surfacePage.ts";
 import type { TerminalPart as TerminalPartData } from "./api.ts";
@@ -55,7 +55,7 @@ function resolveCarriageReturns(text: string): string {
 // wire shape (see TerminalPart in server/types.ts) is renderer-agnostic so a
 // full VT emulator can replace this later without changing storage, CLI, or MCP.
 export function TerminalPart(props: { part: TerminalPartData }) {
-  const body = createMemo(() => {
+  const body = useMemo(() => {
     const au = new AnsiUp();
     au.use_classes = false; // inline rgb styles — no class palette to ship
     const ansi = au.ansi_to_html(resolveCarriageReturns(props.part.text ?? ""));
@@ -67,6 +67,6 @@ export function TerminalPart(props: { part: TerminalPartData }) {
       `<span class="term-title">${title}</span></div>` +
       `<pre class="term-body"${width}>${ansi}</pre>`
     );
-  });
-  return <SandboxedPart class="partframe termframe" body={body()} css={TERM_CSS} />;
+  }, [props.part.text, props.part.title, props.part.cols]);
+  return <SandboxedPart class="partframe termframe" body={body} css={TERM_CSS} />;
 }

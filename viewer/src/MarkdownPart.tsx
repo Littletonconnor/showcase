@@ -1,9 +1,9 @@
-import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import { useEffect, useState } from "react";
 import MarkdownIt from "markdown-it";
 import type { MarkdownPart as MarkdownPartData } from "./api.ts";
 import { themeById } from "../../server/themes.ts";
 import { SandboxedPart } from "./SandboxedPart.tsx";
-import { activeTheme, resolvedMode } from "./theme.ts";
+import { useActiveTheme, useResolvedMode } from "./theme.ts";
 import { setCurrentThemes, highlight, loadLangs, shikiSchemeCss } from "./highlight.ts";
 
 // Prose styles for the rendered markdown — shipped INTO the sandbox iframe (the
@@ -96,38 +96,42 @@ function fenceLangs(src: string): string[] {
 }
 
 export function MarkdownPart(props: { part: MarkdownPartData }) {
-  const [html, setHtml] = createSignal("");
+  const activeTheme = useActiveTheme();
+  const mode = useResolvedMode();
+  const [html, setHtml] = useState(() => {
+    setCurrentThemes(themeById(activeTheme).shiki);
+    return md.render(props.part.markdown ?? "");
+  });
+
   const render = () => setHtml(md.render(props.part.markdown ?? ""));
 
   // Re-highlight when the board theme changes: point the highlight hook at the
   // new shiki pair, then re-render. All pairs are preloaded, so this is sync.
-  createEffect(() => {
-    setCurrentThemes(themeById(activeTheme()).shiki);
+  useEffect(() => {
+    setCurrentThemes(themeById(activeTheme).shiki);
     render();
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTheme]);
 
-  onMount(() => {
+  // Upgrade code blocks once their grammars are loaded.
+  useEffect(() => {
     let disposed = false;
-    onCleanup(() => (disposed = true));
-    // Paint immediately (prose + any already-loaded langs), then upgrade code
-    // blocks once their grammars are loaded.
-    render();
     const want = fenceLangs(props.part.markdown ?? "");
     if (want.length === 0) return;
     void (async () => {
       await loadLangs(want);
       if (!disposed) render();
     })();
-  });
+    return () => {
+      disposed = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.part.markdown]);
 
   // The rendered HTML is a STRING built here in the trusted viewer (safe — no
   // DOM sink); SandboxedPart parses it inside an opaque-origin iframe, so even a
   // markdown-it/shiki regression can't touch the board.
   return (
-    <SandboxedPart
-      class="partframe mdframe"
-      body={html()}
-      css={MD_CSS + shikiSchemeCss(resolvedMode())}
-    />
+    <SandboxedPart class="partframe mdframe" body={html} css={MD_CSS + shikiSchemeCss(mode)} />
   );
 }

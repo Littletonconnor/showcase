@@ -1,100 +1,88 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AgentMark } from "./agentMarks.tsx";
 import { api, isReadonly, layoutMode, relTime, sessionLabel, type SessionRow } from "./api.ts";
-import { host, isShadow, navHostEl, root, SLOTS } from "./host.ts";
+import { routeGet, routeSubscribe, root } from "./host.ts";
 import { Card, cardEls, frameForSource } from "./Card.tsx";
+import { cx } from "./cx.ts";
 import { applyFrameHeight } from "./SandboxedPart.tsx";
 import { renderNotes } from "./notes.ts";
 import { SessionTimeline } from "./SessionTimeline.tsx";
-import { activeTheme, initTheme, setTheme, themeOptions } from "./theme.ts";
+import { initTheme, setTheme, themeOptions, useActiveTheme } from "./theme.ts";
 import {
   applyRoute,
   checkVersion,
+  clearUnread,
   connect,
   dismissUpdate,
   goHome,
   groupSessions,
-  live,
-  navOpen,
   nearBottom,
-  pillTarget,
   refreshSessions,
   refreshSessionsQuiet,
   select,
   selectAdjacent,
-  selected,
-  sessions,
+  selectedNow,
+  sessionsNow,
   setNavOpen,
   setPillTarget,
-  setUnread,
   setViewMode,
-  streamLoading,
-  surfaces,
   toast,
-  toastShow,
-  toastText,
-  unread,
-  updateNotice,
-  viewMode,
+  updateNoticeFrom,
+  useBoard,
 } from "./state.ts";
 
-// The "Connect Claude Code" integrations modal — module-level so the sidebar
-// footer, the onboarding screen, and the overlay can all reach it.
-const [connectOpen, setConnectOpen] = createSignal(false);
 // Stream-only layout: no sidebar, session list, or session chrome — just the
-// current session's stream. Driven by the host's `layout` (cloud embed) or the
-// self-hosted public-read "session" link (see api.ts `layoutMode`).
+// current session's stream. Driven by the self-hosted public-read "session"
+// link (see api.ts `layoutMode`).
 const streamMode = () => layoutMode() === "stream";
 
 // The wordmark, doubling as a home link: clicking it clears the current session
 // and returns to the empty board (goHome). A real <button> so it's keyboard- and
 // screen-reader-reachable; it shares the .brand styling with the static header
-// and aside wordmarks. This is the guaranteed way back to the board when no
-// session is selectable in the sidebar — e.g. an embedding host (showcase cloud)
-// showing a full-page view over an empty board.
+// and aside wordmarks.
 function Brand() {
+  const live = useBoard((s) => s.live);
   return (
-    <button class="brand" type="button" aria-label="showcase — home" onClick={() => goHome()}>
-      <span class="livedot" classList={{ on: live() }}></span>showcase
+    <button className="brand" type="button" aria-label="showcase — home" onClick={() => goHome()}>
+      <span className={cx("livedot", live && "on")}></span>showcase
     </button>
   );
 }
 
 export default function App() {
+  const [connectOpen, setConnectOpen] = useState(false);
+  const sessions = useBoard((s) => s.sessions);
+  const unread = useBoard((s) => s.unread);
+  const navOpen = useBoard((s) => s.navOpen);
+  const pillTarget = useBoard((s) => s.pillTarget);
+  const toastShow = useBoard((s) => s.toastShow);
+  const toastText = useBoard((s) => s.toastText);
+
   // Escape closes the integrations modal while it is open.
-  createEffect(() => {
-    if (!connectOpen()) return;
+  useEffect(() => {
+    if (!connectOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setConnectOpen(false);
     };
     document.addEventListener("keydown", onKey);
-    onCleanup(() => document.removeEventListener("keydown", onKey));
-  });
+    return () => document.removeEventListener("keydown", onKey);
+  }, [connectOpen]);
 
-  onMount(() => {
-    refreshSessions(host().router.get().surfaceId);
+  useEffect(() => {
+    refreshSessions(routeGet().surfaceId);
     connect();
     checkVersion();
     void initTheme();
     const timer = setInterval(() => {
-      if (sessions.length > 0) refreshSessionsQuiet();
+      if (sessionsNow().length > 0) refreshSessionsQuiet();
     }, 45_000);
-    onCleanup(() => clearInterval(timer));
     window.addEventListener("message", onBridgeMessage);
-    onCleanup(() => window.removeEventListener("message", onBridgeMessage));
     // returning to the tab counts as seeing the selected session
     const onVisibility = () => {
-      const id = selected();
-      if (!document.hidden && id) {
-        setUnread((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-      }
+      const id = selectedNow();
+      if (!document.hidden && id) clearUnread(id);
     };
     document.addEventListener("visibilitychange", onVisibility);
-    onCleanup(() => document.removeEventListener("visibilitychange", onVisibility));
     // Cmd+Option+Up/Down jumps between sessions without reaching for the
     // sidebar — Down moves to the next session in the list, Up the previous.
     const onKeydown = (e: KeyboardEvent) => {
@@ -109,75 +97,74 @@ export default function App() {
       }
     };
     window.addEventListener("keydown", onKeydown);
-    onCleanup(() => window.removeEventListener("keydown", onKeydown));
-    // Routing: the host tells us when the route changes (back/forward).
-    onCleanup(host().router.subscribe(applyRoute));
-  });
+    // Routing: react to route changes (back/forward).
+    const unsub = routeSubscribe(applyRoute);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("message", onBridgeMessage);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("keydown", onKeydown);
+      unsub();
+    };
+  }, []);
 
-  // unseen activity badges the tab title — self-hosted only; an embedding host
-  // owns its own document title.
-  createEffect(() => {
-    if (!isShadow()) document.title = unread().size ? `(${unread().size}) showcase` : "showcase";
-  });
-  // the mobile drawer slides in via a class on the host element (see styles.css
-  // `body.nav-open`; self-hosted that element is <body>)
-  createEffect(() => navHostEl().classList.toggle("nav-open", navOpen()));
+  // unseen activity badges the tab title
+  useEffect(() => {
+    document.title = unread.size ? `(${unread.size}) showcase` : "showcase";
+  }, [unread]);
+
+  // the mobile drawer slides in via a class on <body> (see styles.css
+  // `body.nav-open`)
+  useEffect(() => {
+    document.body.classList.toggle("nav-open", navOpen);
+  }, [navOpen]);
 
   // sessions bucketed by recency for the sidebar; recomputes whenever the
   // session list changes (incl. the 45s quiet refresh, which keeps the
   // Today/Yesterday split fresh as the day rolls over)
-  const sessionGroups = createMemo(() => groupSessions(sessions, new Date()));
+  const sessionGroups = useMemo(() => groupSessions(sessions, new Date()), [sessions]);
 
   return (
     <>
       <div id="app">
-        <header class="topbar">
-          <Show when={!streamMode()}>
+        <header className="topbar">
+          {!streamMode() ? (
             <button
-              class="menu"
+              className="menu"
               id="menuBtn"
               aria-label="Show sessions"
-              onClick={() => setNavOpen(!navOpen())}
+              onClick={() => setNavOpen(!navOpen)}
             >
-              ☰<span class="dot" id="menuDot" classList={{ show: unread().size > 0 }}></span>
+              ☰<span className={cx("dot", unread.size > 0 && "show")} id="menuDot"></span>
             </button>
-          </Show>
+          ) : null}
           <Brand />
         </header>
-        <Show when={!streamMode()}>
+        {!streamMode() ? (
           <aside>
             <Brand />
             <UpdateBanner />
             <div id="sessionList">
-              <For each={sessionGroups()}>
-                {(group) => (
-                  <>
-                    <div class="sess-group">{group.label}</div>
-                    <For each={group.sessions}>{(s) => <SessionItem session={s} />}</For>
-                  </>
-                )}
-              </For>
+              {sessionGroups.map((group) => (
+                <div key={group.label} style={{ display: "contents" }}>
+                  <div className="sess-group">{group.label}</div>
+                  {group.sessions.map((s) => (
+                    <SessionItem session={s} key={s.id} />
+                  ))}
+                </div>
+              ))}
             </div>
-            <div class="aside-foot">
-              {/* ThemePicker is a generic feature, not deployment-specific
-                  guidance — it stays engine-owned and works under any host. */}
-              <Show when={!isReadonly()}>
-                <ThemePicker />
-              </Show>
-              {/* Host-overridable region (SLOTS.asideFoot): the footer's
-                  instructional links/actions. An embedder projects
-                  deployment-appropriate ones here; the children below are the
-                  self-hosted fallback — shown verbatim when nothing is projected
-                  (and outside a shadow root, where <slot> just renders them). */}
-              <slot name={SLOTS.asideFoot}>
-                <a href="/guide" target="_blank">
-                  design guide
-                </a>{" "}
-                &nbsp;·&nbsp;{" "}
-                <a href="/setup" target="_blank">
-                  agent setup
-                </a>{" "}
-                <Show when={!isReadonly()}>
+            <div className="aside-foot">
+              {!isReadonly() ? <ThemePicker /> : null}
+              <a href="/guide" target="_blank">
+                design guide
+              </a>{" "}
+              &nbsp;·&nbsp;{" "}
+              <a href="/setup" target="_blank">
+                agent setup
+              </a>{" "}
+              {!isReadonly() ? (
+                <>
                   &nbsp;·&nbsp;{" "}
                   <a
                     href="#"
@@ -188,43 +175,31 @@ export default function App() {
                   >
                     connect Claude Code
                   </a>
-                </Show>
-              </slot>
+                </>
+              ) : null}
             </div>
           </aside>
-        </Show>
+        ) : null}
         <main
           onScroll={() => {
             if (nearBottom()) setPillTarget(null);
           }}
         >
-          {/* Host-overridable main pane (SLOTS.main). Fallback is the normal
-              board; an embedder projects a `slot="ss:main"` child to take over the
-              pane (e.g. a cloud Settings page) while the sidebar stays. */}
-          <slot name={SLOTS.main}>
-            <Show when={!streamMode()}>
-              <Onboard />
-            </Show>
-            <SessionView />
-          </slot>
+          {!streamMode() ? <Onboard onConnect={() => setConnectOpen(true)} /> : null}
+          <SessionView />
         </main>
       </div>
-      <Show when={!streamMode()}>
-        <div id="scrim" onClick={() => setNavOpen(false)}></div>
-      </Show>
-      <Show when={connectOpen()}>
-        <ConnectModal onClose={() => setConnectOpen(false)} />
-      </Show>
-      <div id="toast" role="status" aria-live="polite" classList={{ show: toastShow() }}>
-        {toastText()}
+      {!streamMode() ? <div id="scrim" onClick={() => setNavOpen(false)}></div> : null}
+      {connectOpen ? <ConnectModal onClose={() => setConnectOpen(false)} /> : null}
+      <div id="toast" role="status" aria-live="polite" className={cx(toastShow && "show")}>
+        {toastText}
       </div>
       <button
         id="newPill"
-        hidden={pillTarget() === null}
+        hidden={pillTarget === null}
         onClick={() => {
-          const target = pillTarget();
-          if (target)
-            cardEls.get(target)?.card.scrollIntoView({ behavior: "smooth", block: "start" });
+          if (pillTarget)
+            cardEls.get(pillTarget)?.card.scrollIntoView({ behavior: "smooth", block: "start" });
           setPillTarget(null);
         }}
       >
@@ -238,57 +213,60 @@ export default function App() {
 // render as a card at the top of the stream (see WhatsNewCard). Dismissing
 // either hides both until the next release.
 function UpdateBanner() {
+  const versionInfo = useBoard((s) => s.versionInfo);
+  const dismissedUpdate = useBoard((s) => s.dismissedUpdate);
+  const v = updateNoticeFrom(versionInfo, dismissedUpdate);
+  if (!v) return null;
   return (
-    <Show when={updateNotice()} keyed>
-      {(v) => (
-        <div class="update-banner" role="status">
-          <div class="update-head">
-            New version <strong>{v.latest}</strong>
-            <button
-              class="x"
-              aria-label={`Dismiss update notice for ${v.latest}`}
-              onClick={() => dismissUpdate(v.latest!)}
-            >
-              ✕
-            </button>
-          </div>
-          <Show when={v.upgradeCommand}>
-            <button
-              class="update-cmd"
-              title="Copy upgrade command"
-              onClick={() => {
-                navigator.clipboard.writeText(v.upgradeCommand!);
-                toast("Copied: " + v.upgradeCommand);
-              }}
-            >
-              <code>{v.upgradeCommand}</code> ⧉
-            </button>
-          </Show>
-        </div>
-      )}
-    </Show>
+    <div className="update-banner" role="status">
+      <div className="update-head">
+        New version <strong>{v.latest}</strong>
+        <button
+          className="x"
+          aria-label={`Dismiss update notice for ${v.latest}`}
+          onClick={() => dismissUpdate(v.latest!)}
+        >
+          ✕
+        </button>
+      </div>
+      {v.upgradeCommand ? (
+        <button
+          className="update-cmd"
+          title="Copy upgrade command"
+          onClick={() => {
+            navigator.clipboard.writeText(v.upgradeCommand!);
+            toast("Copied: " + v.upgradeCommand);
+          }}
+        >
+          <code>{v.upgradeCommand}</code> ⧉
+        </button>
+      ) : null}
+    </div>
   );
 }
 
 // Release notes as a card in the stream — the surface already renders cards,
 // so "what's new" is just content. Shares dismissal with the banner.
 function WhatsNewCard() {
+  const versionInfo = useBoard((s) => s.versionInfo);
+  const dismissedUpdate = useBoard((s) => s.dismissedUpdate);
+  const v = updateNoticeFrom(versionInfo, dismissedUpdate);
+  if (!v?.notes) return null;
   return (
-    <Show when={updateNotice()?.notes ? updateNotice() : null} keyed>
-      {(v) => (
-        <div class="card" id="whatsNew">
-          <div class="card-head">
-            <span class="card-title">What&rsquo;s new in {v.latest}</span>
-            <span class="card-meta">update available</span>
-            <span class="sp"></span>
-            <button class="act del" onClick={() => dismissUpdate(v.latest!)}>
-              dismiss
-            </button>
-          </div>
-          <div class="update-notes" innerHTML={renderNotes(v.notes!)}></div>
-        </div>
-      )}
-    </Show>
+    <div className="card" id="whatsNew">
+      <div className="card-head">
+        <span className="card-title">What&rsquo;s new in {v.latest}</span>
+        <span className="card-meta">update available</span>
+        <span className="sp"></span>
+        <button className="act del" onClick={() => dismissUpdate(v.latest!)}>
+          dismiss
+        </button>
+      </div>
+      <div
+        className="update-notes"
+        dangerouslySetInnerHTML={{ __html: renderNotes(v.notes!) }}
+      ></div>
+    </div>
   );
 }
 
@@ -373,19 +351,21 @@ function isOwnFrame(source: unknown): boolean {
 }
 
 function SessionItem(props: { session: SessionRow }) {
-  const label = () => sessionLabel(props.session);
+  const selected = useBoard((s) => s.selected);
+  const unread = useBoard((s) => s.unread);
+  const label = sessionLabel(props.session);
   return (
     <div
-      class="sess"
-      classList={{
-        sel: props.session.id === selected(),
-        unread: unread().has(props.session.id),
-        vacant: props.session.surfaceCount === 0,
-      }}
+      className={cx(
+        "sess",
+        props.session.id === selected && "sel",
+        unread.has(props.session.id) && "unread",
+        props.session.surfaceCount === 0 && "vacant",
+      )}
       data-id={props.session.id}
       role="button"
       tabIndex={0}
-      aria-current={props.session.id === selected() ? "true" : undefined}
+      aria-current={props.session.id === selected ? "true" : undefined}
       onClick={() => select(props.session.id)}
       onKeyDown={(e) => {
         if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
@@ -394,68 +374,68 @@ function SessionItem(props: { session: SessionRow }) {
         }
       }}
     >
-      <div class="sess-title">
-        {label()}
-        <Show when={props.session.surfaceCount > 0}>
-          <span class="sess-count"> ({props.session.surfaceCount})</span>
-        </Show>
+      <div className="sess-title">
+        {label}
+        {props.session.surfaceCount > 0 ? (
+          <span className="sess-count"> ({props.session.surfaceCount})</span>
+        ) : null}
       </div>
-      <div class="sess-meta">
+      <div className="sess-meta">
         <AgentMark agent={props.session.agent} />
         {props.session.agent} · {relTime(props.session.lastActiveAt)}
       </div>
-      <span class="dot"></span>
-      <Show when={!isReadonly()}>
+      <span className="dot"></span>
+      {!isReadonly() ? (
         <button
-          class="x"
+          className="x"
           title="Delete session"
-          aria-label={`Delete session "${label()}"`}
+          aria-label={`Delete session "${label}"`}
           onClick={async (e) => {
             e.stopPropagation();
-            if (!confirm(`Delete "${label()}" and its surfaces?`)) return;
+            if (!confirm(`Delete "${label}" and its surfaces?`)) return;
             await api(`/api/sessions/${props.session.id}`, { method: "DELETE" });
           }}
         >
           ✕
         </button>
-      </Show>
+      ) : null}
     </div>
   );
 }
 
 function SessionView() {
-  const current = createMemo(() => sessions.find((x) => x.id === selected()));
+  const sessions = useBoard((s) => s.sessions);
+  const selected = useBoard((s) => s.selected);
+  const surfaces = useBoard((s) => s.surfaces);
+  const streamLoading = useBoard((s) => s.streamLoading);
+  const viewMode = useBoard((s) => s.viewMode);
+  const current = sessions.find((x) => x.id === selected);
   return (
     <div id="sessionView" hidden={sessions.length === 0}>
-      <div class="session-head">
-        <SessionTitle current={current()} />
-        <span class="meta" id="sessMeta">
-          {current() ? `${current()!.agent} · started ${relTime(current()!.createdAt)}` : ""}
+      <div className="session-head">
+        <SessionTitle current={current} />
+        <span className="meta" id="sessMeta">
+          {current ? `${current.agent} · started ${relTime(current.createdAt)}` : ""}
         </span>
-        <span class="head-sp"></span>
+        <span className="head-sp"></span>
         <ViewToggle />
-        {/* Host-overridable region (SLOTS.sessionActions): session-scoped controls
-            an embedder projects beside the toggle (e.g. cloud "Share"). Empty
-            fallback — self-hosted renders nothing here. */}
-        <slot name={SLOTS.sessionActions}></slot>
       </div>
       <div id="stream">
-        <Show
-          when={viewMode() === "timeline"}
-          fallback={
-            <>
-              <WhatsNewCard />
-              <Show when={!streamLoading() && surfaces.length === 0}>
-                <div class="empty" id="streamEmpty">
-                  No surfaces in this session yet.
-                </div>
-              </Show>
-              <For each={surfaces}>{(s) => <Card surface={s} />}</For>
-            </>
-          }
-        >
+        {viewMode === "timeline" ? (
           <SessionTimeline />
-        </Show>
+        ) : (
+          <>
+            <WhatsNewCard />
+            {!streamLoading && surfaces.length === 0 ? (
+              <div className="empty" id="streamEmpty">
+                No surfaces in this session yet.
+              </div>
+            ) : null}
+            {surfaces.map((s) => (
+              <Card surface={s} key={s.id} />
+            ))}
+          </>
+        )}
       </div>
     </div>
   );
@@ -464,18 +444,19 @@ function SessionView() {
 // Stream ↔ timeline switch in the session head. Timeline is treatment E — the
 // session's surfaces on a center spine with the trace steps between them.
 function ViewToggle() {
+  const viewMode = useBoard((s) => s.viewMode);
   return (
-    <div class="view-toggle" role="group" aria-label="View mode">
+    <div className="view-toggle" role="group" aria-label="View mode">
       <button
-        classList={{ on: viewMode() === "stream" }}
-        aria-pressed={viewMode() === "stream"}
+        className={cx(viewMode === "stream" && "on")}
+        aria-pressed={viewMode === "stream"}
         onClick={() => setViewMode("stream")}
       >
         Stream
       </button>
       <button
-        classList={{ on: viewMode() === "timeline" }}
-        aria-pressed={viewMode() === "timeline"}
+        className={cx(viewMode === "timeline" && "on")}
+        aria-pressed={viewMode === "timeline"}
         onClick={() => setViewMode("timeline")}
       >
         Timeline
@@ -485,15 +466,17 @@ function ViewToggle() {
 }
 
 function SessionTitle(props: { current: SessionRow | undefined }) {
-  let el!: HTMLSpanElement;
+  const elRef = useRef<HTMLSpanElement>(null);
   // contenteditable owns its text while focused; sync from state otherwise
-  createEffect(() => {
-    if (props.current && root().activeElement !== el) {
+  useEffect(() => {
+    const el = elRef.current;
+    if (el && props.current && root().activeElement !== el) {
       el.textContent = sessionLabel(props.current);
     }
-  });
+  }, [props.current]);
   const commit = async () => {
-    if (isReadonly() || !props.current) return;
+    const el = elRef.current;
+    if (isReadonly() || !props.current || !el) return;
     const next = el.textContent?.trim() ?? "";
     if (next && next !== sessionLabel(props.current)) {
       await api(`/api/sessions/${props.current.id}`, {
@@ -505,13 +488,16 @@ function SessionTitle(props: { current: SessionRow | undefined }) {
   return (
     <span
       id="sessTitle"
-      ref={(span) => (el = span)}
+      ref={elRef}
       contentEditable={!isReadonly()}
-      spellcheck={false}
+      suppressContentEditableWarning
+      spellCheck={false}
       role="textbox"
       aria-label="Session title"
       onBlur={commit}
       onKeyDown={(e) => {
+        const el = elRef.current;
+        if (!el) return;
         if (e.key === "Enter") {
           e.preventDefault();
           el.blur();
@@ -532,26 +518,14 @@ const TRY_SNIP =
   "curl -s -X POST http://localhost:8229/api/snippets -H 'content-type: application/json' " +
   `-d '{"agent": "me", "title": "Hello", "html": "<h2>It works</h2>"}'`;
 
-function Onboard() {
+function Onboard(props: { onConnect: () => void }) {
+  const sessions = useBoard((s) => s.sessions);
   return (
     <div id="onboard" hidden={sessions.length > 0}>
-      {/* Host-overridable region (SLOTS.empty): an embedder projects its own
-          first-run onboarding here. The fallback below is the self-hosted
-          default — setup snippets that assume a local showcase on port 8229,
-          which only make sense self-hosted. The outer #onboard's hidden= still
-          governs visibility, so projected content shows only on an empty board. */}
-      <slot name={SLOTS.empty}>
-        <Show
-          when={!isReadonly()}
-          fallback={
-            <>
-              <h1>Nothing here yet</h1>
-              <p class="sub">This showcase board does not have any sessions yet.</p>
-            </>
-          }
-        >
+      {!isReadonly() ? (
+        <>
           <h1>The show hasn&rsquo;t started yet</h1>
-          <p class="sub">
+          <p className="sub">
             showcase is a live surface where coding agents draw HTML snippets — diagrams, sketches,
             explainers — while they work in your terminal.
           </p>
@@ -560,11 +534,16 @@ function Onboard() {
           <h2>or try it yourself</h2>
           <Snip text={TRY_SNIP} />
           <h2>using claude code?</h2>
-          <button class="connect-btn" onClick={() => setConnectOpen(true)}>
+          <button className="connect-btn" onClick={props.onConnect}>
             Connect Claude Code →
           </button>
-        </Show>
-      </slot>
+        </>
+      ) : (
+        <>
+          <h1>Nothing here yet</h1>
+          <p className="sub">This showcase board does not have any sessions yet.</p>
+        </>
+      )}
     </div>
   );
 }
@@ -578,21 +557,21 @@ const INSTALL_CMD = "/plugin install showcase@showcase";
 
 function ConnectModal(props: { onClose: () => void }) {
   return (
-    <div class="modal-backdrop" onClick={props.onClose}>
+    <div className="modal-backdrop" onClick={props.onClose}>
       <div
-        class="modal"
+        className="modal"
         role="dialog"
         aria-modal="true"
         aria-label="Connect Claude Code"
         onClick={(e) => e.stopPropagation()}
       >
-        <div class="modal-head">
+        <div className="modal-head">
           <h2>Connect Claude Code</h2>
-          <button class="x" aria-label="Close" onClick={props.onClose}>
+          <button className="x" aria-label="Close" onClick={props.onClose}>
             ✕
           </button>
         </div>
-        <p class="sub">
+        <p className="sub">
           Install the showcase plugin so your comments reach the agent on their own. A background
           monitor streams each comment to Claude Code as a notification — no copy-pasting, no
           re-arming a watcher.
@@ -601,18 +580,18 @@ function ConnectModal(props: { onClose: () => void }) {
         <Snip text={MARKETPLACE_CMD} />
         <h3>2 · install the plugin</h3>
         <Snip text={INSTALL_CMD} />
-        <p class="note">
+        <p className="note">
           Run both inside Claude Code. On install it asks for your <strong>Showcase URL</strong>{" "}
           (default <code>http://localhost:8229</code>, or your deployed instance) and an optional
           token.
         </p>
         <h3>what it runs</h3>
-        <p class="note">
+        <p className="note">
           The plugin connects the showcase MCP server and runs <code>showcase watch</code> against
           your board as a background process — unsandboxed, the same trust level as hooks, with no
           per-comment prompt. Comments are delivered to the agent exactly once.
         </p>
-        <p class="caveat">
+        <p className="caveat">
           Requires Claude Code ≥ 2.1.105. It&rsquo;s two commands, not a true one-click — Claude
           Code has no browser-to-terminal handoff yet.
         </p>
@@ -624,34 +603,39 @@ function ConnectModal(props: { onClose: () => void }) {
 // Board-level theme selector. Persists via PUT /api/theme; the choice re-themes
 // chrome, markdown/diff syntax, and html surface parts together (see theme.ts).
 function ThemePicker() {
+  const activeTheme = useActiveTheme();
   return (
-    <div class="theme-picker">
-      <label for="themeSel">theme</label>
+    <div className="theme-picker">
+      <label htmlFor="themeSel">theme</label>
       <select
         id="themeSel"
-        value={activeTheme()}
+        value={activeTheme}
         onChange={(e) => void setTheme(e.currentTarget.value)}
       >
-        <For each={themeOptions()}>{(t) => <option value={t.id}>{t.label}</option>}</For>
+        {themeOptions().map((t) => (
+          <option value={t.id} key={t.id}>
+            {t.label}
+          </option>
+        ))}
       </select>
     </div>
   );
 }
 
 function Snip(props: { text: string }) {
-  const [label, setLabel] = createSignal("copy");
+  const [label, setLabel] = useState("copy");
   return (
-    <div class="snip">
+    <div className="snip">
       {props.text}
       <button
-        class="copy"
+        className="copy"
         onClick={() => {
           navigator.clipboard.writeText(props.text);
           setLabel("copied");
           setTimeout(() => setLabel("copy"), 1500);
         }}
       >
-        {label()}
+        {label}
       </button>
     </div>
   );

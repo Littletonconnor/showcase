@@ -1,7 +1,8 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { useMemo, useState } from "react";
 import type { Surface, TraceStep } from "./api.ts";
 import { Card } from "./Card.tsx";
-import { streamLoading, surfaces, traceSteps } from "./state.ts";
+import { cx } from "./cx.ts";
+import { useBoard } from "./state.ts";
 
 // Treatment E, refined (A → C). A left rail where only anchors get a node —
 // user prompts and published surfaces. Each turn shows just its intent (first
@@ -63,61 +64,56 @@ function groupTurns(steps: readonly TraceStep[]): Turn[] {
 }
 
 export function SessionTimeline() {
-  const gaps = createMemo(() => buildGaps(surfaces, traceSteps()));
-  const empty = () => !streamLoading() && surfaces.length === 0 && traceSteps().length === 0;
+  const surfaces = useBoard((s) => s.surfaces);
+  const traceSteps = useBoard((s) => s.traceSteps);
+  const streamLoading = useBoard((s) => s.streamLoading);
+  const gaps = useMemo(() => buildGaps(surfaces, traceSteps), [surfaces, traceSteps]);
+  const empty = !streamLoading && surfaces.length === 0 && traceSteps.length === 0;
   return (
-    <div class="timeline">
-      <Show when={empty()}>
-        <div class="empty">No surfaces in this session yet.</div>
-      </Show>
-      <For each={gaps()}>
-        {(gap) => (
-          <>
-            <For each={groupTurns(gap.steps)}>{(turn) => <TurnBlock turn={turn} />}</For>
-            <Show when={gap.surface}>
-              {(s) => (
-                <div class="tl-surface">
-                  <span class="tl-node"></span>
-                  <Card surface={s()} />
-                </div>
-              )}
-            </Show>
-          </>
-        )}
-      </For>
-      <Show when={surfaces.length > 0 || traceSteps().length > 0}>
-        <div class="tl-row tl-tail">
-          <div class="body">waiting for feedback…</div>
+    <div className="timeline">
+      {empty ? <div className="empty">No surfaces in this session yet.</div> : null}
+      {gaps.map((gap, gi) => (
+        <div key={gap.surface ? gap.surface.id : `trailing-${gi}`} style={{ display: "contents" }}>
+          {groupTurns(gap.steps).map((turn, ti) => (
+            <TurnBlock turn={turn} key={ti} />
+          ))}
+          {gap.surface ? (
+            <div className="tl-surface">
+              <span className="tl-node"></span>
+              <Card surface={gap.surface} />
+            </div>
+          ) : null}
         </div>
-      </Show>
+      ))}
+      {surfaces.length > 0 || traceSteps.length > 0 ? (
+        <div className="tl-row tl-tail">
+          <div className="body">waiting for feedback…</div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function TurnBlock(props: { turn: Turn }) {
-  const events = () => props.turn.events;
+  const events = props.turn.events;
   // first and last note positions; the work between them (and the tool calls)
   // collapse into the fold.
-  const sayIdx = createMemo(() =>
-    events().reduce<number[]>((acc, e, i) => (e.kind === "say" ? (acc.push(i), acc) : acc), []),
+  const sayIdx = useMemo(
+    () => events.reduce<number[]>((acc, e, i) => (e.kind === "say" ? (acc.push(i), acc) : acc), []),
+    [events],
   );
-  const intentIdx = () => (sayIdx().length > 0 ? sayIdx()[0] : -1);
-  const outcomeIdx = () => (sayIdx().length > 1 ? sayIdx()[sayIdx().length - 1] : -1);
-  const middle = createMemo(() =>
-    events().filter((_, i) => i !== intentIdx() && i !== outcomeIdx()),
+  const intentIdx = sayIdx.length > 0 ? sayIdx[0] : -1;
+  const outcomeIdx = sayIdx.length > 1 ? sayIdx[sayIdx.length - 1] : -1;
+  const middle = useMemo(
+    () => events.filter((_, i) => i !== intentIdx && i !== outcomeIdx),
+    [events, intentIdx, outcomeIdx],
   );
   return (
     <>
-      <Show when={props.turn.prompt}>{(p) => <TextRow kind="prompt" step={p()} />}</Show>
-      <Show when={intentIdx() >= 0}>
-        <TextRow kind="response" step={events()[intentIdx()]} />
-      </Show>
-      <Show when={middle().length > 0}>
-        <WorkFold steps={middle()} />
-      </Show>
-      <Show when={outcomeIdx() >= 0}>
-        <TextRow kind="response" step={events()[outcomeIdx()]} />
-      </Show>
+      {props.turn.prompt ? <TextRow kind="prompt" step={props.turn.prompt} /> : null}
+      {intentIdx >= 0 ? <TextRow kind="response" step={events[intentIdx]} /> : null}
+      {middle.length > 0 ? <WorkFold steps={middle} /> : null}
+      {outcomeIdx >= 0 ? <TextRow kind="response" step={events[outcomeIdx]} /> : null}
     </>
   );
 }
@@ -126,22 +122,24 @@ function TurnBlock(props: { turn: Turn }) {
 // Collapsed it's a quiet "··· N steps ···" line; expanded it lays the steps out
 // in sequence (a note, then the commands under it, then the next note).
 function WorkFold(props: { steps: TraceStep[] }) {
-  const [open, setOpen] = createSignal(false);
-  const n = () => props.steps.length;
+  const [open, setOpen] = useState(false);
+  const n = props.steps.length;
   return (
     <>
-      <div class="tl-row tl-notes-fold">
-        <div class="body tl-clickable" onClick={() => setOpen(!open())}>
-          {open() ? `··· hide ${n()} steps ···` : `··· ${n()} steps ···`}
+      <div className="tl-row tl-notes-fold">
+        <div className="body tl-clickable" onClick={() => setOpen(!open)}>
+          {open ? `··· hide ${n} steps ···` : `··· ${n} steps ···`}
         </div>
       </div>
-      <Show when={open()}>
-        <For each={props.steps}>
-          {(s) =>
-            s.kind === "say" ? <TextRow kind="response" step={s} /> : <CommandRow step={s} />
-          }
-        </For>
-      </Show>
+      {open
+        ? props.steps.map((s, i) =>
+            s.kind === "say" ? (
+              <TextRow kind="response" step={s} key={i} />
+            ) : (
+              <CommandRow step={s} key={i} />
+            ),
+          )
+        : null}
     </>
   );
 }
@@ -149,21 +147,17 @@ function WorkFold(props: { steps: TraceStep[] }) {
 // A prompt (with its rail node) or a response (no marker): first line, expanding
 // to the full text on click.
 function TextRow(props: { kind: "prompt" | "response"; step: TraceStep }) {
-  const [open, setOpen] = createSignal(false);
-  const detail = () => props.step.detail;
-  const more = () => !!detail() && detail() !== props.step.label;
+  const [open, setOpen] = useState(false);
+  const detail = props.step.detail;
+  const more = !!detail && detail !== props.step.label;
   return (
-    <div class={`tl-row tl-${props.kind}`}>
-      <Show when={props.kind === "prompt"}>
-        <span class="tl-marker prompt"></span>
-      </Show>
-      <div class="body">
-        <div classList={{ "tl-clickable": more() }} onClick={() => more() && setOpen(!open())}>
+    <div className={`tl-row tl-${props.kind}`}>
+      {props.kind === "prompt" ? <span className="tl-marker prompt"></span> : null}
+      <div className="body">
+        <div className={cx(more && "tl-clickable")} onClick={() => more && setOpen(!open)}>
           {props.step.label}
         </div>
-        <Show when={open() && more()}>
-          <pre class="tl-detail">{detail()}</pre>
-        </Show>
+        {open && more ? <pre className="tl-detail">{detail}</pre> : null}
       </div>
     </div>
   );
@@ -172,24 +166,20 @@ function TextRow(props: { kind: "prompt" | "response"; step: TraceStep }) {
 // One tool call inside an expanded fold: a faint mono line (kind + label),
 // expanding to its input/result detail.
 function CommandRow(props: { step: TraceStep }) {
-  const [open, setOpen] = createSignal(false);
-  const more = () => !!props.step.detail;
+  const [open, setOpen] = useState(false);
+  const more = !!props.step.detail;
   return (
-    <div class="tl-row tl-cmd-row">
-      <div class="body">
+    <div className="tl-row tl-cmd-row">
+      <div className="body">
         <div
-          style={{ display: "flex", "align-items": "center", gap: "8px" }}
-          classList={{ "tl-clickable": more() }}
-          onClick={() => more() && setOpen(!open())}
+          style={{ display: "flex", alignItems: "center", gap: "8px" }}
+          className={cx(more && "tl-clickable")}
+          onClick={() => more && setOpen(!open)}
         >
-          <Show when={props.step.kind}>
-            <span class="knd">{props.step.kind}</span>
-          </Show>
+          {props.step.kind ? <span className="knd">{props.step.kind}</span> : null}
           <span>{props.step.label}</span>
         </div>
-        <Show when={open() && more()}>
-          <pre class="tl-detail">{props.step.detail}</pre>
-        </Show>
+        {open && more ? <pre className="tl-detail">{props.step.detail}</pre> : null}
       </div>
     </div>
   );

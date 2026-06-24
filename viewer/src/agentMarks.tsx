@@ -1,5 +1,4 @@
-import { Match, Switch } from "solid-js";
-import type { JSX } from "solid-js";
+import type { ReactNode } from "react";
 
 // Monochrome per-agent marks for the session sidebar. Brand glyphs are the
 // single-path 24x24 marks from Simple Icons (https://simpleicons.org, CC0);
@@ -8,18 +7,18 @@ import type { JSX } from "solid-js";
 // the surrounding (muted) text color and adapt to light/dark — no runtime
 // network fetch. Unknown agents fall back to a neutral terminal glyph.
 
-function Glyph(props: { children: JSX.Element; stroke?: boolean }) {
+function Glyph(props: { children: ReactNode; stroke?: boolean }) {
   return (
     <svg
-      class="agent-mark"
+      className="agent-mark"
       viewBox="0 0 24 24"
       width="13"
       height="13"
       fill={props.stroke ? "none" : "currentColor"}
       stroke={props.stroke ? "currentColor" : undefined}
-      stroke-width={props.stroke ? "2" : undefined}
-      stroke-linecap="round"
-      stroke-linejoin="round"
+      strokeWidth={props.stroke ? "2" : undefined}
+      strokeLinecap="round"
+      strokeLinejoin="round"
       aria-hidden="true"
     >
       {props.children}
@@ -83,23 +82,10 @@ function GeminiMark() {
 export function AgentMark(props: { agent: string }) {
   const key = props.agent.trim().toLowerCase();
   const has = (...needles: string[]) => needles.some((n) => key.includes(n));
-  return (
-    <Switch fallback={<TerminalGlyph />}>
-      <Match when={has("claude")}>
-        <ClaudeMark />
-      </Match>
-      <Match when={has("opencode")}>
-        <OpenCodeMark />
-      </Match>
-      <Match when={has("cursor")}>
-        <CursorMark />
-      </Match>
-      <Match when={has("copilot")}>
-        <CopilotMark />
-      </Match>
-      <Match when={has("gemini", "google")}>
-        <GeminiMark />
-      </Match>
-    </Switch>
-  );
+  if (has("claude")) return <ClaudeMark />;
+  if (has("opencode")) return <OpenCodeMark />;
+  if (has("cursor")) return <CursorMark />;
+  if (has("copilot")) return <CopilotMark />;
+  if (has("gemini", "google")) return <GeminiMark />;
+  return <TerminalGlyph />;
 }

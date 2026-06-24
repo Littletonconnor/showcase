@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import { useEffect, useState } from "react";
 import {
   type FileDiffMetadata,
   getFiletypeFromFileName,
@@ -12,7 +12,7 @@ import { preloadFileDiff } from "@pierre/diffs/ssr";
 import type { DiffPart as DiffPartData } from "./api.ts";
 import { themeById } from "../../server/themes.ts";
 import { SandboxedPart } from "./SandboxedPart.tsx";
-import { activeTheme } from "./theme.ts";
+import { useActiveTheme, useResolvedMode } from "./theme.ts";
 
 // Wrapper styles for the sandbox iframe. Each file's diff is a @pierre/diffs SSR
 // fragment mounted in its OWN declarative shadow root (it ships its own scoped
@@ -22,19 +22,6 @@ body { margin: 0; padding: 0; background: transparent; font-size: 12.5px; }
 diffs-container { display: block; }
 diffs-container + diffs-container { border-top: 0.5px solid var(--border); }
 `;
-
-// The shiki light/dark pair follows the board theme (kept identical to
-// MarkdownPart so a diff and a fenced code block read as one syntax theme).
-const shikiPair = () => {
-  const t = themeById(activeTheme());
-  return { dark: t.shiki.dark, light: t.shiki.light };
-};
-
-// The viewer theme is purely prefers-color-scheme driven (see styles.css), so
-// the diff follows the OS/browser scheme and re-renders when it flips.
-const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
-const [isDark, setIsDark] = createSignal(darkQuery.matches);
-darkQuery.addEventListener("change", (e) => setIsDark(e.matches));
 
 // A small base set of langs the highlighter always loads; the rest are
 // inferred from the part's filenames. preloadHighlighter only loads what we
@@ -78,66 +65,71 @@ function buildFileDiffs(part: DiffPartData): { diffs: FileDiffMetadata[]; langs:
 }
 
 export function DiffPart(props: { part: DiffPartData }) {
-  const [error, setError] = createSignal<string | null>(null);
-  const [body, setBody] = createSignal<string | null>(null);
+  const activeTheme = useActiveTheme();
+  const mode = useResolvedMode();
+  const dark = mode === "dark";
+  const [error, setError] = useState<string | null>(null);
+  const [body, setBody] = useState<string | null>(null);
 
-  onMount(() => {
+  // The shiki light/dark pair follows the board theme (kept identical to
+  // MarkdownPart so a diff and a fenced code block read as one syntax theme).
+  // Render to an HTML STRING (per file, via the SSR API) whenever the board
+  // theme or color scheme changes — string building is not a DOM sink, so
+  // doing it in the trusted viewer is safe; SandboxedPart parses it inside an
+  // opaque-origin iframe. Each file's fragment goes in its own declarative
+  // shadow root so its scoped :host stylesheet applies.
+  useEffect(() => {
     let disposed = false;
-    onCleanup(() => (disposed = true));
-
-    // Render to an HTML STRING (per file, via the SSR API) whenever the board
-    // theme or color scheme changes — string building is not a DOM sink, so
-    // doing it in the trusted viewer is safe; SandboxedPart parses it inside an
-    // opaque-origin iframe. Each file's fragment goes in its own declarative
-    // shadow root so its scoped :host stylesheet applies.
-    createEffect(() => {
-      const dark = isDark();
-      const shiki = shikiPair();
-      void (async () => {
-        try {
-          const { diffs, langs } = buildFileDiffs(props.part);
-          if (diffs.length === 0) {
-            setError("No diff content.");
-            return;
-          }
-          await preloadHighlighter({
-            themes: [shiki.dark, shiki.light],
-            langs: langs as SupportedLanguages[],
-            preferredHighlighter: "shiki-js",
-          });
-          if (disposed) return;
-          const options = {
-            diffStyle: props.part.layout ?? "unified",
-            theme: { dark: shiki.dark, light: shiki.light },
-            themeType: dark ? "dark" : "light",
-            preferredHighlighter: "shiki-js",
-          } as const;
-          const rendered = await Promise.all(
-            diffs.map((fileDiff) => preloadFileDiff({ fileDiff, options })),
-          );
-          if (disposed) return;
-          setError(null);
-          setBody(
-            rendered
-              .map(
-                (r) =>
-                  `<diffs-container><template shadowrootmode="open">${r.prerenderedHTML}</template></diffs-container>`,
-              )
-              .join(""),
-          );
-        } catch (err) {
-          if (!disposed) setError(err instanceof Error ? err.message : "Could not render diff.");
+    const t = themeById(activeTheme);
+    const shiki = { dark: t.shiki.dark, light: t.shiki.light };
+    void (async () => {
+      try {
+        const { diffs, langs } = buildFileDiffs(props.part);
+        if (diffs.length === 0) {
+          setError("No diff content.");
+          return;
         }
-      })();
-    });
-  });
+        await preloadHighlighter({
+          themes: [shiki.dark, shiki.light],
+          langs: langs as SupportedLanguages[],
+          preferredHighlighter: "shiki-js",
+        });
+        if (disposed) return;
+        const options = {
+          diffStyle: props.part.layout ?? "unified",
+          theme: { dark: shiki.dark, light: shiki.light },
+          themeType: dark ? "dark" : "light",
+          preferredHighlighter: "shiki-js",
+        } as const;
+        const rendered = await Promise.all(
+          diffs.map((fileDiff) => preloadFileDiff({ fileDiff, options })),
+        );
+        if (disposed) return;
+        setError(null);
+        setBody(
+          rendered
+            .map(
+              (r) =>
+                `<diffs-container><template shadowrootmode="open">${r.prerenderedHTML}</template></diffs-container>`,
+            )
+            .join(""),
+        );
+      } catch (err) {
+        if (!disposed) setError(err instanceof Error ? err.message : "Could not render diff.");
+      }
+    })();
+    return () => {
+      disposed = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.part, activeTheme, dark]);
 
   return (
-    <div class="diffpart">
-      {error() ? (
-        <div class="diff-error">Couldn't render diff — {error()}</div>
+    <div className="diffpart">
+      {error ? (
+        <div className="diff-error">Couldn't render diff — {error}</div>
       ) : (
-        <SandboxedPart class="partframe diffframe" body={body() ?? ""} css={DIFF_CSS} />
+        <SandboxedPart class="partframe diffframe" body={body ?? ""} css={DIFF_CSS} />
       )}
     </div>
   );

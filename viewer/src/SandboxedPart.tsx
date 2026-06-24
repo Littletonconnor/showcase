@@ -1,7 +1,7 @@
-import { createMemo, onCleanup, onMount } from "solid-js";
+import { useEffect, useMemo, useRef } from "react";
 import { renderSandboxedPart } from "../../server/surfacePage.ts";
 import { themeById } from "../../server/themes.ts";
-import { activeTheme, resolvedMode } from "./theme.ts";
+import { useActiveTheme, useResolvedMode } from "./theme.ts";
 
 // location.origin is constant for the page lifetime — read it once, not per
 // srcdoc rebuild.
@@ -30,19 +30,25 @@ export function applyFrameHeight(iframe: HTMLIFrameElement, reportedHeight: unkn
 // (Link clicks and the session-switch shortcut ride App's global bridge handler,
 // which keys off message type, not the frame registry.)
 export function SandboxedPart(props: { body: string; css: string; class?: string }) {
-  let frame!: HTMLIFrameElement;
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const activeTheme = useActiveTheme();
+  const mode = useResolvedMode();
 
-  const doc = createMemo(() =>
-    renderSandboxedPart({
-      body: props.body,
-      css: props.css,
-      origin: ORIGIN,
-      theme: themeById(activeTheme()),
-      mode: resolvedMode(),
-    }),
+  const doc = useMemo(
+    () =>
+      renderSandboxedPart({
+        body: props.body,
+        css: props.css,
+        origin: ORIGIN,
+        theme: themeById(activeTheme),
+        mode,
+      }),
+    [props.body, props.css, activeTheme, mode],
   );
 
-  onMount(() => {
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
     const onMessage = (ev: MessageEvent) => {
       if (ev.source !== frame.contentWindow) return;
       const d = ev.data as { __showcase?: boolean; type?: string; height?: number } | null;
@@ -50,7 +56,6 @@ export function SandboxedPart(props: { body: string; css: string; class?: string
       applyFrameHeight(frame, d.height);
     };
     window.addEventListener("message", onMessage);
-    onCleanup(() => window.removeEventListener("message", onMessage));
 
     // Chrome field-trial workaround: certain Chrome 149 A/B experiments break
     // layout measurement in opaque-origin srcdoc iframes — scrollHeight,
@@ -69,15 +74,19 @@ export function SandboxedPart(props: { body: string; css: string; class?: string
         });
       }
     }, 2000);
-    onCleanup(() => clearTimeout(retryId));
-  });
+
+    return () => {
+      window.removeEventListener("message", onMessage);
+      clearTimeout(retryId);
+    };
+  }, [doc]);
 
   return (
     <iframe
-      ref={(el) => (frame = el)}
-      class={props.class ?? "partframe"}
+      ref={frameRef}
+      className={props.class ?? "partframe"}
       sandbox="allow-scripts"
-      srcdoc={doc()}
+      srcDoc={doc}
     ></iframe>
   );
 }

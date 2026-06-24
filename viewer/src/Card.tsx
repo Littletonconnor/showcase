@@ -1,15 +1,4 @@
-import {
-  createEffect,
-  createSignal,
-  For,
-  Index,
-  type JSX,
-  Match,
-  onCleanup,
-  onMount,
-  Show,
-  Switch,
-} from "solid-js";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   api,
   appPath,
@@ -29,6 +18,7 @@ import {
 } from "./api.ts";
 import { escapeHtml } from "../../server/surfacePage.ts";
 import { CodePart } from "./CodePart.tsx";
+import { cx } from "./cx.ts";
 import { DiffPart } from "./DiffPart.tsx";
 import { CommentIcon, LinkIcon, OpenIcon, TrashIcon } from "./icons.tsx";
 import { ImagePart } from "./ImagePart.tsx";
@@ -37,16 +27,20 @@ import { MarkdownPart } from "./MarkdownPart.tsx";
 import { MermaidPart } from "./MermaidPart.tsx";
 import { SandboxedPart } from "./SandboxedPart.tsx";
 import { TerminalPart } from "./TerminalPart.tsx";
-import { activeTheme, resolvedMode } from "./theme.ts";
+import {
+  useActiveTheme,
+  useResolvedMode,
+  activeTheme as activeThemeNow,
+  resolvedMode,
+} from "./theme.ts";
 import { TracePart } from "./TracePart.tsx";
 import {
-  comments,
   focusSurface,
-  scrollTarget,
   sendComment,
-  sessions,
+  sessionsNow,
   setScrollTarget,
   toast,
+  useBoard,
   type ViewComment,
 } from "./state.ts";
 
@@ -140,44 +134,54 @@ function pollScrollIntoView(el: HTMLElement, surfaceId: string): () => void {
 }
 
 export function Card(props: { surface: Surface }) {
-  let card!: HTMLDivElement;
-  const iframes = new Set<HTMLIFrameElement>();
+  const cardRef = useRef<HTMLDivElement>(null);
+  const iframesRef = useRef<Set<HTMLIFrameElement>>(new Set());
   // Absolute part index -> its iframe, for html parts only. Lets the version
   // dropdown rebuild each `/s/:id?part=N` src across every html part.
-  const htmlFrames = new Map<number, HTMLIFrameElement>();
-  let stopPoll: (() => void) | undefined;
+  const htmlFramesRef = useRef<Map<number, HTMLIFrameElement>>(new Map());
+  const stopPollRef = useRef<(() => void) | undefined>(undefined);
+  const activeTheme = useActiveTheme();
+  const mode = useResolvedMode();
+  const scrollTarget = useBoard((s) => s.scrollTarget);
 
-  // React to scrollTarget changes — start the polling scroll when this card
-  // becomes the target.  createEffect tracks scrollTarget(); onMount covers
-  // the initial render (card ref isn't assigned when the effect first runs).
-  const scrollIfTarget = () => {
-    if (!card || scrollTarget() !== props.surface.id) return;
+  const surfaceId = props.surface.id;
+
+  // Start the polling scroll when this card becomes the scrollTarget.
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card || scrollTarget !== surfaceId) return;
     setScrollTarget(null);
-    stopPoll?.();
-    stopPoll = pollScrollIntoView(card, props.surface.id);
-  };
+    stopPollRef.current?.();
+    stopPollRef.current = pollScrollIntoView(card, surfaceId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrollTarget, surfaceId]);
 
-  createEffect(scrollIfTarget);
-  onCleanup(() => stopPoll?.());
+  useEffect(() => {
+    return () => stopPollRef.current?.();
+  }, []);
 
-  onMount(() => {
-    cardEls.set(props.surface.id, { card, iframes });
-    onCleanup(() => cardEls.delete(props.surface.id));
-    scrollIfTarget();
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    cardEls.set(surfaceId, { card, iframes: iframesRef.current });
     // Update the URL as the user scrolls past surfaces (replaceState, no
     // history noise). The first card that crosses the 50% threshold wins.
     const observer = new IntersectionObserver(
       (entries) => {
         if (deepLinkScrolling) return;
         for (const entry of entries) {
-          if (entry.isIntersecting) focusSurface(props.surface.id);
+          if (entry.isIntersecting) focusSurface(surfaceId);
         }
       },
       { threshold: 0.5 },
     );
     observer.observe(card);
-    onCleanup(() => observer.disconnect());
-  });
+    return () => {
+      observer.disconnect();
+      cardEls.delete(surfaceId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [surfaceId]);
 
   const versionRange = (latest: number) => {
     const out = [];
@@ -185,63 +189,66 @@ export function Card(props: { surface: Surface }) {
     return out;
   };
 
+  // Ref callback factory for an html part's iframe: register it in both the
+  // per-card iframe set (bridge resolution) and the index map (version rebuild).
+  const htmlFrameRef = (i: number) => (el: HTMLIFrameElement | null) => {
+    if (el) {
+      htmlFramesRef.current.set(i, el);
+      iframesRef.current.add(el);
+    } else {
+      const prev = htmlFramesRef.current.get(i);
+      htmlFramesRef.current.delete(i);
+      if (prev) iframesRef.current.delete(prev);
+    }
+  };
+
   return (
-    <div class="card" data-id={props.surface.id} ref={(el) => (card = el)}>
-      <div class="card-head">
-        <span class="card-title">{props.surface.title}</span>
-        <span class="vslot">
-          {/* keyed on version: a new version rebuilds the select, resetting
-              the selection to the latest like the live iframe src does */}
-          <Show
-            when={props.surface.version > 1 && props.surface.version}
-            keyed
-            fallback={<span class="vbadge">v1</span>}
-          >
-            {(latest) => (
-              <select
-                class="vbadge"
-                onChange={(e) => {
-                  const ver = e.currentTarget.value;
-                  const cb = Date.now();
-                  for (const [part, frame] of htmlFrames) {
-                    frame.src = `/s/${props.surface.id}?part=${part}&ver=${ver}&cb=${cb}&theme=${activeTheme()}&mode=${resolvedMode()}`;
-                  }
-                }}
-              >
-                <For each={versionRange(latest)}>{(v) => <option value={v}>v{v}</option>}</For>
-              </select>
-            )}
-          </Show>
+    <div className="card" data-id={surfaceId} ref={cardRef}>
+      <div className="card-head">
+        <span className="card-title">{props.surface.title}</span>
+        <span className="vslot">
+          {/* A new version rebuilds the select, resetting the selection to the
+              latest like the live iframe src does. */}
+          {props.surface.version > 1 ? (
+            <select
+              className="vbadge"
+              key={props.surface.version}
+              defaultValue={props.surface.version}
+              onChange={(e) => {
+                const ver = e.currentTarget.value;
+                const cb = Date.now();
+                for (const [part, frame] of htmlFramesRef.current) {
+                  frame.src = `/s/${surfaceId}?part=${part}&ver=${ver}&cb=${cb}&theme=${activeThemeNow()}&mode=${resolvedMode()}`;
+                }
+              }}
+            >
+              {versionRange(props.surface.version).map((v) => (
+                <option value={v} key={v}>
+                  v{v}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="vbadge">v1</span>
+          )}
         </span>
-        <span class="sp"></span>
-        <span class="card-meta">{relTime(props.surface.updatedAt)}</span>
+        <span className="sp"></span>
+        <span className="card-meta">{relTime(props.surface.updatedAt)}</span>
       </div>
-      {/* Parts render in order, dispatched by kind. Each kind is an explicit
-          Match; the fallback is reserved for a kind this viewer build doesn't
-          know — which happens when a long-open tab predates a newly added part
-          type. It must NOT assume diff (an unknown part is not a broken diff),
-          so it shows a neutral refresh hint instead. An html iframe src changes
-          only when the version, the active theme, or the resolved light/dark
-          mode does, so unrelated refetches never reload it. */}
-      <Index each={props.surface.parts}>
-        {(part, i) => (
-          <Switch
-            fallback={
-              <div class="part-unsupported">
-                Can&rsquo;t show this part — refresh showcase to update the viewer.
-              </div>
-            }
-          >
-            <Match when={part().kind === "html"}>
+      {/* Parts render in order, dispatched by kind. The fallback is reserved for
+          a kind this viewer build doesn't know — which happens when a long-open
+          tab predates a newly added part type. It must NOT assume diff (an
+          unknown part is not a broken diff), so it shows a neutral refresh hint
+          instead. An html iframe src changes only when the version, the active
+          theme, or the resolved light/dark mode does, so unrelated refetches
+          never reload it. */}
+      {props.surface.parts.map((part, i) => {
+        switch (part.kind) {
+          case "html":
+            return (
               <iframe
-                ref={(el) => {
-                  htmlFrames.set(i, el);
-                  iframes.add(el);
-                  onCleanup(() => {
-                    htmlFrames.delete(i);
-                    iframes.delete(el);
-                  });
-                }}
+                key={i}
+                ref={htmlFrameRef(i)}
                 sandbox="allow-scripts"
                 title={
                   props.surface.parts.length > 1
@@ -249,62 +256,59 @@ export function Card(props: { surface: Surface }) {
                     : props.surface.title
                 }
                 src={appPath(
-                  `/s/${props.surface.id}?part=${i}&ver=${props.surface.version}&cb=${props.surface.version}&theme=${activeTheme()}&mode=${resolvedMode()}`,
+                  `/s/${surfaceId}?part=${i}&ver=${props.surface.version}&cb=${props.surface.version}&theme=${activeTheme}&mode=${mode}`,
                 )}
               ></iframe>
-            </Match>
-            <Match when={part().kind === "markdown"}>
-              <MarkdownPart part={part() as MarkdownPartData} />
-            </Match>
-            <Match when={part().kind === "mermaid"}>
-              <MermaidPart part={part() as MermaidPartData} />
-            </Match>
-            <Match when={part().kind === "diff"}>
-              <DiffPart part={part() as DiffPartData} />
-            </Match>
-            <Match when={part().kind === "image"}>
-              <ImagePart part={part() as ImagePartData} />
-            </Match>
-            <Match when={part().kind === "trace"}>
-              <TracePart part={part() as TracePartData} />
-            </Match>
-            <Match when={part().kind === "terminal"}>
-              <TerminalPart part={part() as TerminalPartData} />
-            </Match>
-            <Match when={part().kind === "json"}>
-              <JsonPart part={part() as JsonPartData} />
-            </Match>
-            <Match when={part().kind === "code"}>
-              <CodePart part={part() as CodePartData} />
-            </Match>
-          </Switch>
-        )}
-      </Index>
+            );
+          case "markdown":
+            return <MarkdownPart key={i} part={part as MarkdownPartData} />;
+          case "mermaid":
+            return <MermaidPart key={i} part={part as MermaidPartData} />;
+          case "diff":
+            return <DiffPart key={i} part={part as DiffPartData} />;
+          case "image":
+            return <ImagePart key={i} part={part as ImagePartData} />;
+          case "trace":
+            return <TracePart key={i} part={part as TracePartData} />;
+          case "terminal":
+            return <TerminalPart key={i} part={part as TerminalPartData} />;
+          case "json":
+            return <JsonPart key={i} part={part as JsonPartData} />;
+          case "code":
+            return <CodePart key={i} part={part as CodePartData} />;
+          default:
+            return (
+              <div className="part-unsupported" key={i}>
+                Can&rsquo;t show this part — refresh showcase to update the viewer.
+              </div>
+            );
+        }
+      })}
       <Thread
-        surfaceId={props.surface.id}
+        surfaceId={surfaceId}
         placeholder="Leave a comment…"
         collapsible
         readonly={isReadonly()}
         actions={(startReply) => (
           <>
-            <Show when={!isReadonly()}>
+            {!isReadonly() ? (
               <button
-                class="act icon comment"
+                className="act icon comment"
                 title="Comment"
                 aria-label="Comment"
                 onClick={startReply}
               >
                 <CommentIcon />
               </button>
-            </Show>
-            <span class="sp"></span>
+            ) : null}
+            <span className="sp"></span>
             <button
-              class="act icon copy"
+              className="act icon copy"
               title="Copy link to this surface"
               aria-label="Copy link to this surface"
               onClick={async () => {
                 try {
-                  await navigator.clipboard.writeText(surfaceLink(props.surface.id));
+                  await navigator.clipboard.writeText(surfaceLink(surfaceId));
                   toast("Link copied");
                 } catch {
                   toast("Couldn't copy the link");
@@ -314,34 +318,34 @@ export function Card(props: { surface: Surface }) {
               <LinkIcon />
             </button>
             <a
-              class="act icon open"
+              className="act icon open"
               target="_blank"
-              href={surfaceLink(props.surface.id)}
+              href={surfaceLink(surfaceId)}
               title="Open in a new tab"
               aria-label="Open in a new tab"
             >
               <OpenIcon />
             </a>
-            <Show when={!isReadonly()}>
-              <span class="divider"></span>
-              <button
-                class="act icon del"
-                title="Delete surface"
-                aria-label={`Delete "${props.surface.title}"`}
-                onClick={async () => {
-                  if (confirm(`Delete "${props.surface.title}"?`)) {
-                    await api(`/api/surfaces/${props.surface.id}`, { method: "DELETE" });
-                  }
-                }}
-              >
-                <TrashIcon />
-              </button>
-            </Show>
+            {!isReadonly() ? (
+              <>
+                <span className="divider"></span>
+                <button
+                  className="act icon del"
+                  title="Delete surface"
+                  aria-label={`Delete "${props.surface.title}"`}
+                  onClick={async () => {
+                    if (confirm(`Delete "${props.surface.title}"?`)) {
+                      await api(`/api/surfaces/${surfaceId}`, { method: "DELETE" });
+                    }
+                  }}
+                >
+                  <TrashIcon />
+                </button>
+              </>
+            ) : null}
           </>
         )}
-        send={(text) =>
-          sendComment({ surface: props.surface.id, text, author: "user" }, props.surface.id, text)
-        }
+        send={(text) => sendComment({ surface: surfaceId, text, author: "user" }, surfaceId, text)}
       />
     </div>
   );
@@ -357,39 +361,36 @@ function Thread(props: {
   // so a user's comment never reads as part of the agent-rendered UI.
   collapsible?: boolean;
   readonly?: boolean;
-  actions?: (startReply: () => void) => JSX.Element;
+  actions?: (startReply: () => void) => ReactNode;
 }) {
-  const [replying, setReplying] = createSignal(false);
-  const list = () => comments().filter((c) => c.surfaceId === props.surfaceId);
+  const [replying, setReplying] = useState(false);
+  const comments = useBoard((s) => s.comments);
+  const list = comments.filter((c) => c.surfaceId === props.surfaceId);
   return (
-    <div class="thread">
-      <Show when={list().length}>
-        <div class="cmts">
-          <For each={list()}>{(c) => <CommentRow comment={c} />}</For>
+    <div className="thread">
+      {list.length ? (
+        <div className="cmts">
+          {list.map((c) => (
+            <CommentRow comment={c} key={c.id} />
+          ))}
         </div>
-      </Show>
-      <Show
-        when={props.collapsible}
-        fallback={
-          <Show when={!props.readonly}>
-            <Composer placeholder={props.placeholder} send={props.send} />
-          </Show>
-        }
-      >
-        <div class="card-actions">
-          <Show
-            when={!props.readonly && replying()}
-            fallback={<div class="actbar">{props.actions?.(() => setReplying(true))}</div>}
-          >
+      ) : null}
+      {props.collapsible ? (
+        <div className="card-actions">
+          {!props.readonly && replying ? (
             <Composer
               placeholder={props.placeholder}
               send={props.send}
               autofocus
               onCancel={() => setReplying(false)}
             />
-          </Show>
+          ) : (
+            <div className="actbar">{props.actions?.(() => setReplying(true))}</div>
+          )}
         </div>
-      </Show>
+      ) : !props.readonly ? (
+        <Composer placeholder={props.placeholder} send={props.send} />
+      ) : null}
     </div>
   );
 }
@@ -400,7 +401,7 @@ function pasteBlock(c: ViewComment): string {
   if (c.surfaceId) {
     return `showcase comment on “${c.surfaceTitle ?? "a surface"}” (surface ${c.surfaceId}):\n“${c.text}”`;
   }
-  const s = sessions.find((x) => x.id === c.sessionId);
+  const s = sessionsNow().find((x) => x.id === c.sessionId);
   return `showcase comment, session “${s ? sessionLabel(s) : c.sessionId}”:\n“${c.text}”`;
 }
 
@@ -413,25 +414,28 @@ function CommentRow(props: { comment: ViewComment }) {
       toast("Couldn't copy to clipboard");
     }
   };
-  const isUser = () => props.comment.author === "user" && !props.comment.pending;
+  const isUser = props.comment.author === "user" && !props.comment.pending;
   return (
     <div
-      class="cmt"
-      classList={{ user: props.comment.author === "user", pending: !!props.comment.pending }}
+      className={cx(
+        "cmt",
+        props.comment.author === "user" && "user",
+        !!props.comment.pending && "pending",
+      )}
       data-cid={props.comment.id}
     >
-      <span class="who">{props.comment.author === "user" ? "you" : props.comment.author}</span>
+      <span className="who">{props.comment.author === "user" ? "you" : props.comment.author}</span>
       <SandboxedPart
         class="cmtframe"
         body={`<div class="t">${escapeHtml(props.comment.text)}</div>`}
         css={CMT_CSS}
       />
-      <Show when={isUser()}>
-        <button class="copy" title="Copy for pasting to your agent" onClick={copy}>
+      {isUser ? (
+        <button className="copy" title="Copy for pasting to your agent" onClick={copy}>
           ⧉
         </button>
-      </Show>
-      <span class="when">{relTime(props.comment.createdAt)}</span>
+      ) : null}
+      <span className="when">{relTime(props.comment.createdAt)}</span>
     </div>
   );
 }
@@ -442,8 +446,10 @@ function Composer(props: {
   autofocus?: boolean;
   onCancel?: () => void;
 }) {
-  let input!: HTMLInputElement;
+  const inputRef = useRef<HTMLInputElement>(null);
   const send = async () => {
+    const input = inputRef.current;
+    if (!input) return;
     const text = input.value.trim();
     if (!text) return;
     input.value = "";
@@ -455,25 +461,29 @@ function Composer(props: {
       toast(`Couldn't post that comment — ${error}. It's back in the box.`);
     }
   };
-  onMount(() => props.autofocus && input.focus());
+  useEffect(() => {
+    if (props.autofocus) inputRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
-    <div class="composer">
+    <div className="composer">
       <input
-        ref={(el) => (input = el)}
+        ref={inputRef}
         placeholder={props.placeholder}
         onKeyDown={(e) => {
           if (e.key === "Enter") send();
           // Escape folds the composer back to the action bar — but only when
           // it's empty, so an in-progress reply can't be lost to a stray key.
-          else if (e.key === "Escape" && !input.value && props.onCancel) props.onCancel();
+          else if (e.key === "Escape" && !inputRef.current?.value && props.onCancel)
+            props.onCancel();
         }}
       />
       <button onClick={send}>Comment</button>
-      <Show when={props.onCancel}>
-        <button class="ghost" onClick={props.onCancel}>
+      {props.onCancel ? (
+        <button className="ghost" onClick={props.onCancel}>
           Cancel
         </button>
-      </Show>
+      ) : null}
     </div>
   );
 }

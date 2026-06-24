@@ -1,8 +1,7 @@
-import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import { useEffect, useState } from "react";
 import type { MermaidPart as MermaidPartData } from "./api.ts";
 import { SandboxedPart } from "./SandboxedPart.tsx";
-import { probeEl } from "./host.ts";
-import { activeTheme } from "./theme.ts";
+import { useActiveTheme, useResolvedMode } from "./theme.ts";
 
 // Wrapper styles shipped into the sandbox iframe. Mermaid bakes theme colors
 // into the SVG itself (read from the trusted viewer's vars at render time), so
@@ -11,14 +10,6 @@ const MERMAID_CSS = `
 body { margin: 0; padding: 14px 16px; background: transparent; text-align: center; }
 svg { max-width: 100%; height: auto; }
 `;
-
-// Mermaid bakes theme colors into the SVG at render time (unlike shiki's
-// dual-theme output, which a CSS rule can flip), so the diagram must be
-// re-rendered when the OS color scheme changes OR the board theme switches.
-// Reuse the same prefers-color-scheme signal pattern DiffPart uses.
-const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
-const [isDark, setIsDark] = createSignal(darkQuery.matches);
-darkQuery.addEventListener("change", (e) => setIsDark(e.matches));
 
 // mermaid.render namespaces the SVG's internal ids with this; it must be unique
 // per render across the whole document, so a module-level counter, not a uuid.
@@ -31,7 +22,7 @@ let seq = 0;
 // on a scheme change (below) is all that's needed to stay in sync. Returns the
 // `themeVariables` + `themeCSS` mermaid needs to match showcase's look.
 function showcaseTheme() {
-  const css = getComputedStyle(probeEl());
+  const css = getComputedStyle(document.body);
   const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
 
   const text = v("--text", "#1a1915");
@@ -44,7 +35,7 @@ function showcaseTheme() {
   const accentBg = v("--accent-bg", "#e6f1fb");
   // The viewer has no font token — its system stack lives on `body` — so match
   // the diagram font to whatever the rest of the viewer is actually rendering.
-  const font = getComputedStyle(probeEl()).fontFamily || "ui-sans-serif, system-ui, sans-serif";
+  const font = getComputedStyle(document.body).fontFamily || "ui-sans-serif, system-ui, sans-serif";
 
   return {
     themeVariables: {
@@ -100,13 +91,19 @@ function showcaseTheme() {
 }
 
 export function MermaidPart(props: { part: MermaidPartData }) {
-  const [svg, setSvg] = createSignal("");
-  const [error, setError] = createSignal<string | null>(null);
+  const activeTheme = useActiveTheme();
+  const mode = useResolvedMode();
+  const [svg, setSvg] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
-  onMount(() => {
+  // Initial paint, plus a re-render whenever the color scheme flips or the
+  // board theme changes: mermaid bakes theme colors into the SVG at render time
+  // (unlike shiki's dual-theme output, which a CSS rule can flip), so the diagram
+  // must be re-rendered on both. applyTheme injects the chrome vars before
+  // activeTheme updates, so the getComputedStyle in showcaseTheme() already sees
+  // the new values.
+  useEffect(() => {
     let disposed = false;
-    onCleanup(() => (disposed = true));
-
     const render = async () => {
       const src = props.part.mermaid ?? "";
       try {
@@ -140,31 +137,24 @@ export function MermaidPart(props: { part: MermaidPartData }) {
         }
       }
     };
-
-    // Initial paint, plus a re-render whenever the color scheme flips or the
-    // board theme changes: the effect reads both signals synchronously (so
-    // they're tracked), then renders with the current palette. applyTheme
-    // injects the chrome vars before activeTheme() updates, so the
-    // getComputedStyle in showcaseTheme() already sees the new values. The
-    // first run does the initial paint.
-    createEffect(() => {
-      isDark();
-      activeTheme();
-      void render();
-    });
-  });
+    void render();
+    return () => {
+      disposed = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.part.mermaid, activeTheme, mode]);
 
   return (
-    <div class="mermaidpart">
-      {error() ? (
-        <div class="mermaid-error">
-          Couldn&rsquo;t render diagram — {error()}
+    <div className="mermaidpart">
+      {error ? (
+        <div className="mermaid-error">
+          Couldn&rsquo;t render diagram — {error}
           <pre>{props.part.mermaid}</pre>
         </div>
       ) : (
         // The SVG string is produced here (trusted), then parsed inside an
         // opaque-origin iframe — a second boundary behind mermaid's DOMPurify.
-        <SandboxedPart class="partframe mermaidframe" body={svg()} css={MERMAID_CSS} />
+        <SandboxedPart class="partframe mermaidframe" body={svg} css={MERMAID_CSS} />
       )}
     </div>
   );

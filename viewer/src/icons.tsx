@@ -1,17 +1,17 @@
-import type { JSX } from "solid-js";
+import type { ReactNode } from "react";
 
 // Inline Lucide icons (https://lucide.dev, ISC license) — a couple of glyphs
 // for the card chrome. Inlined rather than pulling in a package: it keeps the
 // bundle lean and the icons inherit `currentColor` and the CSS-driven size.
-function Icon(props: { children: JSX.Element }) {
+function Icon(props: { children: ReactNode }) {
   return (
     <svg
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
       aria-hidden="true"
     >
       {props.children}

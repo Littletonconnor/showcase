@@ -15,7 +15,7 @@ import type {
   TracePart,
   TraceStep,
 } from "../../server/types.ts";
-import { host } from "./host.ts";
+import { basePath } from "./host.ts";
 
 export type {
   Comment,
@@ -59,10 +59,10 @@ declare global {
   }
 }
 
-// The base path comes from the injected host (the default host derives it from
-// the hosted-wrapper global / URL prefix, matching the pre-engine viewer).
+// The base path comes from the hosted-wrapper global / URL prefix, matching the
+// pre-React viewer.
 export function appBasePath(): string {
-  return host().basePath;
+  return basePath();
 }
 
 export function appPath(path: string): string {
@@ -70,21 +70,18 @@ export function appPath(path: string): string {
 }
 
 export function isReadonly(): boolean {
-  // Host-first (cloud embed), falling back to the self-hosted global so the
-  // self-hosted public-read page is byte-for-byte unchanged.
-  return host().readonly ?? !!window.__SHOWCASE_READONLY__;
+  return !!window.__SHOWCASE_READONLY__;
 }
 
 export function publicReadMode(): PublicReadMode | undefined {
   return window.__SHOWCASE_PUBLIC_READ__;
 }
 
-// The engine's layout. "full" shows the sidebar + stream; "stream" shows only
-// the current session's stream (no sidebar/session list). An embedder requests
-// it through the host; the self-hosted public-read "session" link maps to
-// "stream", so that flow is unchanged with no host field set.
+// The viewer's layout. "full" shows the sidebar + stream; "stream" shows only
+// the current session's stream (no sidebar/session list). The self-hosted
+// public-read "session" link maps to "stream".
 export function layoutMode(): "full" | "stream" {
-  return host().layout ?? (publicReadMode() === "session" ? "stream" : "full");
+  return publicReadMode() === "session" ? "stream" : "full";
 }
 
 export function surfaceLink(id: string): string {
