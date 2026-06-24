@@ -632,50 +632,6 @@ iframe {
   color: var(--text);
   background: var(--hover);
 }
-.composer {
-  display: flex;
-  gap: 8px;
-  margin-top: 4px;
-}
-.composer input {
-  flex: 1;
-  font: 13px/1.4 inherit;
-  color: var(--text);
-  background: var(--bg);
-  border: 0.5px solid var(--border);
-  border-radius: 8px;
-  padding: 7px 10px;
-  outline: none;
-}
-.composer input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-bg);
-}
-.composer input::placeholder {
-  color: var(--faint);
-}
-.composer button {
-  font: 12.5px inherit;
-  color: var(--muted);
-  background: none;
-  border: 0.5px solid var(--border-2);
-  border-radius: 8px;
-  padding: 0 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.composer button:hover {
-  color: var(--text);
-  background: var(--hover);
-}
-.composer .ghost {
-  border: none;
-  color: var(--faint);
-}
-.composer .ghost:hover {
-  color: var(--text);
-  background: var(--hover);
-}
 /* Footer action bar — a flat toolbar on the card surface, marked off only by a
    hairline divider so it reads as chrome without nesting a second filled box
    inside the card. The muted action styling carries the "this is controls, not
@@ -700,14 +656,6 @@ iframe {
   align-items: center;
   gap: 2px;
   min-height: 34px;
-}
-/* The composer takes over the bar when replying; the input claims an accent
-   edge on focus — the one moment the zone announces "this is you". */
-.card-actions .composer {
-  margin-top: 0;
-}
-.card-actions .composer input:focus {
-  border-color: var(--accent);
 }
 .cmt.pending {
   opacity: 0.55;

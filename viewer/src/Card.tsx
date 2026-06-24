@@ -19,6 +19,7 @@ import {
 import { escapeHtml } from "../../server/surfacePage.ts";
 import { CodePart } from "./CodePart.tsx";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cx } from "./cx.ts";
 import { DiffPart } from "./DiffPart.tsx";
@@ -491,10 +492,11 @@ function Composer(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <div className="composer">
-      <input
+    <div className="flex gap-2">
+      <Input
         ref={inputRef}
         placeholder={props.placeholder}
+        className="h-8 flex-1 text-[13px]"
         onKeyDown={(e) => {
           if (e.key === "Enter") send();
           // Escape folds the composer back to the action bar — but only when
@@ -503,11 +505,13 @@ function Composer(props: {
             props.onCancel();
         }}
       />
-      <button onClick={send}>Comment</button>
+      <Button size="sm" variant="secondary" onClick={send}>
+        Comment
+      </Button>
       {props.onCancel ? (
-        <button className="ghost" onClick={props.onCancel}>
+        <Button size="sm" variant="ghost" onClick={props.onCancel}>
           Cancel
-        </button>
+        </Button>
       ) : null}
     </div>
   );
