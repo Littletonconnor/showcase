@@ -18,7 +18,8 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.viewer.json --noEmit",
     "lint": "oxlint . --deny-warnings",
     "format": "oxfmt --write .",
-    "format:check": "oxfmt --check ."
+    "format:check": "oxfmt --check .",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.0",
@@ -29,6 +30,7 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^25.9.3",
     "markdown-it": "^14.2.0",
