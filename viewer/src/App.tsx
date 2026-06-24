@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { MoreHorizontal, Link2, Pencil, Trash2 } from "lucide-react";
+import { MoreHorizontal, Link2, Pencil, Search, Trash2, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { AgentMark } from "./agentMarks.tsx";
 import {
   api,
@@ -101,8 +102,54 @@ function Brand(props?: { className?: string }) {
   );
 }
 
+// Live filter for the session list. Collapses away with the icon rail. Escape
+// clears the query (then blurs on a second press if already empty), and a clear
+// affordance appears once there's text.
+function SessionSearch(props: { query: string; onQuery: (q: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <div className="relative group-data-[collapsible=icon]:hidden">
+      <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-faint" />
+      <Input
+        ref={inputRef}
+        type="text"
+        role="searchbox"
+        aria-label="Search chats"
+        placeholder="Search chats…"
+        value={props.query}
+        onChange={(e) => props.onQuery(e.target.value)}
+        className="h-8 rounded-lg border-transparent bg-card pr-7 pl-8 text-[13px] shadow-none focus-visible:border-brand focus-visible:ring-0"
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            if (props.query) {
+              e.preventDefault();
+              props.onQuery("");
+            } else {
+              inputRef.current?.blur();
+            }
+          }
+        }}
+      />
+      {props.query ? (
+        <button
+          type="button"
+          aria-label="Clear search"
+          className="absolute top-1/2 right-2 flex size-4 -translate-y-1/2 items-center justify-center rounded text-faint transition-colors hover:text-foreground"
+          onClick={() => {
+            props.onQuery("");
+            inputRef.current?.focus();
+          }}
+        >
+          <X className="size-3.5" />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export default function App() {
   const [connectOpen, setConnectOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const sessions = useBoard((s) => s.sessions);
   const unread = useBoard((s) => s.unread);
   const pillTarget = useBoard((s) => s.pillTarget);
@@ -169,6 +216,23 @@ export default function App() {
   // Today/Yesterday split fresh as the day rolls over)
   const sessionGroups = useMemo(() => groupSessions(sessions, new Date()), [sessions]);
 
+  // Live filter: keep only sessions whose title (or agent name) contains the
+  // query, dropping groups that empty out. A blank query is the identity, so
+  // the unfiltered list shows through with no extra work.
+  const q = query.trim().toLowerCase();
+  const visibleGroups = useMemo(() => {
+    if (!q) return sessionGroups;
+    return sessionGroups
+      .map((g) => ({
+        label: g.label,
+        sessions: g.sessions.filter(
+          (s) => sessionLabel(s).toLowerCase().includes(q) || s.agent.toLowerCase().includes(q),
+        ),
+      }))
+      .filter((g) => g.sessions.length > 0);
+  }, [sessionGroups, q]);
+  const noMatches = q.length > 0 && visibleGroups.length === 0;
+
   // Stream mode has no chrome — just the current session's stream in a plain
   // scroll container. The Sidebar layout is reserved for the full board.
   if (streamMode()) {
@@ -192,15 +256,16 @@ export default function App() {
     <>
       <SidebarProvider defaultOpen={readSidebarCookie()}>
         <Sidebar collapsible="icon">
-          <SidebarHeader className="gap-1">
+          <SidebarHeader className="gap-2">
             <div className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">
               <Brand className="min-w-0 flex-1" />
               <SidebarTrigger className="size-7 flex-none text-muted-foreground hover:text-foreground" />
             </div>
+            <SessionSearch query={query} onQuery={setQuery} />
             <UpdateBanner />
           </SidebarHeader>
           <SidebarContent id="sessionList" className="px-1.5">
-            {sessionGroups.map((group) => (
+            {visibleGroups.map((group) => (
               <SidebarGroup key={group.label} className="py-1.5">
                 <SidebarGroupLabel className="px-2 text-[10.5px] font-medium tracking-[0.06em] text-faint uppercase">
                   {group.label}
@@ -212,6 +277,11 @@ export default function App() {
                 </SidebarMenu>
               </SidebarGroup>
             ))}
+            {noMatches ? (
+              <div className="px-3 py-8 text-center text-[12.5px] text-faint group-data-[collapsible=icon]:hidden">
+                No chats match “{query.trim()}”.
+              </div>
+            ) : null}
           </SidebarContent>
           <SidebarFooter className="border-t-[0.5px] border-border px-3 py-3 text-xs text-faint group-data-[collapsible=icon]:hidden [&_a]:text-muted-foreground [&_a]:no-underline [&_a:hover]:text-foreground">
             <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">

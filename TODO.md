@@ -254,7 +254,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
       `DELETE /api/sessions/:id`), **Copy link** (the session deep link).
       _Acceptance:_ hover a chat → `⋯` appears → menu works; delete confirms and
       removes; rename persists; keyboard-accessible; oracle green.
-- [ ] **F3 — Search / filter chats.** A search affordance in `SidebarHeader`
+- [x] **F3 — Search / filter chats.** A search affordance in `SidebarHeader`
       (icon that expands to an `Input`, or a `Command` palette on Cmd/Ctrl-K)
       that live-filters sessions by title, with a "no matches" empty state.
       _Acceptance:_ typing filters the list; clearing restores; focus management
