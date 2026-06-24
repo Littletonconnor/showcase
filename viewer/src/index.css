@@ -71,6 +71,11 @@
 @layer base {
   * {
     box-sizing: border-box;
+    /* Default every bare `border`/`border-*` utility (shadcn components use them
+     * uncolored) to the themed hairline. Without this, Tailwind v4 falls back to
+     * `currentColor` — the near-black text colour — which is what turned the
+     * sidebar divider, dropdown outline, and header rules into hard black lines. */
+    border-color: var(--border);
   }
   html,
   body {
