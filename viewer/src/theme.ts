@@ -13,15 +13,7 @@
 // useActiveTheme/useResolvedMode hooks.
 import { api } from "./api.ts";
 import { useBoard } from "./state.ts";
-import {
-  DEFAULT_THEME_ID,
-  type Mode,
-  themeById,
-  themeOptions,
-  viewerThemeCss,
-} from "../../server/themes.ts";
-
-export { themeOptions };
+import { DEFAULT_THEME_ID, type Mode, themeById, viewerThemeCss } from "../../server/themes.ts";
 
 const get = useBoard.getState;
 const set = useBoard.setState;
@@ -64,15 +56,9 @@ export function applyTheme(id: string) {
   set({ activeTheme: theme.id });
 }
 
-// Fetch the persisted board theme on startup.
+// Fetch the persisted board theme on startup. There is no in-app switcher
+// anymore, so this is the only place the theme is set (fixed per board).
 export async function initTheme() {
   const res = await api<{ id: string }>("/api/theme").catch(() => null);
   applyTheme(res?.id ?? DEFAULT_THEME_ID);
-}
-
-// User picked a theme: persist + apply. The PUT broadcasts theme-changed to
-// other tabs; this tab applies immediately so it never waits on its own event.
-export async function setTheme(id: string) {
-  applyTheme(id);
-  await api("/api/theme", { method: "PUT", body: JSON.stringify({ id }) }).catch(() => null);
 }

@@ -1,6 +1,6 @@
 // Shared state and the flows that mutate it. A single zustand store holds the
-// whole board (sessions, the selected session's surfaces/comments/trace, live
-// status, view chrome, theme) plus the version-update notice. SSE (/api/events)
+// whole board (sessions, the selected session's surfaces/comments, live status,
+// theme) plus the version-update notice. SSE (/api/events)
 // and the API helpers mutate it; components subscribe via selector hooks.
 //
 // Reconcile-by-id semantics from the Solid version are preserved by hand: list
@@ -15,7 +15,6 @@ import {
   type Comment,
   type SessionRow,
   type Surface,
-  type TraceStep,
   type VersionInfo,
 } from "./api.ts";
 import { routeGet, routeNavigate, type Route, root } from "./host.ts";
@@ -31,8 +30,6 @@ const LAST_SESSION_KEY = "showcase-last-session";
 // local echo (pending until the POST confirms).
 export type ViewComment = Comment & { pending?: boolean };
 
-export type ViewMode = "stream" | "timeline";
-
 const DISMISSED_UPDATE_KEY = "showcase-dismissed-update";
 
 interface BoardState {
@@ -41,11 +38,9 @@ interface BoardState {
   unread: ReadonlySet<string>;
   surfaces: Surface[];
   comments: ViewComment[];
-  traceSteps: TraceStep[];
   streamLoading: boolean;
   live: boolean;
   navOpen: boolean;
-  viewMode: ViewMode;
   // Surface id the next mounted card should scroll to (set for SSE arrivals
   // landing while the user is near the bottom, not the initial batch of a
   // session switch).
@@ -72,11 +67,9 @@ export const useBoard = create<BoardState>(() => ({
   unread: new Set<string>(),
   surfaces: [],
   comments: [],
-  traceSteps: [],
   streamLoading: false,
   live: false,
   navOpen: false,
-  viewMode: "stream",
   scrollTarget: null,
   pillTarget: null,
   toastText: "",
@@ -145,10 +138,6 @@ function reconcileSessions(incoming: SessionRow[]) {
 
 export function setNavOpen(open: boolean) {
   set({ navOpen: open });
-}
-
-export function setViewMode(mode: ViewMode) {
-  set({ viewMode: mode });
 }
 
 export function setScrollTarget(id: string | null) {
@@ -284,9 +273,7 @@ export async function select(
     streamLoading: true,
     surfaces: [],
     comments: [],
-    traceSteps: [],
   });
-  void fetchTrace(id);
   const metas = await api<{ id: string }[]>(`/api/sessions/${id}/surfaces`).catch(() => []);
   const details = (
     await Promise.all(metas.map((m) => api<Surface>(`/api/surfaces/${m.id}`).catch(() => null)))
@@ -365,15 +352,6 @@ async function upsertSurface(id: string, { scroll = true } = {}) {
     }
     set((state) => ({ surfaces: [...state.surfaces, s] }));
   }
-}
-
-// Fetch the session's trace steps (timeline view). Ignored if the user has
-// switched away by the time it resolves.
-export async function fetchTrace(sessionId: string) {
-  const res = await api<{ steps: TraceStep[] }>(`/api/sessions/${sessionId}/trace`).catch(
-    () => null,
-  );
-  if (res && selectedNow() === sessionId) set({ traceSteps: res.steps });
 }
 
 export function nearBottom() {
@@ -475,9 +453,6 @@ export function connect() {
         return { surfaces: next };
       });
       await refreshSessionsQuiet();
-    } else if (e.type === "trace-updated") {
-      // the agent working is ambient, not an alert — refetch quietly, no badge
-      if (e.sessionId === selectedNow()) await fetchTrace(e.sessionId);
     } else if (e.type === "comment-created") {
       if (away && e.sessionId) markUnread(e.sessionId);
       if (e.sessionId === selectedNow()) {
@@ -495,7 +470,6 @@ async function resyncSelected() {
   const before = selectedNow();
   await refreshSessions();
   if (!before || selectedNow() !== before) return; // select() rebuilt the stream
-  void fetchTrace(before);
   const metas = await api<{ id: string }[]>(`/api/sessions/${before}/surfaces`).catch(() => []);
   const ids = new Set(metas.map((m) => m.id));
   set((state) => ({ surfaces: state.surfaces.filter((s) => ids.has(s.id)) }));
