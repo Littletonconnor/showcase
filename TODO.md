@@ -262,7 +262,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
 
 #### Sidebar refinement
 
-- [ ] **F4 — Session row polish.** On the `SidebarMenuButton`: calm hover/active/
+- [x] **F4 — Session row polish.** On the `SidebarMenuButton`: calm hover/active/
       focus-visible states, the agent mark, title truncation with the
       surface-count as a quiet parenthetical, a refined unread dot, vacant-session
       dimming. Match claude.ai spacing/type. _Acceptance:_ rows feel responsive

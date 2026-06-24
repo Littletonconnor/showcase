@@ -611,21 +611,32 @@ function SessionItem(props: { session: SessionRow }) {
         aria-current={isSel ? "true" : undefined}
         onClick={open}
         className={cx(
-          "h-auto items-start gap-2 rounded-lg py-2 pr-7 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:py-2",
-          isSel &&
-            "bg-brand-subtle shadow-[inset_2px_0_0_var(--color-brand)] hover:bg-brand-subtle",
+          "h-auto items-start gap-2 rounded-lg py-1.5 pr-7 transition-colors duration-150 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:py-2",
+          // Calm selection: the row lifts onto the card surface (so it reads as
+          // selected against the panel) with a thin brand inset bar as the
+          // unmistakable marker — not a loud brand wash. The agent mark and a
+          // semibold (not coloured) title carry the rest.
+          isSel
+            ? "bg-card shadow-[inset_2px_0_0_var(--color-brand)] hover:bg-card data-[active=true]:bg-card"
+            : "hover:bg-hover/70",
         )}
       >
-        {/* The agent mark anchors the row at the icon-rail width too. */}
-        <span className="mt-0.5 flex-none group-data-[collapsible=icon]:mt-0">
+        {/* The agent mark anchors the row at the icon-rail width too. It picks up
+            the brand tint only on the active row, a quiet reinforcement. */}
+        <span
+          className={cx(
+            "mt-[3px] flex-none transition-colors group-data-[collapsible=icon]:mt-0 [&_svg]:transition-colors",
+            isSel && "[&_svg]:text-brand",
+          )}
+        >
           <AgentMark agent={props.session.agent} />
         </span>
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5 group-data-[collapsible=icon]:hidden">
+        <span className="flex min-w-0 flex-1 flex-col gap-px group-data-[collapsible=icon]:hidden">
           <span
             className={cx(
-              "truncate text-[13px] leading-tight",
+              "truncate text-[13px] leading-snug",
               isSel
-                ? "font-semibold text-brand"
+                ? "font-semibold text-foreground"
                 : isVacant
                   ? "font-normal text-muted-foreground"
                   : "font-medium text-foreground",
@@ -633,16 +644,13 @@ function SessionItem(props: { session: SessionRow }) {
           >
             {label}
             {props.session.surfaceCount > 0 ? (
-              <span className={cx("font-normal", isSel ? "text-brand/70" : "text-faint")}>
-                {" "}
-                ({props.session.surfaceCount})
-              </span>
+              <span className="font-normal text-faint"> ({props.session.surfaceCount})</span>
             ) : null}
           </span>
           <span
             className={cx(
-              "truncate text-[11.5px] leading-tight",
-              isVacant && !isSel ? "text-faint/80" : "text-faint",
+              "truncate text-[11px] leading-snug",
+              isVacant && !isSel ? "text-faint/75" : "text-faint",
             )}
           >
             {props.session.agent} · {relTime(props.session.lastActiveAt)}
@@ -654,7 +662,7 @@ function SessionItem(props: { session: SessionRow }) {
       {isUnread ? (
         <span
           className={cx(
-            "pointer-events-none absolute top-1/2 right-2.5 size-[7px] -translate-y-1/2 rounded-full bg-brand group-data-[collapsible=icon]:hidden group-hover/menu-item:hidden",
+            "pointer-events-none absolute top-1/2 right-3 size-1.5 -translate-y-1/2 rounded-full bg-brand group-data-[collapsible=icon]:hidden group-hover/menu-item:hidden",
             menuOpen && "hidden",
           )}
         />
