@@ -316,7 +316,7 @@ export function Card(props: { surface: Surface }) {
           </Badge>
         )}
         <span className="flex-1"></span>
-        <span className="flex-none text-[11.5px] text-faint tabular-nums">
+        <span className="flex-none text-[11px] text-faint tabular-nums">
           {relTime(props.surface.updatedAt)}
         </span>
       </div>

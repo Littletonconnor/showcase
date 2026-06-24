@@ -355,7 +355,7 @@ export default function App() {
                   </SidebarGroup>
                 ))}
                 {noMatches ? (
-                  <div className="px-3 py-8 text-center text-[12.5px] text-faint group-data-[collapsible=icon]:hidden">
+                  <div className="px-3 py-8 text-center text-[13px] text-faint group-data-[collapsible=icon]:hidden">
                     No chats match “{query.trim()}”.
                   </div>
                 ) : null}
@@ -412,7 +412,7 @@ function NewSurfacePill(props: { target: string | null }) {
   return (
     <button
       id="newPill"
-      className="fixed bottom-16 left-1/2 z-40 flex -translate-x-1/2 cursor-pointer items-center gap-1 rounded-full border-[0.5px] border-brand bg-brand-subtle py-1.5 pr-3 pl-3.5 text-[12.5px] text-brand shadow-[0_4px_14px_rgba(0,0,0,0.12)] transition hover:bg-brand hover:text-primary-foreground"
+      className="fixed bottom-16 left-1/2 z-40 flex -translate-x-1/2 cursor-pointer items-center gap-1 rounded-full border-[0.5px] border-brand bg-brand-subtle py-1.5 pr-3 pl-3.5 text-[12px] text-brand shadow-[0_4px_14px_rgba(0,0,0,0.12)] transition hover:bg-brand hover:text-primary-foreground"
       hidden={props.target === null}
       onClick={() => {
         if (props.target)
@@ -436,7 +436,7 @@ function UpdateBanner() {
   if (!v) return null;
   return (
     <div
-      className="mx-3 mt-0 mb-2 rounded-[10px] border-[0.5px] border-border bg-brand-subtle px-[11px] py-[9px] text-[12.5px]"
+      className="mx-3 mt-0 mb-2 rounded-[10px] border-[0.5px] border-border bg-brand-subtle px-[11px] py-[9px] text-[12px]"
       role="status"
     >
       <div className="flex items-center gap-1">
@@ -451,7 +451,7 @@ function UpdateBanner() {
       </div>
       {v.upgradeCommand ? (
         <button
-          className="mt-1.5 flex w-full cursor-pointer items-center gap-1.5 rounded-md border-[0.5px] border-border bg-card px-[7px] py-1 text-left text-[11.5px] text-muted-foreground hover:border-[var(--border-2)] hover:text-foreground"
+          className="mt-1.5 flex w-full cursor-pointer items-center gap-1.5 rounded-md border-[0.5px] border-border bg-card px-[7px] py-1 text-left text-[11px] text-muted-foreground hover:border-[var(--border-2)] hover:text-foreground"
           title="Copy upgrade command"
           onClick={() => {
             navigator.clipboard.writeText(v.upgradeCommand!);
@@ -495,7 +495,7 @@ function WhatsNewCard() {
           agent content) — styled here via descendant utilities since the inner
           elements come from an HTML string. */}
       <div
-        className="px-4 pt-1.5 pb-3 text-[13.5px]/[1.55] [&_a]:text-brand [&_code]:rounded [&_code]:bg-hover [&_code]:px-1 [&_code]:py-px [&_code]:font-mono [&_code]:text-xs [&_h4]:mt-3 [&_h4]:mb-1 [&_h4]:text-[13px] [&_h4]:font-medium [&_li]:my-[3px] [&_ul]:my-1 [&_ul]:pl-5"
+        className="px-4 pt-1.5 pb-3 text-[13px]/[1.6] [&_a]:text-brand [&_code]:rounded [&_code]:bg-hover [&_code]:px-1 [&_code]:py-px [&_code]:font-mono [&_code]:text-xs [&_h4]:mt-3 [&_h4]:mb-1 [&_h4]:text-[13px] [&_h4]:font-medium [&_li]:my-[3px] [&_ul]:my-1 [&_ul]:pl-5"
         dangerouslySetInnerHTML={{ __html: renderNotes(v.notes!) }}
       ></div>
     </div>
@@ -690,7 +690,7 @@ function SessionItem(props: { session: SessionRow }) {
           </span>
           <span
             className={cx(
-              "truncate text-[10.5px] leading-snug",
+              "truncate text-[11px] leading-snug",
               isSel ? "text-brand/60" : isVacant ? "text-faint/70" : "text-faint/90",
             )}
           >
@@ -891,7 +891,7 @@ function Onboard(props: { onConnect: () => void }) {
       {!isReadonly() ? (
         <>
           <h1>The show hasn&rsquo;t started yet</h1>
-          <p className="mb-8 text-[14.5px] text-muted-foreground">
+          <p className="mb-8 text-[14px] text-muted-foreground">
             showcase is a live surface where coding agents draw HTML snippets — diagrams, sketches,
             explainers — while they work in your terminal.
           </p>
@@ -911,7 +911,7 @@ function Onboard(props: { onConnect: () => void }) {
       ) : (
         <>
           <h1>Nothing here yet</h1>
-          <p className="mb-8 text-[14.5px] text-muted-foreground">
+          <p className="mb-8 text-[14px] text-muted-foreground">
             This showcase board does not have any sessions yet.
           </p>
         </>
@@ -991,7 +991,7 @@ function ModalSection(props: { children: ReactNode }) {
 function Snip(props: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="relative rounded-[10px] border-[0.5px] border-border bg-card py-3 pr-11 pl-3.5 font-mono text-[12.5px]/[1.6] break-all whitespace-pre-wrap text-foreground">
+    <div className="relative rounded-[10px] border-[0.5px] border-border bg-card py-3 pr-11 pl-3.5 font-mono text-[12px]/[1.6] break-all whitespace-pre-wrap text-foreground">
       {props.text}
       <button
         className="absolute top-2 right-2 flex size-7 cursor-pointer items-center justify-center rounded-md border-[0.5px] border-border bg-background text-faint transition-colors hover:text-foreground"

@@ -307,7 +307,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
 - [x] **F13 — Toasts → shadcn `Sonner`.** Replace the hand-rolled `#toast` in
       `App.tsx` + the `toast()` in `state.ts` with shadcn `Sonner`
       (`npx shadcn@latest add sonner`). _Acceptance:_ same call sites, nicer toasts.
-- [ ] **F14 — Type & spacing system.** A consistent type scale and spacing rhythm
+- [x] **F14 — Type & spacing system.** A consistent type scale and spacing rhythm
       across sidebar, header, cards, and chat — the unifying pass once F1–F13 land.
 - [ ] **F15 — Dark-mode review.** Walk every screen in dark (`prefers-color-
     scheme: dark`) after the above and fix contrast/elevation. The theme bridge
