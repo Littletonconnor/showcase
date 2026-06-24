@@ -285,7 +285,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
 - [x] **F8 — Surface card refinement.** Tune card elevation/radius/spacing, the
       `card-head` (title + version `Select` sizing + timestamp), and the spacing
       between parts. Keep `.card`/`.card-title` hooks.
-- [ ] **F9 — Chat thread micro-polish.** Enter-to-send affordance + a send
+- [x] **F9 — Chat thread micro-polish.** Enter-to-send affordance + a send
       **icon** button (lucide) instead of the "Comment" label; group consecutive
       same-sender bubbles (one label, tighter stack); auto-scroll to the newest
       message; refined optimistic/pending bubble; timestamps on hover. Keep

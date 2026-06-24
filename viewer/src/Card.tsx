@@ -30,6 +30,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cx } from "./cx.ts";
 import { DiffPart } from "./DiffPart.tsx";
+import { ArrowUp, Copy } from "lucide-react";
 import { CommentIcon, LinkIcon, OpenIcon, TrashIcon } from "./icons.tsx";
 import { ImagePart } from "./ImagePart.tsx";
 import { JsonPart } from "./JsonPart.tsx";
@@ -419,13 +420,23 @@ function Thread(props: {
   // input; an untouched card keeps it collapsed behind the Comment action so it
   // stays compact.
   const showComposer = !props.readonly && (hasMessages || replying);
+  // Keep the newest message in view as the thread grows (a chat-input feel).
+  const endRef = useRef<HTMLDivElement>(null);
+  const count = list.length;
+  useEffect(() => {
+    if (count > 0) endRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [count]);
   return (
     <div className="thread">
       {list.length ? (
-        <div className="flex flex-col gap-3 border-t-[0.5px] border-border px-3.5 py-3">
-          {list.map((c) => (
-            <CommentRow comment={c} key={c.id} />
-          ))}
+        <div className="flex flex-col border-t-[0.5px] border-border px-3.5 py-3">
+          {list.map((c, i) => {
+            // First message of a run from the same author wears the label +
+            // timestamp; continuations stack tighter under it.
+            const startsRun = i === 0 || list[i - 1].author !== c.author;
+            return <CommentRow comment={c} startsRun={startsRun} key={c.id} />;
+          })}
+          <div ref={endRef} />
         </div>
       ) : null}
       {props.collapsible ? (
@@ -469,7 +480,7 @@ function pasteBlock(c: ViewComment): string {
   return `showcase comment, session “${s ? sessionLabel(s) : c.sessionId}”:\n“${c.text}”`;
 }
 
-function CommentRow(props: { comment: ViewComment }) {
+function CommentRow(props: { comment: ViewComment; startsRun: boolean }) {
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(pasteBlock(props.comment));
@@ -481,45 +492,51 @@ function CommentRow(props: { comment: ViewComment }) {
   const isUser = props.comment.author === "user";
   // `cmt` + `user` and the `.who` text "you" are oracle hooks (the e2e suite
   // asserts `.thread .cmt.user .who` reads "you") — keep them as marker classes.
-  // The comment text is plain text rendered as a React text node: it escapes by
-  // construction and never becomes HTML, so it's the sanctioned non-iframe path
-  // for agent-authored *data* (like image/trace parts) and needs no sandbox.
+  // A single user comment always starts its run, so `.who` renders for the
+  // oracle. The comment text is plain text rendered as a React text node: it
+  // escapes by construction and never becomes HTML, so it's the sanctioned
+  // non-iframe path for agent-authored *data* and needs no sandbox.
   return (
     <div
       className={cx(
-        "cmt group/cmt flex flex-col gap-1",
+        "cmt group/cmt flex flex-col",
+        // Continuations within a run hug the previous bubble; a new run gets air.
+        props.startsRun ? "mt-3 gap-1 first:mt-0" : "mt-0.5 gap-0.5",
         isUser ? "user items-end" : "items-start",
-        !!props.comment.pending && "opacity-55",
+        !!props.comment.pending && "animate-pulse opacity-60",
       )}
       data-cid={props.comment.id}
     >
-      <div className="flex items-baseline gap-2 px-1">
-        <span
-          className={cx(
-            "who text-[11px] font-medium",
-            isUser ? "text-brand" : "text-muted-foreground",
-          )}
-        >
-          {isUser ? "you" : props.comment.author}
-        </span>
-        <span className="text-[10.5px] text-faint">{relTime(props.comment.createdAt)}</span>
-      </div>
+      {props.startsRun ? (
+        <div className="flex items-baseline gap-2 px-1">
+          <span
+            className={cx(
+              "who text-[11px] font-medium",
+              isUser ? "text-brand" : "text-muted-foreground",
+            )}
+          >
+            {isUser ? "you" : props.comment.author}
+          </span>
+        </div>
+      ) : null}
       <div className={cx("flex max-w-[88%] items-end gap-1", isUser && "flex-row-reverse")}>
         <div
           className={cx(
             "min-w-0 rounded-2xl px-3 py-1.5 text-[13px] leading-snug break-words whitespace-pre-wrap",
             isUser ? "bg-brand text-primary-foreground" : "bg-muted text-foreground",
           )}
+          title={relTime(props.comment.createdAt)}
         >
           {props.comment.text}
         </div>
         {isUser && !props.comment.pending ? (
           <button
-            className="mb-0.5 flex-none rounded px-1 text-xs text-faint opacity-0 transition-opacity group-hover/cmt:opacity-100 hover:bg-hover hover:text-foreground focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+            className="mb-1 flex size-5 flex-none items-center justify-center rounded text-faint opacity-0 transition-opacity group-hover/cmt:opacity-100 hover:bg-hover hover:text-foreground focus-visible:opacity-100 [&_svg]:size-3 [@media(hover:none)]:opacity-100"
             title="Copy for pasting to your agent"
+            aria-label="Copy comment"
             onClick={copy}
           >
-            ⧉
+            <Copy />
           </button>
         ) : null}
       </div>
@@ -534,16 +551,20 @@ function Composer(props: {
   onCancel?: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  // Track emptiness so the send button can disable when there's nothing to post.
+  const [empty, setEmpty] = useState(true);
   const send = async () => {
     const input = inputRef.current;
     if (!input) return;
     const text = input.value.trim();
     if (!text) return;
     input.value = "";
+    setEmpty(true);
     const error = await props.send(text);
     // on failure the text goes back in the input — never silently lost
     if (error !== null) {
       if (!input.value) input.value = text;
+      setEmpty(false);
       input.focus();
       toast(`Couldn't post that comment — ${error}. It's back in the box.`);
     }
@@ -553,11 +574,14 @@ function Composer(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return (
-    <div className="flex gap-2">
+    <div className="flex items-center gap-1.5">
       <Input
         ref={inputRef}
         placeholder={props.placeholder}
-        className="h-8 flex-1 text-[13px]"
+        aria-label="Comment"
+        title="Press Enter to send"
+        className="h-8 flex-1 rounded-lg text-[13px]"
+        onInput={(e) => setEmpty(!e.currentTarget.value.trim())}
         onKeyDown={(e) => {
           if (e.key === "Enter") send();
           // Escape folds the composer back to the action bar — but only when
@@ -566,14 +590,22 @@ function Composer(props: {
             props.onCancel();
         }}
       />
-      <Button size="sm" variant="secondary" onClick={send}>
-        Comment
-      </Button>
       {props.onCancel ? (
-        <Button size="sm" variant="ghost" onClick={props.onCancel}>
+        <Button size="sm" variant="ghost" className="h-8" onClick={props.onCancel}>
           Cancel
         </Button>
       ) : null}
+      <Button
+        size="icon-sm"
+        variant="default"
+        className="size-8 flex-none rounded-lg"
+        disabled={empty}
+        aria-label="Send comment"
+        title="Send (Enter)"
+        onClick={send}
+      >
+        <ArrowUp className="size-4" />
+      </Button>
     </div>
   );
 }
