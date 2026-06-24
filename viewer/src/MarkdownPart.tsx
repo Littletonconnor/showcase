@@ -132,6 +132,10 @@ export function MarkdownPart(props: { part: MarkdownPartData }) {
   // DOM sink); SandboxedPart parses it inside an opaque-origin iframe, so even a
   // markdown-it/shiki regression can't touch the board.
   return (
-    <SandboxedPart class="partframe mdframe" body={html} css={MD_CSS + shikiSchemeCss(mode)} />
+    <SandboxedPart
+      class="block w-full border-0 border-t-[0.5px] border-border bg-transparent"
+      body={html}
+      css={MD_CSS + shikiSchemeCss(mode)}
+    />
   );
 }

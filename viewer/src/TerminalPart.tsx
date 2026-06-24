@@ -68,5 +68,11 @@ export function TerminalPart(props: { part: TerminalPartData }) {
       `<pre class="term-body"${width}>${ansi}</pre>`
     );
   }, [props.part.text, props.part.title, props.part.cols]);
-  return <SandboxedPart class="partframe termframe" body={body} css={TERM_CSS} />;
+  return (
+    <SandboxedPart
+      class="block w-full border-0 border-t-[0.5px] border-border bg-transparent"
+      body={body}
+      css={TERM_CSS}
+    />
+  );
 }

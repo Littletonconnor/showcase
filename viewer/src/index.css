@@ -51,3 +51,27 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 }
+
+/* Irreducible global base, moved out of styles.css so that file is just the
+ * design tokens. The chrome bg/text/font live on <body>; the full-height
+ * #app flex layout is a Tailwind utility on the element itself (see App.tsx). */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  html,
+  body {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font:
+      14px/1.5 -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      Roboto,
+      sans-serif;
+  }
+}

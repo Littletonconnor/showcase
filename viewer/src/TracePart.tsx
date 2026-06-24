@@ -20,17 +20,24 @@ export function TracePart(props: { part: TracePartData }) {
   }, []);
 
   return (
-    <div className="tracepart">
-      <div className="trace-head">
-        <span className="trace-title">{props.part.title ?? "Agent trace"}</span>
+    <div className="border-t-[0.5px] border-border px-3.5 pt-2.5 pb-3 text-[13px]">
+      <div className="mb-1.5 flex items-center gap-2">
+        <span className="text-[12.5px] font-medium text-muted-foreground">
+          {props.part.title ?? "Agent trace"}
+        </span>
         {props.part.assetId ? (
-          <a className="trace-dl" href={`/a/${props.part.assetId}`} target="_blank" rel="noopener">
+          <a
+            className="ml-auto text-xs text-brand no-underline hover:underline"
+            href={`/a/${props.part.assetId}`}
+            target="_blank"
+            rel="noopener"
+          >
             download ↓
           </a>
         ) : null}
       </div>
-      {note ? <div className="asset-gone">{note}</div> : null}
-      <ol className="trace-steps">
+      {note ? <div className="px-3.5 py-2.5 text-xs text-faint">{note}</div> : null}
+      <ol className="m-0 list-none border-l-[1.5px] border-[var(--border-2)] p-0">
         {steps.map((step, i) => (
           <TraceRow step={step} key={i} />
         ))}
@@ -43,16 +50,26 @@ function TraceRow(props: { step: TraceStep }) {
   const [open, setOpen] = useState(false);
   const hasDetail = !!props.step.detail;
   return (
-    <li className={cx("trace-step", open && "open")}>
+    <li className="relative py-[3px] pr-0 pl-3.5 before:absolute before:top-2.5 before:-left-[4.5px] before:size-[7px] before:rounded-full before:bg-faint before:content-['']">
       <div
-        className={cx("trace-row", hasDetail && "clickable")}
+        className={cx("flex items-baseline gap-2", hasDetail && "cursor-pointer")}
         onClick={() => hasDetail && setOpen(!open)}
       >
-        {props.step.kind ? <span className="trace-kind">{props.step.kind}</span> : null}
-        <span className="trace-label">{props.step.label}</span>
-        {props.step.ts ? <span className="trace-ts">{props.step.ts}</span> : null}
+        {props.step.kind ? (
+          <span className="flex-none rounded bg-brand-subtle px-[5px] py-px font-mono text-[10.5px] font-medium tracking-[0.04em] text-brand uppercase">
+            {props.step.kind}
+          </span>
+        ) : null}
+        <span className="text-foreground">{props.step.label}</span>
+        {props.step.ts ? (
+          <span className="ml-auto flex-none text-[11px] text-faint">{props.step.ts}</span>
+        ) : null}
       </div>
-      {hasDetail && open ? <pre className="trace-detail">{props.step.detail}</pre> : null}
+      {hasDetail && open ? (
+        <pre className="mt-1 mb-0.5 overflow-x-auto rounded-md bg-muted px-2.5 py-2 text-xs whitespace-pre-wrap">
+          {props.step.detail}
+        </pre>
+      ) : null}
     </li>
   );
 }

@@ -251,9 +251,15 @@ export function Card(props: { surface: Surface }) {
   };
 
   return (
-    <div className="card" data-id={surfaceId} ref={cardRef}>
-      <div className="card-head">
-        <span className="card-title">{props.surface.title}</span>
+    <div
+      className="card mb-5 overflow-hidden rounded-xl border-[0.5px] border-border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04),0_2px_6px_rgba(0,0,0,0.05)] transition-[box-shadow,border-color] duration-[0.18s] ease-in-out hover:shadow-[0_1px_2px_rgba(0,0,0,0.05),0_6px_16px_rgba(0,0,0,0.07)]"
+      data-id={surfaceId}
+      ref={cardRef}
+    >
+      <div className="flex items-center gap-2.5 px-4 py-[13px]">
+        <span className="card-title text-sm font-[550] tracking-[-0.006em] text-foreground max-[700px]:min-w-0 max-[700px]:flex-[0_1_auto] max-[700px]:truncate">
+          {props.surface.title}
+        </span>
         {/* A new version rebuilds the select, resetting the selection to the
             latest like the live iframe src does. */}
         {props.surface.version > 1 ? (
@@ -286,8 +292,8 @@ export function Card(props: { surface: Surface }) {
             v1
           </Badge>
         )}
-        <span className="sp"></span>
-        <span className="card-meta">{relTime(props.surface.updatedAt)}</span>
+        <span className="flex-1"></span>
+        <span className="text-xs text-faint">{relTime(props.surface.updatedAt)}</span>
       </div>
       {/* Parts render in order, dispatched by kind. The fallback is reserved for
           a kind this viewer build doesn't know — which happens when a long-open
@@ -303,6 +309,7 @@ export function Card(props: { surface: Surface }) {
               <iframe
                 key={i}
                 ref={htmlFrameRef(i)}
+                className="block h-[120px] w-full border-0 border-t-[0.5px] border-border bg-transparent"
                 sandbox="allow-scripts"
                 title={
                   props.surface.parts.length > 1
@@ -332,7 +339,10 @@ export function Card(props: { surface: Surface }) {
             return <CodePart key={i} part={part as CodePartData} />;
           default:
             return (
-              <div className="part-unsupported" key={i}>
+              <div
+                className="border-t-[0.5px] border-border px-3.5 py-2.5 text-xs text-faint"
+                key={i}
+              >
                 Can&rsquo;t show this part — refresh showcase to update the viewer.
               </div>
             );
@@ -409,14 +419,18 @@ function Thread(props: {
   return (
     <div className="thread">
       {list.length ? (
-        <div className="cmts">
+        <div className="border-t-[0.5px] border-border px-3.5 py-1.5">
           {list.map((c) => (
             <CommentRow comment={c} key={c.id} />
           ))}
         </div>
       ) : null}
       {props.collapsible ? (
-        <div className="card-actions">
+        // Pin the footer height and center its content so swapping the action
+        // bar for the inline composer (and back) never changes the footer
+        // height — the card above must not pop when you start or finish a
+        // comment.
+        <div className="flex min-h-11 items-center border-t-[0.5px] border-border px-2 py-[5px] [&>*]:min-w-0 [&>*]:flex-1">
           {!props.readonly && replying ? (
             <Composer
               placeholder={props.placeholder}
@@ -425,7 +439,9 @@ function Thread(props: {
               onCancel={() => setReplying(false)}
             />
           ) : (
-            <div className="actbar">{props.actions?.(() => setReplying(true))}</div>
+            <div className="flex min-h-[34px] items-center gap-0.5">
+              {props.actions?.(() => setReplying(true))}
+            </div>
           )}
         </div>
       ) : !props.readonly ? (
@@ -455,27 +471,43 @@ function CommentRow(props: { comment: ViewComment }) {
     }
   };
   const isUser = props.comment.author === "user" && !props.comment.pending;
+  // `cmt` and `user` are oracle hooks (the e2e suite asserts `.thread .cmt.user`
+  // and `.cmt.user .who` reads "you") — keep them as marker classes alongside
+  // the utilities, never as the styling source.
   return (
     <div
       className={cx(
-        "cmt",
+        "cmt group/cmt flex gap-2 py-[5px] text-[13px]",
         props.comment.author === "user" && "user",
-        !!props.comment.pending && "pending",
+        !!props.comment.pending && "opacity-55",
       )}
       data-cid={props.comment.id}
     >
-      <span className="who">{props.comment.author === "user" ? "you" : props.comment.author}</span>
+      <span
+        className={cx(
+          "who flex-none font-medium",
+          props.comment.author === "user" ? "text-brand" : "text-muted-foreground",
+        )}
+      >
+        {props.comment.author === "user" ? "you" : props.comment.author}
+      </span>
       <SandboxedPart
-        class="cmtframe"
+        class="h-6 min-w-0 flex-1 border-0 bg-transparent"
         body={`<div class="t">${escapeHtml(props.comment.text)}</div>`}
         css={CMT_CSS}
       />
       {isUser ? (
-        <button className="copy" title="Copy for pasting to your agent" onClick={copy}>
+        <button
+          className="flex-none rounded px-1 text-xs text-faint opacity-0 transition-opacity group-hover/cmt:opacity-100 hover:bg-hover hover:text-foreground focus-visible:opacity-100 max-[700px]:opacity-100 [@media(hover:none)]:opacity-100"
+          title="Copy for pasting to your agent"
+          onClick={copy}
+        >
           ⧉
         </button>
       ) : null}
-      <span className="when">{relTime(props.comment.createdAt)}</span>
+      <span className="ml-auto flex-none self-center text-[11.5px] text-faint">
+        {relTime(props.comment.createdAt)}
+      </span>
     </div>
   );
 }

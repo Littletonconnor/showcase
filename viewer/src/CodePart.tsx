@@ -193,6 +193,10 @@ export function CodePart(props: { part: CodePartData }) {
   }, [props.part.language]);
 
   return (
-    <SandboxedPart class="partframe codeframe" body={html} css={CODE_CSS + shikiSchemeCss(mode)} />
+    <SandboxedPart
+      class="block w-full border-0 border-t-[0.5px] border-border bg-transparent"
+      body={html}
+      css={CODE_CSS + shikiSchemeCss(mode)}
+    />
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AgentMark } from "./agentMarks.tsx";
 import { api, isReadonly, layoutMode, relTime, sessionLabel, type SessionRow } from "./api.ts";
 import { routeGet, routeSubscribe, root } from "./host.ts";
@@ -38,11 +38,30 @@ const streamMode = () => layoutMode() === "stream";
 // and returns to the empty board (goHome). A real <button> so it's keyboard- and
 // screen-reader-reachable; it shares the .brand styling with the static header
 // and aside wordmarks.
-function Brand() {
+// The wordmark .brand styling, shared by the aside header, the static header,
+// and the mobile topbar. `aside > .brand` fills the sidebar width so the whole
+// row is a click target; in the topbar it stays content-width — the parent
+// passes that override via `fill`. The default padding (16px 16px 12px) is
+// stripped in the topbar (`p-0`) the same way.
+const BRAND_CLASS =
+  "flex cursor-pointer items-center gap-2 border-0 bg-none px-4 pt-4 pb-3 text-left text-[15px] font-medium tracking-[0.01em] text-inherit hover:text-brand focus-visible:rounded-md focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand";
+
+function Brand(props?: { className?: string }) {
   const live = useBoard((s) => s.live);
   return (
-    <button className="brand" type="button" aria-label="showcase — home" onClick={() => goHome()}>
-      <span className={cx("livedot", live && "on")}></span>showcase
+    <button
+      className={cx(BRAND_CLASS, props?.className)}
+      type="button"
+      aria-label="showcase — home"
+      onClick={() => goHome()}
+    >
+      <span
+        className={cx(
+          "size-[7px] rounded-full transition-colors duration-300",
+          live ? "bg-[#4caf78]" : "bg-faint",
+        )}
+      ></span>
+      showcase
     </button>
   );
 }
@@ -111,12 +130,6 @@ export default function App() {
     document.title = unread.size ? `(${unread.size}) showcase` : "showcase";
   }, [unread]);
 
-  // the mobile drawer slides in via a class on <body> (see styles.css
-  // `body.nav-open`)
-  useEffect(() => {
-    document.body.classList.toggle("nav-open", navOpen);
-  }, [navOpen]);
-
   // sessions bucketed by recency for the sidebar; recomputes whenever the
   // session list changes (incl. the 45s quiet refresh, which keeps the
   // Today/Yesterday split fresh as the day rolls over)
@@ -124,25 +137,41 @@ export default function App() {
 
   return (
     <>
-      <div id="app">
-        <header className="topbar">
+      <div id="app" className="flex h-full max-[700px]:flex-col">
+        {/* phone widths: a slim top bar above the off-canvas drawer */}
+        <header className="hidden flex-none items-center gap-1 border-b-[0.5px] border-border bg-panel px-2.5 py-2 max-[700px]:flex">
           {!streamMode() ? (
             <button
-              className="menu"
+              className="relative cursor-pointer rounded-md px-[9px] py-1.5 text-[17px]/none text-muted-foreground hover:bg-hover hover:text-foreground"
               id="menuBtn"
               aria-label="Show sessions"
               onClick={() => setNavOpen(!navOpen)}
             >
-              ☰<span className={cx("dot", unread.size > 0 && "show")} id="menuDot"></span>
+              ☰
+              <span
+                className={cx(
+                  "absolute top-[3px] right-1 size-[7px] rounded-full bg-brand",
+                  unread.size > 0 ? "block" : "hidden",
+                )}
+                id="menuDot"
+              ></span>
             </button>
           ) : null}
-          <Brand />
+          <Brand className="p-0" />
         </header>
         {!streamMode() ? (
-          <aside>
-            <Brand />
+          <aside
+            className={cx(
+              "flex w-[248px] flex-none flex-col border-r-[0.5px] border-border bg-panel",
+              "max-[700px]:fixed max-[700px]:inset-y-0 max-[700px]:left-0 max-[700px]:z-30 max-[700px]:w-[min(280px,84vw)] max-[700px]:transition-transform max-[700px]:duration-200 max-[700px]:ease-in-out",
+              navOpen
+                ? "max-[700px]:translate-x-0 max-[700px]:shadow-[0_0_32px_rgba(0,0,0,0.25)]"
+                : "max-[700px]:-translate-x-[105%]",
+            )}
+          >
+            <Brand className="w-full" />
             <UpdateBanner />
-            <div id="sessionList">
+            <div id="sessionList" className="flex-1 overflow-y-auto px-2 py-1">
               {sessionGroups.map((group, gi) => (
                 <div key={group.label} style={{ display: "contents" }}>
                   <div
@@ -159,7 +188,7 @@ export default function App() {
                 </div>
               ))}
             </div>
-            <div className="aside-foot">
+            <div className="border-t-[0.5px] border-border px-4 py-3 text-xs text-faint [&_a]:text-muted-foreground [&_a]:no-underline [&_a:hover]:text-foreground">
               <a href="/guide" target="_blank">
                 design guide
               </a>{" "}
@@ -185,6 +214,7 @@ export default function App() {
           </aside>
         ) : null}
         <main
+          className="min-w-0 flex-1 overflow-y-auto max-[700px]:min-h-0"
           onScroll={() => {
             if (nearBottom()) setPillTarget(null);
           }}
@@ -193,13 +223,33 @@ export default function App() {
           <SessionView />
         </main>
       </div>
-      {!streamMode() ? <div id="scrim" onClick={() => setNavOpen(false)}></div> : null}
+      {!streamMode() ? (
+        <div
+          id="scrim"
+          className={cx(
+            "fixed inset-0 z-[25] hidden bg-black/35 transition-opacity duration-200 max-[700px]:block",
+            navOpen
+              ? "max-[700px]:pointer-events-auto max-[700px]:opacity-100"
+              : "pointer-events-none opacity-0",
+          )}
+          onClick={() => setNavOpen(false)}
+        ></div>
+      ) : null}
       {connectOpen ? <ConnectModal onClose={() => setConnectOpen(false)} /> : null}
-      <div id="toast" role="status" aria-live="polite" className={cx(toastShow && "show")}>
+      <div
+        id="toast"
+        role="status"
+        aria-live="polite"
+        className={cx(
+          "pointer-events-none fixed bottom-[26px] left-1/2 z-50 max-w-[600px] -translate-x-1/2 translate-y-2 rounded-[10px] border-[0.5px] border-[var(--border-2)] bg-card px-3.5 py-[9px] text-[13px] opacity-0 shadow-[0_6px_20px_rgba(0,0,0,0.14)] transition-[opacity,transform] duration-200",
+          toastShow && "pointer-events-auto translate-y-0 opacity-100",
+        )}
+      >
         {toastText}
       </div>
       <button
         id="newPill"
+        className="fixed bottom-16 left-1/2 z-40 -translate-x-1/2 cursor-pointer rounded-full border-[0.5px] border-brand bg-brand-subtle px-3.5 py-1.5 text-[12.5px] text-brand shadow-[0_4px_14px_rgba(0,0,0,0.12)]"
         hidden={pillTarget === null}
         onClick={() => {
           if (pillTarget)
@@ -222,11 +272,14 @@ function UpdateBanner() {
   const v = updateNoticeFrom(versionInfo, dismissedUpdate);
   if (!v) return null;
   return (
-    <div className="update-banner" role="status">
-      <div className="update-head">
+    <div
+      className="mx-3 mt-0 mb-2 rounded-[10px] border-[0.5px] border-border bg-brand-subtle px-[11px] py-[9px] text-[12.5px]"
+      role="status"
+    >
+      <div className="flex items-center gap-1">
         New version <strong>{v.latest}</strong>
         <button
-          className="x"
+          className="ml-auto cursor-pointer rounded-[5px] px-1 py-0.5 text-xs text-muted-foreground hover:bg-hover hover:text-foreground"
           aria-label={`Dismiss update notice for ${v.latest}`}
           onClick={() => dismissUpdate(v.latest!)}
         >
@@ -235,14 +288,14 @@ function UpdateBanner() {
       </div>
       {v.upgradeCommand ? (
         <button
-          className="update-cmd"
+          className="mt-1.5 block w-full cursor-pointer rounded-md border-[0.5px] border-border bg-card px-[7px] py-1 text-left text-[11.5px] text-muted-foreground hover:border-[var(--border-2)] hover:text-foreground"
           title="Copy upgrade command"
           onClick={() => {
             navigator.clipboard.writeText(v.upgradeCommand!);
             toast("Copied: " + v.upgradeCommand);
           }}
         >
-          <code>{v.upgradeCommand}</code> ⧉
+          <code className="font-mono">{v.upgradeCommand}</code> ⧉
         </button>
       ) : null}
     </div>
@@ -257,17 +310,28 @@ function WhatsNewCard() {
   const v = updateNoticeFrom(versionInfo, dismissedUpdate);
   if (!v?.notes) return null;
   return (
-    <div className="card" id="whatsNew">
-      <div className="card-head">
-        <span className="card-title">What&rsquo;s new in {v.latest}</span>
-        <span className="card-meta">update available</span>
-        <span className="sp"></span>
-        <button className="act del" onClick={() => dismissUpdate(v.latest!)}>
+    <div
+      className="card group mb-5 overflow-hidden rounded-xl border-[0.5px] border-border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04),0_2px_6px_rgba(0,0,0,0.05)] transition-[box-shadow,border-color] duration-[0.18s] ease-in-out hover:shadow-[0_1px_2px_rgba(0,0,0,0.05),0_6px_16px_rgba(0,0,0,0.07)]"
+      id="whatsNew"
+    >
+      <div className="flex items-center gap-2.5 px-4 py-[13px]">
+        <span className="card-title text-sm font-[550] tracking-[-0.006em] text-foreground">
+          What&rsquo;s new in {v.latest}
+        </span>
+        <span className="text-xs text-faint">update available</span>
+        <span className="flex-1"></span>
+        <button
+          className="cursor-pointer rounded-md px-[7px] py-[3px] text-xs text-faint opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-hover hover:text-foreground max-[700px]:opacity-100 [@media(hover:none)]:opacity-100"
+          onClick={() => dismissUpdate(v.latest!)}
+        >
           dismiss
         </button>
       </div>
+      {/* renderNotes returns trusted, server-authored release-notes markup (not
+          agent content) — styled here via descendant utilities since the inner
+          elements come from an HTML string. */}
       <div
-        className="update-notes"
+        className="px-4 pt-1.5 pb-3 text-[13.5px]/[1.55] [&_a]:text-brand [&_code]:rounded [&_code]:bg-hover [&_code]:px-1 [&_code]:py-px [&_code]:font-mono [&_code]:text-xs [&_h4]:mt-3 [&_h4]:mb-1 [&_h4]:text-[13px] [&_h4]:font-medium [&_li]:my-[3px] [&_ul]:my-1 [&_ul]:pl-5"
         dangerouslySetInnerHTML={{ __html: renderNotes(v.notes!) }}
       ></div>
     </div>
@@ -436,16 +500,19 @@ function SessionView() {
   const current = sessions.find((x) => x.id === selected);
   return (
     <div id="sessionView" hidden={sessions.length === 0}>
-      <div className="session-head">
+      <div className="sticky top-0 z-[5] flex items-baseline gap-2.5 border-b-[0.5px] border-border bg-background px-7 pt-3.5 pb-2.5 max-[700px]:px-4 max-[700px]:pt-3 max-[700px]:pb-2.5">
         <SessionTitle current={current} />
-        <span className="meta" id="sessMeta">
+        <span className="text-[12.5px] text-faint" id="sessMeta">
           {current ? `${current.agent} · started ${relTime(current.createdAt)}` : ""}
         </span>
       </div>
-      <div id="stream">
+      <div
+        id="stream"
+        className="mx-auto max-w-[860px] px-7 pt-[22px] pb-[120px] max-[700px]:px-3.5 max-[700px]:pt-4 max-[700px]:pb-[120px]"
+      >
         <WhatsNewCard />
         {!streamLoading && surfaces.length === 0 ? (
-          <div className="empty" id="streamEmpty">
+          <div className="px-6 py-[90px] text-center text-faint" id="streamEmpty">
             No surfaces in this session yet.
           </div>
         ) : null}
@@ -480,6 +547,7 @@ function SessionTitle(props: { current: SessionRow | undefined }) {
   return (
     <span
       id="sessTitle"
+      className="min-w-10 rounded-md px-1 text-base font-medium outline-none hover:bg-hover focus:bg-card focus:shadow-[0_0_0_0.5px_var(--border-2)]"
       ref={elRef}
       contentEditable={!isReadonly()}
       suppressContentEditableWarning
@@ -513,11 +581,15 @@ const TRY_SNIP =
 function Onboard(props: { onConnect: () => void }) {
   const sessions = useBoard((s) => s.sessions);
   return (
-    <div id="onboard" hidden={sessions.length > 0}>
+    <div
+      id="onboard"
+      className="mx-auto max-w-[660px] px-7 py-[72px] max-[700px]:px-[18px] max-[700px]:py-10 [&_h1]:mt-0 [&_h1]:mb-1.5 [&_h1]:text-[21px] [&_h1]:font-medium [&_h2]:mt-[26px] [&_h2]:mb-2 [&_h2]:text-[13px] [&_h2]:font-medium [&_h2]:tracking-[0.02em] [&_h2]:text-muted-foreground [&_h2]:lowercase"
+      hidden={sessions.length > 0}
+    >
       {!isReadonly() ? (
         <>
           <h1>The show hasn&rsquo;t started yet</h1>
-          <p className="sub">
+          <p className="mb-8 text-[14.5px] text-muted-foreground">
             showcase is a live surface where coding agents draw HTML snippets — diagrams, sketches,
             explainers — while they work in your terminal.
           </p>
@@ -526,14 +598,19 @@ function Onboard(props: { onConnect: () => void }) {
           <h2>or try it yourself</h2>
           <Snip text={TRY_SNIP} />
           <h2>using claude code?</h2>
-          <button className="connect-btn" onClick={props.onConnect}>
+          <button
+            className="cursor-pointer rounded-lg border-[0.5px] border-border bg-card px-3.5 py-2 text-[13px] text-foreground hover:border-muted-foreground"
+            onClick={props.onConnect}
+          >
             Connect Claude Code →
           </button>
         </>
       ) : (
         <>
           <h1>Nothing here yet</h1>
-          <p className="sub">This showcase board does not have any sessions yet.</p>
+          <p className="mb-8 text-[14.5px] text-muted-foreground">
+            This showcase board does not have any sessions yet.
+          </p>
         </>
       )}
     </div>
@@ -549,41 +626,48 @@ const INSTALL_CMD = "/plugin install showcase@showcase";
 
 function ConnectModal(props: { onClose: () => void }) {
   return (
-    <div className="modal-backdrop" onClick={props.onClose}>
+    <div
+      className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/[0.42] px-5 pt-[7vh] pb-5"
+      onClick={props.onClose}
+    >
       <div
-        className="modal"
+        className="w-full max-w-[560px] rounded-[14px] border-[0.5px] border-border bg-background px-6 pt-[22px] pb-[26px] shadow-[0_16px_48px_rgba(0,0,0,0.35)] [&_code]:rounded [&_code]:bg-card [&_code]:px-[5px] [&_code]:py-px [&_code]:font-mono [&_code]:text-xs"
         role="dialog"
         aria-modal="true"
         aria-label="Connect Claude Code"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="modal-head">
-          <h2>Connect Claude Code</h2>
-          <button className="x" aria-label="Close" onClick={props.onClose}>
+        <div className="mb-2.5 flex items-center">
+          <h2 className="m-0 flex-1 text-[17px] font-semibold">Connect Claude Code</h2>
+          <button
+            className="cursor-pointer px-1.5 py-0.5 text-sm text-faint hover:text-foreground"
+            aria-label="Close"
+            onClick={props.onClose}
+          >
             ✕
           </button>
         </div>
-        <p className="sub">
+        <p className="mb-[18px] text-sm/[1.55] text-muted-foreground">
           Install the showcase plugin so your comments reach the agent on their own. A background
           monitor streams each comment to Claude Code as a notification — no copy-pasting, no
           re-arming a watcher.
         </p>
-        <h3>1 · add the marketplace</h3>
+        <ModalSection>1 · add the marketplace</ModalSection>
         <Snip text={MARKETPLACE_CMD} />
-        <h3>2 · install the plugin</h3>
+        <ModalSection>2 · install the plugin</ModalSection>
         <Snip text={INSTALL_CMD} />
-        <p className="note">
+        <p className="mt-3 text-[13px]/[1.55] text-muted-foreground">
           Run both inside Claude Code. On install it asks for your <strong>Showcase URL</strong>{" "}
           (default <code>http://localhost:8229</code>, or your deployed instance) and an optional
           token.
         </p>
-        <h3>what it runs</h3>
-        <p className="note">
+        <ModalSection>what it runs</ModalSection>
+        <p className="mt-3 text-[13px]/[1.55] text-muted-foreground">
           The plugin connects the showcase MCP server and runs <code>showcase watch</code> against
           your board as a background process — unsandboxed, the same trust level as hooks, with no
           per-comment prompt. Comments are delivered to the agent exactly once.
         </p>
-        <p className="caveat">
+        <p className="mt-[18px] border-t-[0.5px] border-border pt-3.5 text-[13px]/[1.55] text-faint">
           Requires Claude Code ≥ 2.1.105. It&rsquo;s two commands, not a true one-click — Claude
           Code has no browser-to-terminal handoff yet.
         </p>
@@ -592,13 +676,22 @@ function ConnectModal(props: { onClose: () => void }) {
   );
 }
 
+// The modal's lowercase section heading (was `.modal h3`).
+function ModalSection(props: { children: ReactNode }) {
+  return (
+    <h3 className="mt-[18px] mb-2 text-xs font-medium tracking-[0.02em] text-muted-foreground lowercase">
+      {props.children}
+    </h3>
+  );
+}
+
 function Snip(props: { text: string }) {
   const [label, setLabel] = useState("copy");
   return (
-    <div className="snip">
+    <div className="relative rounded-[10px] border-[0.5px] border-border bg-card py-3 pr-11 pl-3.5 font-mono text-[12.5px]/[1.6] break-all whitespace-pre-wrap text-foreground">
       {props.text}
       <button
-        className="copy"
+        className="absolute top-2 right-2 cursor-pointer rounded-md border-[0.5px] border-border bg-background px-2 py-[3px] font-sans text-[11.5px] text-faint hover:text-foreground"
         onClick={() => {
           navigator.clipboard.writeText(props.text);
           setLabel("copied");

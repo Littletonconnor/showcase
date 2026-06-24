@@ -125,11 +125,15 @@ export function DiffPart(props: { part: DiffPartData }) {
   }, [props.part, activeTheme, dark]);
 
   return (
-    <div className="diffpart">
+    <div className="border-t-[0.5px] border-border">
       {error ? (
-        <div className="diff-error">Couldn't render diff — {error}</div>
+        <div className="px-3.5 py-2.5 text-xs text-faint">Couldn't render diff — {error}</div>
       ) : (
-        <SandboxedPart class="partframe diffframe" body={body ?? ""} css={DIFF_CSS} />
+        <SandboxedPart
+          class="block w-full border-0 bg-transparent"
+          body={body ?? ""}
+          css={DIFF_CSS}
+        />
       )}
     </div>
   );

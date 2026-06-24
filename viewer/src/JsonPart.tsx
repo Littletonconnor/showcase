@@ -3,8 +3,10 @@ import type { JsonPart as JsonPartData } from "./api.ts";
 
 export function JsonPart(props: { part: JsonPartData }) {
   return (
-    <div className="jsonpart">
-      <JsonNode value={props.part.data} depth={0} />
+    <div className="overflow-x-auto border-t-[0.5px] border-border px-3.5 pt-2.5 pb-3 font-mono text-[13px]/[1.5]">
+      <div className="whitespace-pre-wrap">
+        <JsonNode value={props.part.data} depth={0} />
+      </div>
     </div>
   );
 }
@@ -35,7 +37,7 @@ function Container(props: { value: object; depth: number }) {
 
   if (count === 0) {
     return (
-      <span className="json-empty">
+      <span className="text-faint">
         {openCh}
         {closeCh}
       </span>
@@ -44,27 +46,30 @@ function Container(props: { value: object; depth: number }) {
 
   return (
     <>
-      <span className="json-toggle" onClick={() => setOpen(!open)}>
+      <span
+        className="cursor-pointer whitespace-nowrap text-faint select-none hover:text-muted-foreground"
+        onClick={() => setOpen(!open)}
+      >
         {open ? "▾" : "▸"} {openCh}
       </span>
       {open ? (
-        <span className="json-children">
+        <span className="block pl-[18px]">
           {entries.map(([key, val], i) => (
-            <span className="json-child" key={key}>
+            <span className="block" key={key}>
               {!isArray ? (
                 <>
-                  <span className="json-key">"{key}"</span>
-                  <span className="json-colon">: </span>
+                  <span className="text-foreground">"{key}"</span>
+                  <span className="text-faint">: </span>
                 </>
               ) : null}
               <JsonNode value={val} depth={props.depth + 1} />
-              {i < entries.length - 1 ? <span className="json-comma">,</span> : null}
+              {i < entries.length - 1 ? <span className="text-faint">,</span> : null}
             </span>
           ))}
-          <span className="json-close">{closeCh}</span>
+          <span className="block">{closeCh}</span>
         </span>
       ) : (
-        <span className="json-summary">
+        <span className="text-faint">
           {" "}
           {summary} {closeCh}
         </span>
@@ -74,12 +79,11 @@ function Container(props: { value: object; depth: number }) {
 }
 
 function Primitive(props: { value: unknown }) {
-  const type = (): string => {
-    if (props.value === null) return "null";
-    if (typeof props.value === "string") return "string";
-    if (typeof props.value === "number") return "number";
-    if (typeof props.value === "boolean") return "boolean";
-    return "other";
+  const className = (): string => {
+    if (props.value === null) return "text-faint";
+    if (typeof props.value === "string") return "text-muted-foreground";
+    if (typeof props.value === "number" || typeof props.value === "boolean") return "text-brand";
+    return "";
   };
   const display = (): string => {
     if (props.value === null) return "null";
@@ -87,5 +91,5 @@ function Primitive(props: { value: unknown }) {
     return String(props.value);
   };
 
-  return <span className={`json-value json-${type()}`}>{display()}</span>;
+  return <span className={`break-all whitespace-pre-wrap ${className()}`}>{display()}</span>;
 }

@@ -8,21 +8,25 @@ export function ImagePart(props: { part: ImagePartData }) {
   const [failed, setFailed] = useState(false);
   const src = `/a/${props.part.assetId}`;
   return (
-    <div className="imagepart">
+    <div className="border-t-[0.5px] border-border px-3.5 py-3">
       {failed ? (
-        <div className="asset-gone">Image unavailable — it may have been evicted.</div>
+        <div className="px-3.5 py-2.5 text-xs text-faint">
+          Image unavailable — it may have been evicted.
+        </div>
       ) : (
         <>
           <a href={src} target="_blank" rel="noopener">
             <img
-              className="asset-img"
+              className="block h-auto max-w-full rounded-lg border-[0.5px] border-border"
               src={src}
               alt={props.part.alt ?? props.part.caption ?? "uploaded image"}
               loading="lazy"
               onError={() => setFailed(true)}
             />
           </a>
-          {props.part.caption ? <div className="asset-caption">{props.part.caption}</div> : null}
+          {props.part.caption ? (
+            <div className="mt-1.5 text-xs text-muted-foreground">{props.part.caption}</div>
+          ) : null}
         </>
       )}
     </div>

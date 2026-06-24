@@ -145,16 +145,18 @@ export function MermaidPart(props: { part: MermaidPartData }) {
   }, [props.part.mermaid, activeTheme, mode]);
 
   return (
-    <div className="mermaidpart">
+    <div className="border-t-[0.5px] border-border">
       {error ? (
-        <div className="mermaid-error">
+        <div className="px-3.5 py-2.5 text-left text-xs text-faint">
           Couldn&rsquo;t render diagram — {error}
-          <pre>{props.part.mermaid}</pre>
+          <pre className="mt-1.5 mb-0 overflow-auto rounded-lg border-[0.5px] border-border bg-muted px-2.5 py-2 font-mono text-xs text-foreground">
+            {props.part.mermaid}
+          </pre>
         </div>
       ) : (
         // The SVG string is produced here (trusted), then parsed inside an
         // opaque-origin iframe — a second boundary behind mermaid's DOMPurify.
-        <SandboxedPart class="partframe mermaidframe" body={svg} css={MERMAID_CSS} />
+        <SandboxedPart class="block w-full border-0 bg-transparent" body={svg} css={MERMAID_CSS} />
       )}
     </div>
   );
