@@ -11,7 +11,7 @@ import { JsonFileStore } from "./storage.ts";
 let root = join(dirname(fileURLToPath(import.meta.url)), "..");
 if (basename(root) === "dist") root = join(root, "..");
 
-const [viewerHtml, guideMarkdown, setupText, agentHowtoText, pkgJson] = await Promise.all([
+const [viewerHtml, guideMarkdown, setupText, agentHowtoText] = await Promise.all([
   readFile(join(root, "viewer", "dist", "index.html"), "utf8").catch(() => {
     console.error("viewer build missing — run `npm run build:viewer` first");
     return process.exit(1);
@@ -19,7 +19,6 @@ const [viewerHtml, guideMarkdown, setupText, agentHowtoText, pkgJson] = await Pr
   readFile(join(root, "guide", "DESIGN_GUIDE.md"), "utf8"),
   readFile(join(root, "guide", "AGENT_SETUP.md"), "utf8"),
   readFile(join(root, "guide", "AGENT_HOWTO.md"), "utf8"),
-  readFile(join(root, "package.json"), "utf8"),
 ]);
 
 const pr = process.env.SHOWCASE_PUBLIC_READ;
@@ -33,10 +32,10 @@ const app = createApp({
   agentHowtoText,
   authToken: process.env.SHOWCASE_TOKEN,
   publicRead,
-  // SHOWCASE_VERSION fakes the running version (manual testing of the
-  // notice); set it to the empty string to disable the update check
-  version: process.env.SHOWCASE_VERSION ?? (JSON.parse(pkgJson) as { version: string }).version,
-  upgradeCommand: "npm install -g showcase",
+  // Update check is off for this personal fork — there is no published
+  // "showcase" package to compare against (the public npm package of that
+  // name is unrelated). Set SHOWCASE_VERSION to re-enable for manual testing.
+  version: process.env.SHOWCASE_VERSION ?? "",
 });
 
 const port = Number(process.env.PORT ?? 8229);
