@@ -12,7 +12,7 @@ how to pick up work autonomously. Architecture detail lives in `AGENTS.md`.
 A live visual surface for AI: an agent publishes **surfaces** (cards built from
 typed parts — html, markdown, mermaid, diff, terminal, image, json, code, trace)
 and they render in a browser you watch and comment on. Today the agent lives in
-your editor (Cursor / Claude Code) and reaches *out* to showcase. The roadmap
+your editor (Cursor / Claude Code) and reaches _out_ to showcase. The roadmap
 (section 6, Pillar A) turns showcase into a **local Claude chat app** where the
 AI runs server-side and surfaces are its inline visual artifacts.
 
@@ -41,16 +41,17 @@ node bin/showcase.js demo   # seed example sessions to look around
 Or directly: `node bin/showcase.js mermaid flow.mmd --title "Flow"` (also
 `publish`, `diff`, `markdown`, `code`, `image`, …).
 
-**Iterate** — the agent calls `update_surface {id, parts}` → *same card, new
-version* (the `v2 ⌄` Select flips versions). You comment under any card → it
+**Iterate** — the agent calls `update_surface {id, parts}` → _same card, new
+version_ (the `v2 ⌄` Select flips versions). You comment under any card → it
 reaches the agent (section 4).
 
 **Both editors are wired** to the same `showcase` MCP server (stdio, proxies the
 local API), pinned to the v24 node binary:
+
 - Claude Code — user scope in `~/.claude.json`, `SHOWCASE_AGENT=claude-code`.
 - Cursor — global `~/.cursor/mcp.json`, `SHOWCASE_AGENT=cursor`.
-Only requirement: keep `npm run serve` running, then talk to either agent.
-Restart the editor after MCP config changes.
+  Only requirement: keep `npm run serve` running, then talk to either agent.
+  Restart the editor after MCP config changes.
 
 ---
 
@@ -81,14 +82,15 @@ Restart the editor after MCP config changes.
 **The server never pushes to your editor — the agent pulls.** A comment you type
 is `POST /api/comments` with `author=user`, stored on the surface → its session.
 The agent receives it when it next touches showcase:
+
 1. **Piggyback** — its next publish/update response carries `userFeedback[]`.
 2. **Blocking wait** — `wait_for_feedback` long-polls its session for
    `author=user` comments.
 3. Background watch (CLI).
-Per-session, exactly-once (an `agentSeq` cursor). **Gotcha:** after a turn the
-agent isn't listening — the reliable pattern is *comment → tell the agent to
-check*. Reducing this friction is a roadmap item (Pillar E). Surface URLs handed
-to humans are the viewer deep link (`/session/:sid/s/:id`), not `/s/:id`.
+   Per-session, exactly-once (an `agentSeq` cursor). **Gotcha:** after a turn the
+   agent isn't listening — the reliable pattern is _comment → tell the agent to
+   check_. Reducing this friction is a roadmap item (Pillar E). Surface URLs handed
+   to humans are the viewer deep link (`/session/:sid/s/:id`), not `/s/:id`.
 
 ---
 
@@ -132,7 +134,7 @@ rough first-cut estimate, not a commitment.
 The flagship direction. A polished, claude.ai-style chat in the viewer where the
 AI runs **server-side** and emits surfaces as inline artifacts.
 
-- **Problem:** today you can only *watch* an editor agent. You want to *talk* to
+- **Problem:** today you can only _watch_ an editor agent. You want to _talk_ to
   an AI in the browser — create chats, see history, delete them — with a
   beautifully designed interface, and have surfaces be its visual output.
 - **Approach (server-hosted agent):**
@@ -149,7 +151,7 @@ AI runs **server-side** and emits surfaces as inline artifacts.
     web search/fetch (research) and bash/edit (local work — heed the security
     notes in the `claude-api` tool-use docs; sandbox/allowlist).
   - **The injection caveat is real:** this does NOT drive your Cursor/Claude Code
-    *app* session — it's its own local Claude. (A separate, lesser "bridge to the
+    _app_ session — it's its own local Claude. (A separate, lesser "bridge to the
     editor agent via the comment loop" is possible but constrained; not this.)
 - **Acceptance:** type a message in the browser → streamed Claude response →
   agent publishes a surface that renders inline in the thread → you reply and it
@@ -164,11 +166,11 @@ AI runs **server-side** and emits surfaces as inline artifacts.
 - **Static export** — `showcase export <session>` → one self-contained read-only
   `.html` to send anyone. The viewer is already single-file; bake a session
   snapshot in via the `host.ts` seam, disable the live/comment bits.
-  *Acceptance:* the file opens offline and renders the session. *Effort:* ~1–2h.
+  _Acceptance:_ the file opens offline and renders the session. _Effort:_ ~1–2h.
 - **Present mode** — full-bleed, arrow-key deck nav over a session's cards (builds
-  on the `slides` kit). *Effort:* ~1–2h.
+  on the `slides` kit). _Effort:_ ~1–2h.
 - **Live share** — re-add a Cloudflare Workers deploy, or a `cloudflared` tunnel,
-  so others watch live / it works on a phone. *Effort:* Workers ~2–3h; tunnel ~20m.
+  so others watch live / it works on a phone. _Effort:_ Workers ~2–3h; tunnel ~20m.
 
 ### Pillar C — Richer explainers (mostly kits)
 
@@ -176,18 +178,18 @@ Kits are the cheap extension point: a registry entry in `server/kits.ts` + a
 guide bullet, no new part kind. The html-part CSP already allowlists
 jsdelivr/cdnjs/unpkg, so CDN libs work today.
 
-- **KaTeX kit** (math) and a **chart kit** (Vega-Lite / Chart.js). *Effort:*
+- **KaTeX kit** (math) and a **chart kit** (Vega-Lite / Chart.js). _Effort:_
   ~30–45m each.
 - **Drill-down loop** — html parts can already call `sendPrompt()`; make
   "explain this deeper" buttons idiomatic so an interactive explainer asks the
-  agent to go further in place. *Effort:* ~1–2h + a guide pattern.
+  agent to go further in place. _Effort:_ ~1–2h + a guide pattern.
 
 ### Pillar D — Personal knowledge base
 
 - **Persistent / pinned surfaces** — a "library" of diagrams that survives the
-  session; a visual wiki for "understand a system." *Effort:* ~2–4h (store +
+  session; a visual wiki for "understand a system." _Effort:_ ~2–4h (store +
   a pinned view).
-- **Reading/learning mode** — focused, one-explainer-at-a-time view. *Effort:* ~2h.
+- **Reading/learning mode** — focused, one-explainer-at-a-time view. _Effort:_ ~2h.
 
 ### Pillar E — Loop + foundation (keeps everything else safe)
 
