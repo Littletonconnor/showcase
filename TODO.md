@@ -315,7 +315,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
 
 #### Tech-debt sweeps (independent, low-risk; good warm-ups)
 
-- [ ] **F16 — Guide freshness.** Sweep `guide/AGENT_HOWTO.md` + `DESIGN_GUIDE.md`
+- [x] **F16 — Guide freshness.** Sweep `guide/AGENT_HOWTO.md` + `DESIGN_GUIDE.md`
       for stale wording left by the theming/timeline removal (e.g. the trace part
       described as a "timeline").
 - [ ] **F17 — Theme engine simplification (optional).** The multi-theme registry

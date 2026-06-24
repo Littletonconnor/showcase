@@ -36,9 +36,9 @@ a `kind`:
 - **`image`** — an uploaded image, referenced by `assetId` (see Uploads below),
   rendered natively by the viewer. Reach for it to show a screenshot or a
   generated picture.
-- **`trace`** — an agent trace rendered as a step timeline beside the surface.
-  Steps can travel inline, or live in an uploaded file you reference and offer
-  for download.
+- **`trace`** — an agent trace rendered as a vertical step list beside the
+  surface. Steps can travel inline, or live in an uploaded file you reference
+  and offer for download.
 - **`terminal`** — monospace terminal output, rendered natively as a terminal
   window. The `text` travels inline and may carry ANSI SGR escapes (colors,
   bold, italic, underline); the viewer renders those and HTML-escapes the rest.

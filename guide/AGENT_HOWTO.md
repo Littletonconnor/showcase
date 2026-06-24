@@ -14,9 +14,11 @@ A surface is a card built from ordered **parts**, each with a `kind`:
 - **`diff`** — a patch you send as _data_, rendered natively by the trusted viewer as a syntax-highlighted code review.
 - **`terminal`** — monospace/ANSI output.
 - **`image`** — an uploaded image asset.
-- **`trace`** — agent-run steps rendered as a timeline.
+- **`trace`** — agent-run steps rendered as a vertical step list.
+- **`code`** — a source file rendered with syntax highlighting.
+- **`json`** — a JSON value rendered as a collapsible tree.
 
-A surface can combine parts — `[html, diff]` is a diagram with its code review in one card. html parts are sandboxed (you author the markup); diff/markdown/mermaid/terminal/image/trace parts are data rendered by the trusted viewer.
+A surface can combine parts — `[html, diff]` is a diagram with its code review in one card. html parts are sandboxed (you author the markup); diff/markdown/mermaid/terminal/image/trace/code/json parts are data rendered by the trusted viewer.
 
 ## Before your first publish
 
