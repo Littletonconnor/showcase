@@ -46,6 +46,19 @@
   --color-brand: var(--accent);
   --color-brand-subtle: var(--accent-bg);
 
+  /* shadcn Sidebar tokens, bridged onto showcase's theme vars so the rail
+     re-themes with the board (server/themes.ts stays the single source). The
+     sidebar reads as the --panel chrome surface; its accent is the same hover
+     wash + brand the bespoke sidebar used. No hard-coded palette here. */
+  --color-sidebar: var(--panel);
+  --color-sidebar-foreground: var(--text);
+  --color-sidebar-primary: var(--accent);
+  --color-sidebar-primary-foreground: #ffffff;
+  --color-sidebar-accent: var(--hover);
+  --color-sidebar-accent-foreground: var(--text);
+  --color-sidebar-border: var(--border);
+  --color-sidebar-ring: var(--accent);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

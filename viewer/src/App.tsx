@@ -4,6 +4,21 @@ import { api, isReadonly, layoutMode, relTime, sessionLabel, type SessionRow } f
 import { routeGet, routeSubscribe, root } from "./host.ts";
 import { Card, cardEls, frameForSource } from "./Card.tsx";
 import { cx } from "./cx.ts";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from "@/components/ui/sidebar";
 import { applyFrameHeight } from "./SandboxedPart.tsx";
 import { renderNotes } from "./notes.ts";
 import { initTheme } from "./theme.ts";
@@ -22,12 +37,19 @@ import {
   selectAdjacent,
   selectedNow,
   sessionsNow,
-  setNavOpen,
   setPillTarget,
   toast,
   updateNoticeFrom,
   useBoard,
 } from "./state.ts";
+
+// The shadcn SidebarProvider persists its open/collapsed state to a
+// `sidebar_state` cookie; read it back on mount so the rail restores across
+// reloads (defaultOpen feeds the provider's initial state).
+function readSidebarCookie(): boolean {
+  const m = document.cookie.match(/(?:^|;\s*)sidebar_state=(true|false)/);
+  return m ? m[1] === "true" : true;
+}
 
 // Stream-only layout: no sidebar, session list, or session chrome — just the
 // current session's stream. Driven by the self-hosted public-read "session"
@@ -36,15 +58,11 @@ const streamMode = () => layoutMode() === "stream";
 
 // The wordmark, doubling as a home link: clicking it clears the current session
 // and returns to the empty board (goHome). A real <button> so it's keyboard- and
-// screen-reader-reachable; it shares the .brand styling with the static header
-// and aside wordmarks.
-// The wordmark .brand styling, shared by the aside header, the static header,
-// and the mobile topbar. `aside > .brand` fills the sidebar width so the whole
-// row is a click target; in the topbar it stays content-width — the parent
-// passes that override via `fill`. The default padding (16px 16px 12px) is
-// stripped in the topbar (`p-0`) the same way.
+// screen-reader-reachable. The live dot stays visible when the rail collapses to
+// the icon width; the wordmark text fades out (the `group-data-[collapsible=icon]`
+// context comes from the Sidebar primitive).
 const BRAND_CLASS =
-  "flex cursor-pointer items-center gap-2 border-0 bg-none px-4 pt-4 pb-3 text-left text-[15px] font-medium tracking-[0.01em] text-inherit hover:text-brand focus-visible:rounded-md focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand";
+  "flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-left text-[15px] font-medium tracking-[0.01em] text-inherit transition-colors hover:text-brand focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand";
 
 function Brand(props?: { className?: string }) {
   const live = useBoard((s) => s.live);
@@ -57,11 +75,11 @@ function Brand(props?: { className?: string }) {
     >
       <span
         className={cx(
-          "size-[7px] rounded-full transition-colors duration-300",
+          "size-[7px] flex-none rounded-full transition-colors duration-300",
           live ? "bg-[#4caf78]" : "bg-faint",
         )}
       ></span>
-      showcase
+      <span className="truncate group-data-[collapsible=icon]:hidden">showcase</span>
     </button>
   );
 }
@@ -70,7 +88,6 @@ export default function App() {
   const [connectOpen, setConnectOpen] = useState(false);
   const sessions = useBoard((s) => s.sessions);
   const unread = useBoard((s) => s.unread);
-  const navOpen = useBoard((s) => s.navOpen);
   const pillTarget = useBoard((s) => s.pillTarget);
   const toastShow = useBoard((s) => s.toastShow);
   const toastText = useBoard((s) => s.toastText);
@@ -135,70 +152,62 @@ export default function App() {
   // Today/Yesterday split fresh as the day rolls over)
   const sessionGroups = useMemo(() => groupSessions(sessions, new Date()), [sessions]);
 
+  // Stream mode has no chrome — just the current session's stream in a plain
+  // scroll container. The Sidebar layout is reserved for the full board.
+  if (streamMode()) {
+    return (
+      <>
+        <main
+          className="h-full min-w-0 overflow-y-auto"
+          onScroll={() => {
+            if (nearBottom()) setPillTarget(null);
+          }}
+        >
+          <SessionView />
+        </main>
+        <Toast show={toastShow} text={toastText} />
+        <NewSurfacePill target={pillTarget} />
+      </>
+    );
+  }
+
   return (
     <>
-      <div id="app" className="flex h-full max-[700px]:flex-col">
-        {/* phone widths: a slim top bar above the off-canvas drawer */}
-        <header className="hidden flex-none items-center gap-1 border-b-[0.5px] border-border bg-panel px-2.5 py-2 max-[700px]:flex">
-          {!streamMode() ? (
-            <button
-              className="relative cursor-pointer rounded-md px-[9px] py-1.5 text-[17px]/none text-muted-foreground hover:bg-hover hover:text-foreground"
-              id="menuBtn"
-              aria-label="Show sessions"
-              onClick={() => setNavOpen(!navOpen)}
-            >
-              ☰
-              <span
-                className={cx(
-                  "absolute top-[3px] right-1 size-[7px] rounded-full bg-brand",
-                  unread.size > 0 ? "block" : "hidden",
-                )}
-                id="menuDot"
-              ></span>
-            </button>
-          ) : null}
-          <Brand className="p-0" />
-        </header>
-        {!streamMode() ? (
-          <aside
-            className={cx(
-              "flex w-[248px] flex-none flex-col border-r-[0.5px] border-border bg-panel",
-              "max-[700px]:fixed max-[700px]:inset-y-0 max-[700px]:left-0 max-[700px]:z-30 max-[700px]:w-[min(280px,84vw)] max-[700px]:transition-transform max-[700px]:duration-200 max-[700px]:ease-in-out",
-              navOpen
-                ? "max-[700px]:translate-x-0 max-[700px]:shadow-[0_0_32px_rgba(0,0,0,0.25)]"
-                : "max-[700px]:-translate-x-[105%]",
-            )}
-          >
-            <Brand className="w-full" />
+      <SidebarProvider defaultOpen={readSidebarCookie()}>
+        <Sidebar collapsible="icon">
+          <SidebarHeader className="gap-1">
+            <div className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">
+              <Brand className="min-w-0 flex-1" />
+              <SidebarTrigger className="size-7 flex-none text-muted-foreground hover:text-foreground" />
+            </div>
             <UpdateBanner />
-            <div id="sessionList" className="flex-1 overflow-y-auto px-2 py-1">
-              {sessionGroups.map((group, gi) => (
-                <div key={group.label} style={{ display: "contents" }}>
-                  <div
-                    className={cx(
-                      "px-2.5 pb-1 text-[10.5px] font-medium uppercase tracking-[0.06em] text-faint",
-                      gi === 0 ? "pt-1.5" : "pt-3",
-                    )}
-                  >
-                    {group.label}
-                  </div>
+          </SidebarHeader>
+          <SidebarContent id="sessionList" className="px-1.5">
+            {sessionGroups.map((group) => (
+              <SidebarGroup key={group.label} className="py-1.5">
+                <SidebarGroupLabel className="px-2 text-[10.5px] font-medium tracking-[0.06em] text-faint uppercase">
+                  {group.label}
+                </SidebarGroupLabel>
+                <SidebarMenu>
                   {group.sessions.map((s) => (
                     <SessionItem session={s} key={s.id} />
                   ))}
-                </div>
-              ))}
-            </div>
-            <div className="border-t-[0.5px] border-border px-4 py-3 text-xs text-faint [&_a]:text-muted-foreground [&_a]:no-underline [&_a:hover]:text-foreground">
+                </SidebarMenu>
+              </SidebarGroup>
+            ))}
+          </SidebarContent>
+          <SidebarFooter className="border-t-[0.5px] border-border px-3 py-3 text-xs text-faint group-data-[collapsible=icon]:hidden [&_a]:text-muted-foreground [&_a]:no-underline [&_a:hover]:text-foreground">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
               <a href="/guide" target="_blank">
                 design guide
-              </a>{" "}
-              &nbsp;·&nbsp;{" "}
+              </a>
+              <span className="text-faint/60">·</span>
               <a href="/setup" target="_blank">
                 agent setup
-              </a>{" "}
+              </a>
               {!isReadonly() ? (
                 <>
-                  &nbsp;·&nbsp;{" "}
+                  <span className="text-faint/60">·</span>
                   <a
                     href="#"
                     onClick={(e) => {
@@ -211,55 +220,78 @@ export default function App() {
                 </>
               ) : null}
             </div>
-          </aside>
-        ) : null}
-        <main
-          className="min-w-0 flex-1 overflow-y-auto max-[700px]:min-h-0"
-          onScroll={() => {
-            if (nearBottom()) setPillTarget(null);
-          }}
-        >
-          {!streamMode() ? <Onboard onConnect={() => setConnectOpen(true)} /> : null}
-          <SessionView />
-        </main>
-      </div>
-      {!streamMode() ? (
-        <div
-          id="scrim"
-          className={cx(
-            "fixed inset-0 z-[25] hidden bg-black/35 transition-opacity duration-200 max-[700px]:block",
-            navOpen
-              ? "max-[700px]:pointer-events-auto max-[700px]:opacity-100"
-              : "pointer-events-none opacity-0",
-          )}
-          onClick={() => setNavOpen(false)}
-        ></div>
-      ) : null}
+          </SidebarFooter>
+        </Sidebar>
+        <SidebarInset className="min-w-0">
+          {/* Phone widths: a slim top bar with the offcanvas trigger + wordmark. */}
+          <header className="flex flex-none items-center gap-1 border-b-[0.5px] border-border bg-panel px-2 py-2 md:hidden">
+            <SidebarTrigger
+              id="menuBtn"
+              aria-label="Show sessions"
+              className="relative size-9 text-muted-foreground hover:text-foreground"
+            >
+              <span
+                className={cx(
+                  "absolute top-1.5 right-1.5 size-[7px] rounded-full bg-brand",
+                  unread.size > 0 ? "block" : "hidden",
+                )}
+                id="menuDot"
+              ></span>
+            </SidebarTrigger>
+            <Brand />
+          </header>
+          <main
+            className="min-h-0 min-w-0 flex-1 overflow-y-auto"
+            onScroll={() => {
+              if (nearBottom()) setPillTarget(null);
+            }}
+          >
+            <Onboard onConnect={() => setConnectOpen(true)} />
+            <SessionView />
+          </main>
+        </SidebarInset>
+      </SidebarProvider>
       {connectOpen ? <ConnectModal onClose={() => setConnectOpen(false)} /> : null}
-      <div
-        id="toast"
-        role="status"
-        aria-live="polite"
-        className={cx(
-          "pointer-events-none fixed bottom-[26px] left-1/2 z-50 max-w-[600px] -translate-x-1/2 translate-y-2 rounded-[10px] border-[0.5px] border-[var(--border-2)] bg-card px-3.5 py-[9px] text-[13px] opacity-0 shadow-[0_6px_20px_rgba(0,0,0,0.14)] transition-[opacity,transform] duration-200",
-          toastShow && "pointer-events-auto translate-y-0 opacity-100",
-        )}
-      >
-        {toastText}
-      </div>
-      <button
-        id="newPill"
-        className="fixed bottom-16 left-1/2 z-40 -translate-x-1/2 cursor-pointer rounded-full border-[0.5px] border-brand bg-brand-subtle px-3.5 py-1.5 text-[12.5px] text-brand shadow-[0_4px_14px_rgba(0,0,0,0.12)]"
-        hidden={pillTarget === null}
-        onClick={() => {
-          if (pillTarget)
-            cardEls.get(pillTarget)?.card.scrollIntoView({ behavior: "smooth", block: "start" });
-          setPillTarget(null);
-        }}
-      >
-        new surface ↓
-      </button>
+      <Toast show={toastShow} text={toastText} />
+      <NewSurfacePill target={pillTarget} />
     </>
+  );
+}
+
+// The global status toast — pinned bottom-center, fades in. Shared by both
+// layouts (stream and full board).
+function Toast(props: { show: boolean; text: string }) {
+  return (
+    <div
+      id="toast"
+      role="status"
+      aria-live="polite"
+      className={cx(
+        "pointer-events-none fixed bottom-[26px] left-1/2 z-50 max-w-[600px] -translate-x-1/2 translate-y-2 rounded-[10px] border-[0.5px] border-[var(--border-2)] bg-card px-3.5 py-[9px] text-[13px] opacity-0 shadow-[0_6px_20px_rgba(0,0,0,0.14)] transition-[opacity,transform] duration-200",
+        props.show && "pointer-events-auto translate-y-0 opacity-100",
+      )}
+    >
+      {props.text}
+    </div>
+  );
+}
+
+// "new surface ↓" pill — appears when a surface arrives off-screen and jumps to
+// it on click. Shared by both layouts.
+function NewSurfacePill(props: { target: string | null }) {
+  return (
+    <button
+      id="newPill"
+      className="fixed bottom-16 left-1/2 z-40 -translate-x-1/2 cursor-pointer rounded-full border-[0.5px] border-brand bg-brand-subtle px-3.5 py-1.5 text-[12.5px] text-brand shadow-[0_4px_14px_rgba(0,0,0,0.12)] transition hover:bg-brand hover:text-primary-foreground"
+      hidden={props.target === null}
+      onClick={() => {
+        if (props.target)
+          cardEls.get(props.target)?.card.scrollIntoView({ behavior: "smooth", block: "start" });
+        setPillTarget(null);
+      }}
+    >
+      new surface ↓
+    </button>
   );
 }
 
@@ -421,62 +453,69 @@ function isOwnFrame(source: unknown): boolean {
 function SessionItem(props: { session: SessionRow }) {
   const selected = useBoard((s) => s.selected);
   const unread = useBoard((s) => s.unread);
+  const { setOpenMobile } = useSidebar();
   const label = sessionLabel(props.session);
   const isSel = props.session.id === selected;
   const isUnread = unread.has(props.session.id);
   const isVacant = props.session.surfaceCount === 0;
+  // On phones the offcanvas should close once you pick a session.
+  const open = () => {
+    select(props.session.id);
+    setOpenMobile(false);
+  };
   return (
-    <div
-      className={cx(
-        "group relative mb-0.5 cursor-pointer rounded-lg px-2.5 py-2 transition-colors",
-        "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand",
-        isSel ? "bg-brand-subtle shadow-[inset_2px_0_0_var(--color-brand)]" : "hover:bg-hover",
-      )}
-      data-id={props.session.id}
-      role="button"
-      tabIndex={0}
-      aria-current={isSel ? "true" : undefined}
-      onClick={() => select(props.session.id)}
-      onKeyDown={(e) => {
-        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
-          e.preventDefault();
-          select(props.session.id);
-        }
-      }}
-    >
-      <div
+    <SidebarMenuItem data-id={props.session.id}>
+      <SidebarMenuButton
+        isActive={isSel}
+        size="lg"
+        tooltip={label}
+        aria-current={isSel ? "true" : undefined}
+        onClick={open}
         className={cx(
-          "truncate pr-5 text-[13px]",
-          isSel
-            ? "font-semibold text-brand"
-            : isVacant
-              ? "font-normal text-muted-foreground"
-              : "font-medium text-foreground",
+          "h-auto items-start gap-2 rounded-lg py-2 pr-7 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:py-2",
+          isSel &&
+            "bg-brand-subtle shadow-[inset_2px_0_0_var(--color-brand)] hover:bg-brand-subtle",
         )}
       >
-        {label}
-        {props.session.surfaceCount > 0 ? (
-          <span className={cx("font-normal", isSel ? "text-brand/70" : "text-faint")}>
-            {" "}
-            ({props.session.surfaceCount})
+        {/* The agent mark anchors the row at the icon-rail width too. */}
+        <span className="mt-0.5 flex-none group-data-[collapsible=icon]:mt-0">
+          <AgentMark agent={props.session.agent} />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5 group-data-[collapsible=icon]:hidden">
+          <span
+            className={cx(
+              "truncate text-[13px] leading-tight",
+              isSel
+                ? "font-semibold text-brand"
+                : isVacant
+                  ? "font-normal text-muted-foreground"
+                  : "font-medium text-foreground",
+            )}
+          >
+            {label}
+            {props.session.surfaceCount > 0 ? (
+              <span className={cx("font-normal", isSel ? "text-brand/70" : "text-faint")}>
+                {" "}
+                ({props.session.surfaceCount})
+              </span>
+            ) : null}
           </span>
-        ) : null}
-      </div>
-      <div
-        className={cx(
-          "mt-px flex items-center text-xs",
-          isVacant && !isSel ? "text-faint/80" : "text-faint",
-        )}
-      >
-        <AgentMark agent={props.session.agent} />
-        {props.session.agent} · {relTime(props.session.lastActiveAt)}
-      </div>
+          <span
+            className={cx(
+              "truncate text-[11.5px] leading-tight",
+              isVacant && !isSel ? "text-faint/80" : "text-faint",
+            )}
+          >
+            {props.session.agent} · {relTime(props.session.lastActiveAt)}
+          </span>
+        </span>
+      </SidebarMenuButton>
       {isUnread ? (
-        <span className="absolute right-2.5 top-3 size-[7px] rounded-full bg-brand group-hover:hidden" />
+        <span className="pointer-events-none absolute top-1/2 right-2.5 size-[7px] -translate-y-1/2 rounded-full bg-brand group-data-[collapsible=icon]:hidden group-hover/menu-item:hidden" />
       ) : null}
       {!isReadonly() ? (
         <button
-          className="absolute right-1.5 top-2 rounded-[5px] px-1 py-0.5 text-[13px] text-faint opacity-0 transition group-hover:opacity-100 hover:bg-hover hover:text-foreground"
+          className="absolute top-1/2 right-1.5 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-faint opacity-0 transition group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 hover:bg-hover hover:text-foreground focus-visible:opacity-100 group-data-[collapsible=icon]:hidden"
           title="Delete session"
           aria-label={`Delete session "${label}"`}
           onClick={async (e) => {
@@ -488,7 +527,7 @@ function SessionItem(props: { session: SessionRow }) {
           ✕
         </button>
       ) : null}
-    </div>
+    </SidebarMenuItem>
   );
 }
 

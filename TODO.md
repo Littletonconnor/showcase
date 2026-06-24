@@ -232,7 +232,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
 
 #### Foundation (do first, in order — later tasks build on these)
 
-- [ ] **F1 — Adopt the shadcn `Sidebar` primitive.** Replace the hand-rolled
+- [x] **F1 — Adopt the shadcn `Sidebar` primitive.** Replace the hand-rolled
       `<aside>` + the bespoke `max-[700px]` mobile-drawer logic in `App.tsx` with
       shadcn's `Sidebar` (collapsible rail + built-in mobile offcanvas + a11y +
       persisted collapsed state). `npx shadcn@latest add sidebar` (pulls

@@ -40,7 +40,6 @@ interface BoardState {
   comments: ViewComment[];
   streamLoading: boolean;
   live: boolean;
-  navOpen: boolean;
   // Surface id the next mounted card should scroll to (set for SSE arrivals
   // landing while the user is near the bottom, not the initial batch of a
   // session switch).
@@ -69,7 +68,6 @@ export const useBoard = create<BoardState>(() => ({
   comments: [],
   streamLoading: false,
   live: false,
-  navOpen: false,
   scrollTarget: null,
   pillTarget: null,
   toastText: "",
@@ -134,10 +132,6 @@ function reconcileSessions(incoming: SessionRow[]) {
     });
     return { sessions: next };
   });
-}
-
-export function setNavOpen(open: boolean) {
-  set({ navOpen: open });
 }
 
 export function setScrollTarget(id: string | null) {
@@ -269,7 +263,6 @@ export async function select(
   set({
     scrollTarget: null,
     pillTarget: null,
-    navOpen: false,
     streamLoading: true,
     surfaces: [],
     comments: [],
@@ -302,7 +295,7 @@ export function focusSurface(surfaceId: string) {
 // selection. Drives the clickable sidebar brand: a guaranteed way back to the
 // empty board from anywhere.
 export function goHome() {
-  set({ selected: null, navOpen: false });
+  set({ selected: null });
   routeNavigate({ sessionId: null, surfaceId: null });
 }
 
