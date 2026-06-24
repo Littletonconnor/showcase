@@ -6,8 +6,7 @@ import { Card, cardEls, frameForSource } from "./Card.tsx";
 import { cx } from "./cx.ts";
 import { applyFrameHeight } from "./SandboxedPart.tsx";
 import { renderNotes } from "./notes.ts";
-import { SessionTimeline } from "./SessionTimeline.tsx";
-import { initTheme, setTheme, themeOptions, useActiveTheme } from "./theme.ts";
+import { initTheme } from "./theme.ts";
 import {
   applyRoute,
   checkVersion,
@@ -25,7 +24,6 @@ import {
   sessionsNow,
   setNavOpen,
   setPillTarget,
-  setViewMode,
   toast,
   updateNoticeFrom,
   useBoard,
@@ -162,7 +160,6 @@ export default function App() {
               ))}
             </div>
             <div className="aside-foot">
-              {!isReadonly() ? <ThemePicker /> : null}
               <a href="/guide" target="_blank">
                 design guide
               </a>{" "}
@@ -436,7 +433,6 @@ function SessionView() {
   const selected = useBoard((s) => s.selected);
   const surfaces = useBoard((s) => s.surfaces);
   const streamLoading = useBoard((s) => s.streamLoading);
-  const viewMode = useBoard((s) => s.viewMode);
   const current = sessions.find((x) => x.id === selected);
   return (
     <div id="sessionView" hidden={sessions.length === 0}>
@@ -445,50 +441,18 @@ function SessionView() {
         <span className="meta" id="sessMeta">
           {current ? `${current.agent} · started ${relTime(current.createdAt)}` : ""}
         </span>
-        <span className="head-sp"></span>
-        <ViewToggle />
       </div>
       <div id="stream">
-        {viewMode === "timeline" ? (
-          <SessionTimeline />
-        ) : (
-          <>
-            <WhatsNewCard />
-            {!streamLoading && surfaces.length === 0 ? (
-              <div className="empty" id="streamEmpty">
-                No surfaces in this session yet.
-              </div>
-            ) : null}
-            {surfaces.map((s) => (
-              <Card surface={s} key={s.id} />
-            ))}
-          </>
-        )}
+        <WhatsNewCard />
+        {!streamLoading && surfaces.length === 0 ? (
+          <div className="empty" id="streamEmpty">
+            No surfaces in this session yet.
+          </div>
+        ) : null}
+        {surfaces.map((s) => (
+          <Card surface={s} key={s.id} />
+        ))}
       </div>
-    </div>
-  );
-}
-
-// Stream ↔ timeline switch in the session head. Timeline is treatment E — the
-// session's surfaces on a center spine with the trace steps between them.
-function ViewToggle() {
-  const viewMode = useBoard((s) => s.viewMode);
-  return (
-    <div className="view-toggle" role="group" aria-label="View mode">
-      <button
-        className={cx(viewMode === "stream" && "on")}
-        aria-pressed={viewMode === "stream"}
-        onClick={() => setViewMode("stream")}
-      >
-        Stream
-      </button>
-      <button
-        className={cx(viewMode === "timeline" && "on")}
-        aria-pressed={viewMode === "timeline"}
-        onClick={() => setViewMode("timeline")}
-      >
-        Timeline
-      </button>
     </div>
   );
 }
@@ -624,28 +588,6 @@ function ConnectModal(props: { onClose: () => void }) {
           Code has no browser-to-terminal handoff yet.
         </p>
       </div>
-    </div>
-  );
-}
-
-// Board-level theme selector. Persists via PUT /api/theme; the choice re-themes
-// chrome, markdown/diff syntax, and html surface parts together (see theme.ts).
-function ThemePicker() {
-  const activeTheme = useActiveTheme();
-  return (
-    <div className="theme-picker">
-      <label htmlFor="themeSel">theme</label>
-      <select
-        id="themeSel"
-        value={activeTheme}
-        onChange={(e) => void setTheme(e.currentTarget.value)}
-      >
-        {themeOptions().map((t) => (
-          <option value={t.id} key={t.id}>
-            {t.label}
-          </option>
-        ))}
-      </select>
     </div>
   );
 }

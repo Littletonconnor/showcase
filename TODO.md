@@ -32,7 +32,7 @@ agent pulls.** There is no connection from showcase into Cursor/Claude Code.
 - The agent receives your comment only when it **next touches showcase**:
   1. **Piggyback** — its next `publish_surface`/`update_surface` response carries
      a `userFeedback[]` of your new comments.
-  2. **Blocking wait** — it calls `wait_for_feedback`, which long-polls *its*
+  2. **Blocking wait** — it calls `wait_for_feedback`, which long-polls _its_
      session for `author=user` comments.
   3. **Background watch** (CLI).
 - Delivery is **per-session and exactly-once** (an `agentSeq` cursor). Comments
@@ -56,7 +56,7 @@ agent pulls.** There is no connection from showcase into Cursor/Claude Code.
 - `mcp/` — stdio MCP, a thin client over the HTTP API. `server/mcpHttp.ts` =
   streamable HTTP MCP at `/mcp`.
 - **Theming:** `server/themes.ts` is the single source of truth. `viewer/src/
-  index.css` bridges shadcn/Tailwind tokens to those theme vars
+index.css` bridges shadcn/Tailwind tokens to those theme vars
   (`--color-primary → var(--accent)`, etc.), so every preset + shadcn component
   re-theme together. Sandboxed part-iframes get their CSS server-side
   (`surfacePage.ts`).
@@ -81,6 +81,7 @@ Migrating `styles.css` → Tailwind utilities + shadcn components.
 ## Future directions
 
 **Sharing / showing other people**
+
 - **Static export** — `showcase export <session>` → one self-contained,
   read-only `.html` you can send anyone. The viewer is already a single file;
   bake a session snapshot in via the host seam. Highest-leverage unlock.
@@ -89,19 +90,22 @@ Migrating `styles.css` → Tailwind utilities + shadcn components.
 - **Live share** — re-add the Cloudflare Workers deploy, or a `cloudflared`
   tunnel, so others watch live / it works on your phone.
 
-**Richer explainers** (mostly *kits* — a registry entry + a guide bullet; the
+**Richer explainers** (mostly _kits_ — a registry entry + a guide bullet; the
 CDN allowlist already permits jsdelivr/cdnjs/unpkg)
+
 - KaTeX (math), a chart kit (Vega-Lite / Chart.js), maybe maps.
 - **Drill-down loop** — html parts can already call `sendPrompt()`; make
   "explain this deeper" buttons idiomatic so an interactive explainer can ask the
   agent to go further in place.
 
 **Personal depth**
+
 - **Persistent library / pinned surfaces** — a personal visual wiki of diagrams
   that survives the session.
 - **Reading/learning mode** — focused, one-explainer-at-a-time view.
 
 **Tighter feedback loop**
+
 - Structured feedback (approve / reject / revise buttons via `sendPrompt`).
 - Element-level annotations (click a box in a diagram → ask about it).
 - Reduce the "comment doesn't reach the agent until I nudge it" gotcha.

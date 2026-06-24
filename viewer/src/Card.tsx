@@ -18,6 +18,8 @@ import {
 } from "./api.ts";
 import { escapeHtml } from "../../server/surfacePage.ts";
 import { CodePart } from "./CodePart.tsx";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cx } from "./cx.ts";
 import { DiffPart } from "./DiffPart.tsx";
 import { CommentIcon, LinkIcon, OpenIcon, TrashIcon } from "./icons.tsx";
@@ -131,6 +133,43 @@ function pollScrollIntoView(el: HTMLElement, surfaceId: string): () => void {
     if (timer !== undefined) clearTimeout(timer);
     deepLinkScrolling = false;
   };
+}
+
+// A footer action: a ghost shadcn icon button with a tooltip. `href` renders an
+// anchor (open-in-new-tab); otherwise a button. The faint resting colour keeps
+// the toolbar quiet until hovered, so it reads as chrome, not agent UI.
+function IconAction(props: {
+  label: string;
+  onClick?: () => void;
+  href?: string;
+  danger?: boolean;
+  children: ReactNode;
+}) {
+  const cls = cx("text-faint", props.danger && "hover:text-destructive");
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {props.href ? (
+          <Button asChild variant="ghost" size="icon-sm" className={cls} aria-label={props.label}>
+            <a href={props.href} target="_blank" rel="noreferrer">
+              {props.children}
+            </a>
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className={cls}
+            aria-label={props.label}
+            onClick={props.onClick}
+          >
+            {props.children}
+          </Button>
+        )}
+      </TooltipTrigger>
+      <TooltipContent>{props.label}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function Card(props: { surface: Surface }) {
@@ -290,22 +329,15 @@ export function Card(props: { surface: Surface }) {
         collapsible
         readonly={isReadonly()}
         actions={(startReply) => (
-          <>
+          <TooltipProvider delayDuration={300}>
             {!isReadonly() ? (
-              <button
-                className="act icon comment"
-                title="Comment"
-                aria-label="Comment"
-                onClick={startReply}
-              >
+              <IconAction label="Comment" onClick={startReply}>
                 <CommentIcon />
-              </button>
+              </IconAction>
             ) : null}
-            <span className="sp"></span>
-            <button
-              className="act icon copy"
-              title="Copy link to this surface"
-              aria-label="Copy link to this surface"
+            <span className="flex-1" />
+            <IconAction
+              label="Copy link to this surface"
               onClick={async () => {
                 try {
                   await navigator.clipboard.writeText(surfaceLink(surfaceId));
@@ -316,23 +348,16 @@ export function Card(props: { surface: Surface }) {
               }}
             >
               <LinkIcon />
-            </button>
-            <a
-              className="act icon open"
-              target="_blank"
-              href={surfaceLink(surfaceId)}
-              title="Open in a new tab"
-              aria-label="Open in a new tab"
-            >
+            </IconAction>
+            <IconAction label="Open in a new tab" href={surfaceLink(surfaceId)}>
               <OpenIcon />
-            </a>
+            </IconAction>
             {!isReadonly() ? (
               <>
-                <span className="divider"></span>
-                <button
-                  className="act icon del"
-                  title="Delete surface"
-                  aria-label={`Delete "${props.surface.title}"`}
+                <span className="mx-1 h-4 w-px bg-border" />
+                <IconAction
+                  label="Delete surface"
+                  danger
                   onClick={async () => {
                     if (confirm(`Delete "${props.surface.title}"?`)) {
                       await api(`/api/surfaces/${surfaceId}`, { method: "DELETE" });
@@ -340,10 +365,10 @@ export function Card(props: { surface: Surface }) {
                   }}
                 >
                   <TrashIcon />
-                </button>
+                </IconAction>
               </>
             ) : null}
-          </>
+          </TooltipProvider>
         )}
         send={(text) => sendComment({ surface: surfaceId, text, author: "user" }, surfaceId, text)}
       />
