@@ -18,8 +18,16 @@ import {
 } from "./api.ts";
 import { escapeHtml } from "../../server/surfacePage.ts";
 import { CodePart } from "./CodePart.tsx";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cx } from "./cx.ts";
 import { DiffPart } from "./DiffPart.tsx";
@@ -246,32 +254,38 @@ export function Card(props: { surface: Surface }) {
     <div className="card" data-id={surfaceId} ref={cardRef}>
       <div className="card-head">
         <span className="card-title">{props.surface.title}</span>
-        <span className="vslot">
-          {/* A new version rebuilds the select, resetting the selection to the
-              latest like the live iframe src does. */}
-          {props.surface.version > 1 ? (
-            <select
-              className="vbadge"
-              key={props.surface.version}
-              defaultValue={props.surface.version}
-              onChange={(e) => {
-                const ver = e.currentTarget.value;
-                const cb = Date.now();
-                for (const [part, frame] of htmlFramesRef.current) {
-                  frame.src = `/s/${surfaceId}?part=${part}&ver=${ver}&cb=${cb}&theme=${activeThemeNow()}&mode=${resolvedMode()}`;
-                }
-              }}
+        {/* A new version rebuilds the select, resetting the selection to the
+            latest like the live iframe src does. */}
+        {props.surface.version > 1 ? (
+          <Select
+            key={props.surface.version}
+            defaultValue={String(props.surface.version)}
+            onValueChange={(ver) => {
+              const cb = Date.now();
+              for (const [part, frame] of htmlFramesRef.current) {
+                frame.src = `/s/${surfaceId}?part=${part}&ver=${ver}&cb=${cb}&theme=${activeThemeNow()}&mode=${resolvedMode()}`;
+              }
+            }}
+          >
+            <SelectTrigger
+              size="sm"
+              className="h-6 gap-1 rounded-full px-2.5 text-[11px] text-muted-foreground"
             >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
               {versionRange(props.surface.version).map((v) => (
-                <option value={v} key={v}>
+                <SelectItem value={String(v)} key={v} className="text-xs">
                   v{v}
-                </option>
+                </SelectItem>
               ))}
-            </select>
-          ) : (
-            <span className="vbadge">v1</span>
-          )}
-        </span>
+            </SelectContent>
+          </Select>
+        ) : (
+          <Badge variant="outline" className="rounded-full font-normal text-muted-foreground">
+            v1
+          </Badge>
+        )}
         <span className="sp"></span>
         <span className="card-meta">{relTime(props.surface.updatedAt)}</span>
       </div>
