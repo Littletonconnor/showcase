@@ -64,9 +64,11 @@ index.css` bridges shadcn/Tailwind tokens to those theme vars
   opaque-origin iframes — never `innerHTML`/`dangerouslySetInnerHTML` in the
   trusted viewer origin.
 
-## In progress — UI redesign (`redesign` branch, refined-minimal aesthetic)
+## UI redesign — `redesign` branch, refined-minimal aesthetic (DONE)
 
-Migrating `styles.css` → Tailwind utilities + shadcn components.
+The viewer is fully on Tailwind v4 + shadcn. `styles.css` is now just the
+`:root` design tokens + dark-mode override (966 → 41 lines); everything else is
+utilities/shadcn on the JSX.
 
 - [x] Tailwind v4 + shadcn foundation, bridged to the theme system
 - [x] Surface-card elevation pass
@@ -74,11 +76,16 @@ Migrating `styles.css` → Tailwind utilities + shadcn components.
 - [x] Card action bar → shadcn `Button` + `Tooltip`
 - [x] Removed theme switcher (engine kept as fixed GitHub light/dark — it still
       colours the part-iframes) and the Stream/Timeline toggle (stream-only now)
-- [ ] Version selector → shadcn `Select`; version chip → shadcn `Badge`
-- [ ] Composer (input + buttons) → shadcn `Input` + `Button`
-- [ ] Header polish (session title, meta)
-- [ ] Finish migrating the rest of `styles.css` → Tailwind; delete dead rules
-      (incl. now-dormant state.ts `viewMode`/trace code, `.card-actions .act*`)
+- [x] Version selector → shadcn `Select`; version chip → shadcn `Badge`
+- [x] Composer (input + buttons) → shadcn `Input` + `Button`
+- [x] Removed the session-trace pipeline (server API + store + CLI + tests),
+      dead with the timeline. The trace *part* stays.
+- [x] Finished migrating `styles.css` → Tailwind; mobile drawer is now
+      state-driven (no `body.nav-open` class)
+
+Optional next: a dedicated aesthetic polish pass (header, typography scale,
+motion) — the foundation is now all-Tailwind, so it's cheap to iterate. Merge
+`redesign → main` when happy.
 
 ## Future directions
 
