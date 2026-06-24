@@ -264,13 +264,13 @@ export default function App() {
             <SessionSearch query={query} onQuery={setQuery} />
             <UpdateBanner />
           </SidebarHeader>
-          <SidebarContent id="sessionList" className="px-1.5">
-            {visibleGroups.map((group) => (
-              <SidebarGroup key={group.label} className="py-1.5">
-                <SidebarGroupLabel className="px-2 text-[10.5px] font-medium tracking-[0.06em] text-faint uppercase">
+          <SidebarContent id="sessionList" className="gap-0 px-1.5">
+            {visibleGroups.map((group, gi) => (
+              <SidebarGroup key={group.label} className={cx("py-0", gi === 0 ? "pt-1" : "pt-4")}>
+                <SidebarGroupLabel className="mb-0.5 h-5 px-2 text-[10px] font-semibold tracking-[0.07em] text-faint/90 uppercase">
                   {group.label}
                 </SidebarGroupLabel>
-                <SidebarMenu>
+                <SidebarMenu className="gap-0.5">
                   {group.sessions.map((s) => (
                     <SessionItem session={s} key={s.id} />
                   ))}

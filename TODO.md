@@ -267,7 +267,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
       surface-count as a quiet parenthetical, a refined unread dot, vacant-session
       dimming. Match claude.ai spacing/type. _Acceptance:_ rows feel responsive
       and quiet; active state is unmistakable but not loud.
-- [ ] **F5 — Group headers & density.** Refine the Today/Yesterday/Earlier labels
+- [x] **F5 — Group headers & density.** Refine the Today/Yesterday/Earlier labels
       (size, tracking, spacing); tune row density and the scroll area
       (`ScrollArea` if it improves the look). _Acceptance:_ the list reads as a
       calm, scannable history.
