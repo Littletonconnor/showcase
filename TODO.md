@@ -290,7 +290,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
       same-sender bubbles (one label, tighter stack); auto-scroll to the newest
       message; refined optimistic/pending bubble; timestamps on hover. Keep
       `.thread .cmt.user .who`=`you`.
-- [ ] **F10 — Empty & loading states.** `Skeleton` placeholders for the session
+- [x] **F10 — Empty & loading states.** `Skeleton` placeholders for the session
       list and the stream while loading; a polished empty board, empty session,
       and the onboarding/connect card. _Acceptance:_ nothing ever looks blank or
       janky on first paint.

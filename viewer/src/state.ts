@@ -39,6 +39,9 @@ interface BoardState {
   surfaces: Surface[];
   comments: ViewComment[];
   streamLoading: boolean;
+  // True until the first session fetch resolves, so the sidebar can show
+  // skeletons on cold load instead of flashing the empty/onboard state.
+  sessionsLoading: boolean;
   live: boolean;
   // Surface id the next mounted card should scroll to (set for SSE arrivals
   // landing while the user is near the bottom, not the initial batch of a
@@ -67,6 +70,7 @@ export const useBoard = create<BoardState>(() => ({
   surfaces: [],
   comments: [],
   streamLoading: false,
+  sessionsLoading: true,
   live: false,
   scrollTarget: null,
   pillTarget: null,
@@ -206,6 +210,7 @@ function syntheticSession(id: string): SessionRow {
 
 export async function refreshSessions(targetSurfaceId?: string | null) {
   if (isReadonly() && publicReadMode() === "session") {
+    set({ sessionsLoading: false });
     const route = routeGet();
     if (!route.sessionId) return;
     if (!sessionsNow().some((s) => s.id === route.sessionId)) {
@@ -219,6 +224,7 @@ export async function refreshSessions(targetSurfaceId?: string | null) {
   }
 
   await refreshSessionsQuiet();
+  set({ sessionsLoading: false });
   if (selectedNow() && !sessionsNow().some((s) => s.id === selectedNow())) set({ selected: null });
   if (targetSurfaceId) {
     const target = await api<Surface>(`/api/surfaces/${encodeURIComponent(targetSurfaceId)}`).catch(

@@ -7,6 +7,7 @@ import {
   Plug,
   Search,
   Settings2,
+  Sparkles,
   Terminal,
   Trash2,
   X,
@@ -44,10 +45,12 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSkeleton,
   SidebarProvider,
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Skeleton } from "@/components/ui/skeleton";
 import { applyFrameHeight } from "./SandboxedPart.tsx";
 import { renderNotes } from "./notes.ts";
 import { initTheme } from "./theme.ts";
@@ -206,6 +209,7 @@ export default function App() {
   const [connectOpen, setConnectOpen] = useState(false);
   const [query, setQuery] = useState("");
   const sessions = useBoard((s) => s.sessions);
+  const sessionsLoading = useBoard((s) => s.sessionsLoading);
   const unread = useBoard((s) => s.unread);
   const pillTarget = useBoard((s) => s.pillTarget);
   const toastShow = useBoard((s) => s.toastShow);
@@ -320,23 +324,40 @@ export default function App() {
             <UpdateBanner />
           </SidebarHeader>
           <SidebarContent id="sessionList" className="gap-0 px-1.5">
-            {visibleGroups.map((group, gi) => (
-              <SidebarGroup key={group.label} className={cx("py-0", gi === 0 ? "pt-1" : "pt-4")}>
-                <SidebarGroupLabel className="mb-0.5 h-5 px-2 text-[10px] font-semibold tracking-[0.07em] text-faint/90 uppercase">
-                  {group.label}
-                </SidebarGroupLabel>
+            {sessionsLoading ? (
+              <SidebarGroup className="pt-2">
                 <SidebarMenu className="gap-0.5">
-                  {group.sessions.map((s) => (
-                    <SessionItem session={s} key={s.id} />
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <SidebarMenuItem key={i}>
+                      <SidebarMenuSkeleton showIcon className="h-9" />
+                    </SidebarMenuItem>
                   ))}
                 </SidebarMenu>
               </SidebarGroup>
-            ))}
-            {noMatches ? (
-              <div className="px-3 py-8 text-center text-[12.5px] text-faint group-data-[collapsible=icon]:hidden">
-                No chats match “{query.trim()}”.
-              </div>
-            ) : null}
+            ) : (
+              <>
+                {visibleGroups.map((group, gi) => (
+                  <SidebarGroup
+                    key={group.label}
+                    className={cx("py-0", gi === 0 ? "pt-1" : "pt-4")}
+                  >
+                    <SidebarGroupLabel className="mb-0.5 h-5 px-2 text-[10px] font-semibold tracking-[0.07em] text-faint/90 uppercase">
+                      {group.label}
+                    </SidebarGroupLabel>
+                    <SidebarMenu className="gap-0.5">
+                      {group.sessions.map((s) => (
+                        <SessionItem session={s} key={s.id} />
+                      ))}
+                    </SidebarMenu>
+                  </SidebarGroup>
+                ))}
+                {noMatches ? (
+                  <div className="px-3 py-8 text-center text-[12.5px] text-faint group-data-[collapsible=icon]:hidden">
+                    No chats match “{query.trim()}”.
+                  </div>
+                ) : null}
+              </>
+            )}
           </SidebarContent>
           <SidebarFooter className="border-t-[0.5px] border-border p-1.5">
             <SidebarMenu>
@@ -767,15 +788,52 @@ function SessionView() {
         className="mx-auto max-w-[860px] px-7 pt-[22px] pb-[120px] max-[700px]:px-3.5 max-[700px]:pt-4 max-[700px]:pb-[120px]"
       >
         <WhatsNewCard />
-        {!streamLoading && surfaces.length === 0 ? (
-          <div className="px-6 py-[90px] text-center text-faint" id="streamEmpty">
-            No surfaces in this session yet.
-          </div>
-        ) : null}
-        {surfaces.map((s) => (
-          <Card surface={s} key={s.id} />
-        ))}
+        {streamLoading ? (
+          <CardSkeletons />
+        ) : surfaces.length === 0 ? (
+          <EmptySession />
+        ) : (
+          surfaces.map((s) => <Card surface={s} key={s.id} />)
+        )}
       </div>
+    </div>
+  );
+}
+
+// Placeholder cards while a session's surfaces load — same shell as a real
+// card (border + radius), so the stream never flashes blank or jumps when the
+// real content lands.
+function CardSkeletons() {
+  return (
+    <div aria-hidden className="flex flex-col gap-4">
+      {[0, 1].map((i) => (
+        <div key={i} className="overflow-hidden rounded-xl border-[0.5px] border-border bg-card">
+          <div className="flex items-center gap-2 px-4 py-3">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-[18px] w-9 rounded-full" />
+            <span className="flex-1" />
+            <Skeleton className="h-3 w-12" />
+          </div>
+          <div className="border-t-[0.5px] border-border px-4 py-5">
+            <Skeleton className={cx("h-28 w-full rounded-md", i === 1 && "h-20")} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Empty-session state: a calm centred message, not a bare line of faint text.
+function EmptySession() {
+  return (
+    <div className="px-6 py-24 text-center" id="streamEmpty">
+      <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-hover text-muted-foreground">
+        <Sparkles className="size-5" />
+      </div>
+      <p className="mt-4 text-[14px] font-medium text-foreground">No surfaces yet</p>
+      <p className="mt-1 text-[13px] text-faint">
+        Surfaces your agent publishes to this session will appear here.
+      </p>
     </div>
   );
 }
