@@ -318,10 +318,11 @@ scheme: dark`) after the above and fix contrast/elevation. The theme bridge
 - [x] **F16 — Guide freshness.** Sweep `guide/AGENT_HOWTO.md` + `DESIGN_GUIDE.md`
       for stale wording left by the theming/timeline removal (e.g. the trace part
       described as a "timeline").
-- [ ] **F17 — Theme engine simplification (optional).** The multi-theme registry
-      is dormant (fixed GitHub, no switcher). If multi-theme isn't coming back,
-      `server/themes.ts` could be trimmed to one palette. Confirm with the user
-      before doing this one — it's a product decision, not pure cleanup.
+- [x] **F17 — Multi-theme engine deleted.** Collapsed to one fixed theme
+      (GitHub light/dark): removed the 6 other presets, the `/api/theme` routes +
+      `theme-changed` event + viewer switcher plumbing, and the now-dead
+      board-settings store. The single palette still feeds chrome vars, sandboxed
+      part tokens, and shiki/mermaid theming.
 
 **Running this backlog autonomously:** go top-to-bottom (F1 first — it's load-
 bearing). For each: branch, implement, run the verify suite, screenshot desktop
