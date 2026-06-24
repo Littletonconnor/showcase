@@ -91,7 +91,7 @@ const streamMode = () => layoutMode() === "stream";
 // the icon width; the wordmark text fades out (the `group-data-[collapsible=icon]`
 // context comes from the Sidebar primitive).
 const BRAND_CLASS =
-  "flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-left text-[15px] font-medium tracking-[0.01em] text-inherit transition-colors hover:text-brand focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand";
+  "flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-left text-[15px] font-semibold tracking-[-0.01em] text-foreground transition-colors hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40";
 
 function Brand(props?: { className?: string }) {
   const live = useBoard((s) => s.live);
@@ -314,7 +314,7 @@ export default function App() {
           <SidebarHeader className="gap-2">
             <div className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">
               <Brand className="min-w-0 flex-1" />
-              <SidebarTrigger className="size-7 flex-none text-muted-foreground hover:text-foreground" />
+              <SidebarTrigger className="size-7 flex-none rounded-md text-faint transition-colors hover:bg-hover hover:text-foreground focus-visible:ring-1 focus-visible:ring-brand/40" />
             </div>
             <SessionSearch query={query} onQuery={setQuery} />
             <UpdateBanner />
@@ -649,23 +649,16 @@ function SessionItem(props: { session: SessionRow }) {
         onClick={open}
         className={cx(
           "h-auto items-start gap-2 rounded-lg py-1.5 pr-7 transition-colors duration-150 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:py-2",
-          // Calm selection: the row lifts onto the card surface (so it reads as
-          // selected against the panel) with a thin brand inset bar as the
-          // unmistakable marker — not a loud brand wash. The agent mark and a
-          // semibold (not coloured) title carry the rest.
+          // One quiet selection signal, claude.ai-style: a soft accent-subtle
+          // tint with the title in accent — no competing white lift or left
+          // rail. Hover is a calm gray wash. The agent mark stays neutral.
           isSel
-            ? "bg-card shadow-[inset_2px_0_0_var(--color-brand)] hover:bg-card data-[active=true]:bg-card"
-            : "hover:bg-hover/70",
+            ? "bg-brand-subtle hover:bg-brand-subtle data-[active=true]:bg-brand-subtle"
+            : "hover:bg-hover/60 data-[active=true]:bg-brand-subtle",
         )}
       >
-        {/* The agent mark anchors the row at the icon-rail width too. It picks up
-            the brand tint only on the active row, a quiet reinforcement. */}
-        <span
-          className={cx(
-            "mt-[3px] flex-none transition-colors group-data-[collapsible=icon]:mt-0 [&_svg]:transition-colors",
-            isSel && "[&_svg]:text-brand",
-          )}
-        >
+        {/* The agent mark anchors the row at the icon-rail width too. */}
+        <span className="mt-[3px] flex-none text-muted-foreground group-data-[collapsible=icon]:mt-0">
           <AgentMark agent={props.session.agent} />
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-px group-data-[collapsible=icon]:hidden">
@@ -673,7 +666,7 @@ function SessionItem(props: { session: SessionRow }) {
             className={cx(
               "truncate text-[13px] leading-snug",
               isSel
-                ? "font-semibold text-foreground"
+                ? "font-medium text-brand"
                 : isVacant
                   ? "font-normal text-muted-foreground"
                   : "font-medium text-foreground",
@@ -681,13 +674,16 @@ function SessionItem(props: { session: SessionRow }) {
           >
             {label}
             {props.session.surfaceCount > 0 ? (
-              <span className="font-normal text-faint"> ({props.session.surfaceCount})</span>
+              <span className={cx("font-normal", isSel ? "text-brand/65" : "text-faint")}>
+                {" "}
+                ({props.session.surfaceCount})
+              </span>
             ) : null}
           </span>
           <span
             className={cx(
-              "truncate text-[11px] leading-snug",
-              isVacant && !isSel ? "text-faint/75" : "text-faint",
+              "truncate text-[10.5px] leading-snug",
+              isSel ? "text-brand/60" : isVacant ? "text-faint/70" : "text-faint/90",
             )}
           >
             {props.session.agent} · {relTime(props.session.lastActiveAt)}
