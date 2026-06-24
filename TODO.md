@@ -297,7 +297,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
 
 #### Systemic polish (apply across the app)
 
-- [ ] **F11 — Icon consistency.** Replace ad-hoc glyphs (`✕`, `⧉`, `☰`, the
+- [x] **F11 — Icon consistency.** Replace ad-hoc glyphs (`✕`, `⧉`, `☰`, the
       comment/link/open/trash inline SVGs in `icons.tsx`) with a consistent
       `lucide-react` set (already a dep). Uniform sizing/stroke/alignment.
 - [ ] **F12 — Motion pass.** Subtle, fast enter animations for cards and chat

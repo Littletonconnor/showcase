@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type { JsonPart as JsonPartData } from "./api.ts";
 
 export function JsonPart(props: { part: JsonPartData }) {
@@ -47,10 +48,15 @@ function Container(props: { value: object; depth: number }) {
   return (
     <>
       <span
-        className="cursor-pointer whitespace-nowrap text-faint select-none hover:text-muted-foreground"
+        className="inline-flex cursor-pointer items-center gap-0.5 whitespace-nowrap text-faint select-none hover:text-muted-foreground"
         onClick={() => setOpen(!open)}
       >
-        {open ? "▾" : "▸"} {openCh}
+        {open ? (
+          <ChevronDown className="inline size-3 flex-none" />
+        ) : (
+          <ChevronRight className="inline size-3 flex-none" />
+        )}
+        {openCh}
       </span>
       {open ? (
         <span className="block pl-[18px]">

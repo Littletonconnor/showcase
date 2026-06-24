@@ -30,8 +30,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cx } from "./cx.ts";
 import { DiffPart } from "./DiffPart.tsx";
-import { ArrowUp, Copy } from "lucide-react";
-import { CommentIcon, LinkIcon, OpenIcon, TrashIcon } from "./icons.tsx";
+import { ArrowUp, Copy, ExternalLink, Link2, MessageSquare, Trash2 } from "lucide-react";
 import { ImagePart } from "./ImagePart.tsx";
 import { JsonPart } from "./JsonPart.tsx";
 import { MarkdownPart } from "./MarkdownPart.tsx";
@@ -247,10 +246,10 @@ export function Card(props: { surface: Surface }) {
           }
         }}
       >
-        <LinkIcon />
+        <Link2 />
       </IconAction>
       <IconAction label="Open in a new tab" href={surfaceLink(surfaceId)}>
-        <OpenIcon />
+        <ExternalLink />
       </IconAction>
       {!isReadonly() ? (
         <>
@@ -264,7 +263,7 @@ export function Card(props: { surface: Surface }) {
               }
             }}
           >
-            <TrashIcon />
+            <Trash2 />
           </IconAction>
         </>
       ) : null}
@@ -383,7 +382,7 @@ export function Card(props: { surface: Surface }) {
           <TooltipProvider delayDuration={300}>
             {!isReadonly() ? (
               <IconAction label="Comment" onClick={startReply}>
-                <CommentIcon />
+                <MessageSquare />
               </IconAction>
             ) : null}
             <span className="flex-1" />

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Download } from "lucide-react";
 import type { TracePart as TracePartData, TraceStep } from "./api.ts";
 import { cx } from "./cx.ts";
 
@@ -27,12 +28,13 @@ export function TracePart(props: { part: TracePartData }) {
         </span>
         {props.part.assetId ? (
           <a
-            className="ml-auto text-xs text-brand no-underline hover:underline"
+            className="ml-auto inline-flex items-center gap-1 text-xs text-brand no-underline hover:underline"
             href={`/a/${props.part.assetId}`}
             target="_blank"
             rel="noopener"
           >
-            download ↓
+            download
+            <Download className="size-3" />
           </a>
         ) : null}
       </div>

@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  ArrowDown,
+  ArrowRight,
   BookOpen,
+  Check,
+  Copy,
   Link2,
   MoreHorizontal,
   Pencil,
@@ -427,7 +431,7 @@ function NewSurfacePill(props: { target: string | null }) {
   return (
     <button
       id="newPill"
-      className="fixed bottom-16 left-1/2 z-40 -translate-x-1/2 cursor-pointer rounded-full border-[0.5px] border-brand bg-brand-subtle px-3.5 py-1.5 text-[12.5px] text-brand shadow-[0_4px_14px_rgba(0,0,0,0.12)] transition hover:bg-brand hover:text-primary-foreground"
+      className="fixed bottom-16 left-1/2 z-40 flex -translate-x-1/2 cursor-pointer items-center gap-1 rounded-full border-[0.5px] border-brand bg-brand-subtle py-1.5 pr-3 pl-3.5 text-[12.5px] text-brand shadow-[0_4px_14px_rgba(0,0,0,0.12)] transition hover:bg-brand hover:text-primary-foreground"
       hidden={props.target === null}
       onClick={() => {
         if (props.target)
@@ -435,7 +439,8 @@ function NewSurfacePill(props: { target: string | null }) {
         setPillTarget(null);
       }}
     >
-      new surface ↓
+      new surface
+      <ArrowDown className="size-3.5" />
     </button>
   );
 }
@@ -456,23 +461,24 @@ function UpdateBanner() {
       <div className="flex items-center gap-1">
         New version <strong>{v.latest}</strong>
         <button
-          className="ml-auto cursor-pointer rounded-[5px] px-1 py-0.5 text-xs text-muted-foreground hover:bg-hover hover:text-foreground"
+          className="ml-auto flex size-5 cursor-pointer items-center justify-center rounded-[5px] text-muted-foreground hover:bg-hover hover:text-foreground"
           aria-label={`Dismiss update notice for ${v.latest}`}
           onClick={() => dismissUpdate(v.latest!)}
         >
-          ✕
+          <X className="size-3.5" />
         </button>
       </div>
       {v.upgradeCommand ? (
         <button
-          className="mt-1.5 block w-full cursor-pointer rounded-md border-[0.5px] border-border bg-card px-[7px] py-1 text-left text-[11.5px] text-muted-foreground hover:border-[var(--border-2)] hover:text-foreground"
+          className="mt-1.5 flex w-full cursor-pointer items-center gap-1.5 rounded-md border-[0.5px] border-border bg-card px-[7px] py-1 text-left text-[11.5px] text-muted-foreground hover:border-[var(--border-2)] hover:text-foreground"
           title="Copy upgrade command"
           onClick={() => {
             navigator.clipboard.writeText(v.upgradeCommand!);
             toast("Copied: " + v.upgradeCommand);
           }}
         >
-          <code className="font-mono">{v.upgradeCommand}</code> ⧉
+          <code className="min-w-0 flex-1 truncate font-mono">{v.upgradeCommand}</code>
+          <Copy className="size-3 flex-none" />
         </button>
       ) : null}
     </div>
@@ -914,10 +920,11 @@ function Onboard(props: { onConnect: () => void }) {
           <Snip text={TRY_SNIP} />
           <h2>using claude code?</h2>
           <button
-            className="cursor-pointer rounded-lg border-[0.5px] border-border bg-card px-3.5 py-2 text-[13px] text-foreground hover:border-muted-foreground"
+            className="group inline-flex cursor-pointer items-center gap-1.5 rounded-lg border-[0.5px] border-border bg-card px-3.5 py-2 text-[13px] text-foreground transition-colors hover:border-muted-foreground"
             onClick={props.onConnect}
           >
-            Connect Claude Code →
+            Connect Claude Code
+            <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
           </button>
         </>
       ) : (
@@ -955,11 +962,11 @@ function ConnectModal(props: { onClose: () => void }) {
         <div className="mb-2.5 flex items-center">
           <h2 className="m-0 flex-1 text-[17px] font-semibold">Connect Claude Code</h2>
           <button
-            className="cursor-pointer px-1.5 py-0.5 text-sm text-faint hover:text-foreground"
+            className="flex size-7 cursor-pointer items-center justify-center rounded-md text-faint transition-colors hover:bg-hover hover:text-foreground"
             aria-label="Close"
             onClick={props.onClose}
           >
-            ✕
+            <X className="size-4" />
           </button>
         </div>
         <p className="mb-[18px] text-sm/[1.55] text-muted-foreground">
@@ -1001,19 +1008,21 @@ function ModalSection(props: { children: ReactNode }) {
 }
 
 function Snip(props: { text: string }) {
-  const [label, setLabel] = useState("copy");
+  const [copied, setCopied] = useState(false);
   return (
     <div className="relative rounded-[10px] border-[0.5px] border-border bg-card py-3 pr-11 pl-3.5 font-mono text-[12.5px]/[1.6] break-all whitespace-pre-wrap text-foreground">
       {props.text}
       <button
-        className="absolute top-2 right-2 cursor-pointer rounded-md border-[0.5px] border-border bg-background px-2 py-[3px] font-sans text-[11.5px] text-faint hover:text-foreground"
+        className="absolute top-2 right-2 flex size-7 cursor-pointer items-center justify-center rounded-md border-[0.5px] border-border bg-background text-faint transition-colors hover:text-foreground"
+        aria-label={copied ? "Copied" : "Copy"}
+        title={copied ? "Copied" : "Copy"}
         onClick={() => {
           navigator.clipboard.writeText(props.text);
-          setLabel("copied");
-          setTimeout(() => setLabel("copy"), 1500);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
         }}
       >
-        {label}
+        {copied ? <Check className="size-3.5 text-[#4caf78]" /> : <Copy className="size-3.5" />}
       </button>
     </div>
   );
