@@ -279,7 +279,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
 
 #### Broader viewer polish
 
-- [ ] **F7 — Top header bar.** The session-title row (`SessionView` head):
+- [x] **F7 — Top header bar.** The session-title row (`SessionView` head):
       typography for the editable title, the meta line, spacing, and a home for
       per-session actions if they move here. Make it a proper app header.
 - [ ] **F8 — Surface card refinement.** Tune card elevation/radius/spacing, the

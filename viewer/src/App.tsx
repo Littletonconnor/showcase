@@ -742,13 +742,29 @@ function SessionView() {
   const surfaces = useBoard((s) => s.surfaces);
   const streamLoading = useBoard((s) => s.streamLoading);
   const current = sessions.find((x) => x.id === selected);
+  const surfaceCount = current?.surfaceCount ?? 0;
   return (
     <div id="sessionView" hidden={sessions.length === 0}>
-      <div className="sticky top-0 z-[5] flex items-baseline gap-2.5 border-b-[0.5px] border-border bg-background px-7 pt-3.5 pb-2.5 max-[700px]:px-4 max-[700px]:pt-3 max-[700px]:pb-2.5">
-        <SessionTitle current={current} />
-        <span className="text-[12.5px] text-faint" id="sessMeta">
-          {current ? `${current.agent} · started ${relTime(current.createdAt)}` : ""}
-        </span>
+      <div className="sticky top-0 z-[5] border-b-[0.5px] border-border bg-background/85 px-7 pt-3 pb-2.5 backdrop-blur-md max-[700px]:px-4 max-[700px]:pt-3 max-[700px]:pb-2.5">
+        <div className="mx-auto flex max-w-[860px] flex-col gap-0.5">
+          <div className="flex min-w-0 items-center gap-2">
+            {current ? (
+              <span className="flex-none text-muted-foreground">
+                <AgentMark agent={current.agent} />
+              </span>
+            ) : null}
+            <SessionTitle current={current} />
+          </div>
+          <span className="pl-0.5 text-[12px] text-faint" id="sessMeta">
+            {current
+              ? `${current.agent} · started ${relTime(current.createdAt)}${
+                  surfaceCount > 0
+                    ? ` · ${surfaceCount} surface${surfaceCount === 1 ? "" : "s"}`
+                    : ""
+                }`
+              : ""}
+          </span>
+        </div>
       </div>
       <div
         id="stream"
@@ -791,7 +807,8 @@ function SessionTitle(props: { current: SessionRow | undefined }) {
   return (
     <span
       id="sessTitle"
-      className="min-w-10 rounded-md px-1 text-base font-medium outline-none hover:bg-hover focus:bg-card focus:shadow-[0_0_0_0.5px_var(--border-2)]"
+      className="-mx-1 min-w-10 truncate rounded-md px-1 text-[17px] font-semibold tracking-[-0.01em] text-foreground outline-none transition-colors hover:bg-hover focus:bg-card focus:shadow-[0_0_0_0.5px_var(--border-2)]"
+      title={!isReadonly() ? "Click to rename" : undefined}
       ref={elRef}
       contentEditable={!isReadonly()}
       suppressContentEditableWarning
