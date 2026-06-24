@@ -5,7 +5,6 @@ import {
   type Palette,
   THEMES,
   themeById,
-  themeOptions,
   tokenThemeCss,
   viewerThemeCss,
 } from "../server/themes.ts";
@@ -61,15 +60,8 @@ test("themeById falls back to the default for null, undefined, and unknown ids",
   for (const bad of [null, undefined, "", "nonexistent"]) {
     assert.equal(themeById(bad).id, DEFAULT_THEME_ID);
   }
-  // a known id round-trips
-  assert.equal(themeById("gruvbox").id, "gruvbox");
-});
-
-test("themeOptions lists every theme as an id/label pair", () => {
-  const opts = themeOptions();
-  assert.equal(opts.length, THEMES.length);
-  assert.deepEqual(opts.map((o) => o.id).sort(), THEMES.map((t) => t.id).sort());
-  for (const o of opts) assert.ok(o.label.length > 0);
+  // the one registered id round-trips
+  assert.equal(themeById(DEFAULT_THEME_ID).id, DEFAULT_THEME_ID);
 });
 
 test("viewerThemeCss emits chrome vars with a dark-scheme override for each theme", () => {

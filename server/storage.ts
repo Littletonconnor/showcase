@@ -37,7 +37,6 @@ interface FileShape {
   comments: Comment[];
   assets: StoredAsset[];
   lastSeq: number;
-  settings: Record<string, string>;
 }
 
 // Pre-0.5.0 boards stored `snippets` (a single `html` field) and comments
@@ -101,7 +100,6 @@ export class JsonFileStore implements Store {
   private comments: Comment[] = [];
   private assets = new Map<string, Asset>();
   private lastSeq = 0;
-  private settings = new Map<string, string>();
   private loaded = false;
   private loadPromise: Promise<void> | null = null;
   private writeQueue: Promise<void> = Promise.resolve();
@@ -143,7 +141,6 @@ export class JsonFileStore implements Store {
         });
       }
       this.lastSeq = data.lastSeq ?? 0;
-      for (const [k, v] of Object.entries(data.settings ?? {})) this.settings.set(k, v);
     } catch (err: any) {
       if (err?.code !== "ENOENT") throw err;
     }
@@ -161,7 +158,6 @@ export class JsonFileStore implements Store {
           data: Buffer.from(a.data).toString("base64"),
         })),
         lastSeq: this.lastSeq,
-        settings: Object.fromEntries(this.settings),
       } satisfies FileShape,
       null,
       2,
@@ -244,19 +240,6 @@ export class JsonFileStore implements Store {
     const session = this.sessions.get(sessionId);
     if (!session || seq <= session.agentSeq) return;
     session.agentSeq = seq;
-    await this.persist();
-  }
-
-  // --- settings ---
-
-  async getSetting(key: string) {
-    await this.load();
-    return this.settings.get(key) ?? null;
-  }
-
-  async setSetting(key: string, value: string) {
-    await this.load();
-    this.settings.set(key, value);
     await this.persist();
   }
 

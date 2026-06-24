@@ -7,7 +7,7 @@ import { EventBus } from "./events.ts";
 import { kitSummaries } from "./kits.ts";
 import { registerMcp } from "./mcpHttp.ts";
 import { renderHtmlPage } from "./surfacePage.ts";
-import { DEFAULT_THEME_ID, themeById, themeOptions } from "./themes.ts";
+import { DEFAULT_THEME_ID, themeById } from "./themes.ts";
 import {
   type Asset,
   type AssetKind,
@@ -190,7 +190,6 @@ function isPublicReadAllowed(path: string, mode: PublicReadMode): boolean {
   if (path.startsWith("/api/snippets/")) return true;
   if (path === "/api/comments") return true;
   if (path === "/api/events") return true;
-  if (path === "/api/theme") return true;
   if (path === "/api/version") return true;
   if (path === "/api/kits") return true;
   return false;
@@ -598,24 +597,6 @@ export function createApp({
   // for discovery (`showcase kits`); the CSS/JS payloads are server-only.
   app.get("/api/kits", (c) => c.json(kitSummaries()));
 
-  // --- theme (one board-level setting) ---
-
-  app.get("/api/theme", async (c) => {
-    const id = (await store.getSetting("theme")) ?? DEFAULT_THEME_ID;
-    return c.json({ id, themes: themeOptions() });
-  });
-
-  app.put("/api/theme", async (c) => {
-    const body = await c.req.json().catch(() => null);
-    const id = body && typeof body.id === "string" ? body.id : null;
-    if (!id || !themeOptions().some((t) => t.id === id)) {
-      return c.json({ error: "unknown theme id" }, 400);
-    }
-    await store.setSetting("theme", id);
-    bus.broadcast({ type: "theme-changed", id });
-    return c.json({ id });
-  });
-
   // --- sessions ---
 
   app.get("/api/sessions", async (c) => {
@@ -850,7 +831,7 @@ export function createApp({
     c.header("X-Content-Type-Options", "nosniff");
     // Theme: an explicit ?theme= (the viewer keys iframe srcs by it so a switch
     // reloads the frame) wins; otherwise the persisted board theme; else default.
-    const themeId = c.req.query("theme") ?? (await store.getSetting("theme")) ?? DEFAULT_THEME_ID;
+    const themeId = c.req.query("theme") ?? DEFAULT_THEME_ID;
     // Scheme: the viewer passes the light/dark mode it resolved so the iframe is
     // pinned to it rather than re-deriving from the OS (which can diverge from
     // the chrome across the frame boundary). Absent/invalid → follow the OS.

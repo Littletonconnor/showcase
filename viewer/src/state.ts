@@ -19,7 +19,6 @@ import {
   type VersionInfo,
 } from "./api.ts";
 import { routeGet, routeNavigate, type Route, root } from "./host.ts";
-import { applyTheme } from "./theme.ts";
 
 // --- URL routing ---
 // The viewer owns the URL via the History API; routes map onto /session/:id and
@@ -431,9 +430,7 @@ export function connect() {
     // activity the user isn't looking at — other session or hidden tab —
     // marks the session unread, which also badges the tab title
     const away = e.sessionId != null && (e.sessionId !== selectedNow() || document.hidden);
-    if (e.type === "theme-changed") {
-      applyTheme(e.id);
-    } else if (e.type.startsWith("session-")) {
+    if (e.type.startsWith("session-")) {
       await refreshSessions();
     } else if (e.type === "surface-created" || e.type === "surface-updated") {
       if (away && e.sessionId) markUnread(e.sessionId);

@@ -105,13 +105,13 @@ test("the host bridge globals and resize reporter are present in every page", ()
 
 test("theme tokens are injected and resolve unknown/absent themes to the default", () => {
   // an explicit known theme injects its tokens
-  const gruvbox = renderHtmlPage({
+  const themed = renderHtmlPage({
     title: "t",
     html: "<p>x</p>",
     origin: ORIGIN,
-    theme: "gruvbox",
+    theme: "github",
   });
-  assert.ok(gruvbox.includes("--color-background-primary:"), "token CSS missing");
+  assert.ok(themed.includes("--color-background-primary:"), "token CSS missing");
 
   // an unknown id or no theme both fall back to the default's tokens, never crash
   const unknown = renderHtmlPage({ title: "t", html: "<p>x</p>", origin: ORIGIN, theme: "bogus" });

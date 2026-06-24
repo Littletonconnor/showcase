@@ -249,7 +249,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
 - [x] **F2 — Per-session overflow menu (rename / delete / copy link).** Replace
       the hover `✕` with a shadcn `DropdownMenu` on a `SidebarMenuAction` (`⋯`)
       revealed on hover/active, like claude.ai. `npx shadcn@latest add
-  dropdown-menu`. Items: **Rename** (inline edit or a small `Dialog` →
+dropdown-menu`. Items: **Rename** (inline edit or a small `Dialog` →
       `PUT /api/sessions/:id` title), **Delete** (confirm → existing
       `DELETE /api/sessions/:id`), **Copy link** (the session deep link).
       _Acceptance:_ hover a chat → `⋯` appears → menu works; delete confirms and
@@ -310,7 +310,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
 - [x] **F14 — Type & spacing system.** A consistent type scale and spacing rhythm
       across sidebar, header, cards, and chat — the unifying pass once F1–F13 land.
 - [x] **F15 — Dark-mode review.** Walk every screen in dark (`prefers-color-
-  scheme: dark`) after the above and fix contrast/elevation. The theme bridge
+scheme: dark`) after the above and fix contrast/elevation. The theme bridge
       means most adapts automatically — this catches the gaps.
 
 #### Tech-debt sweeps (independent, low-risk; good warm-ups)

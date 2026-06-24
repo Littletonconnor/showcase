@@ -1,17 +1,11 @@
-// Viewer-side theme controller. The active theme drives three things:
-//   1. the chrome palette — a <style> of viewerThemeCss injected into <head>,
-//      overriding the static defaults in styles.css (later rule wins);
-//   2. the shiki theme for markdown/diff — read via activeTheme();
-//   3. html surface parts — Card keys each iframe src on activeTheme(), so a
-//      switch reloads the frame and the server re-injects matching tokens.
-// The selection persists per-board server-side (PUT /api/theme); other open
-// tabs re-theme via the theme-changed SSE event (see state.ts).
-//
-// activeTheme + prefersDark live in the zustand board store so components
-// re-render when they change. The functions below are non-reactive snapshot
-// accessors for the string-building/flow code; components subscribe with the
-// useActiveTheme/useResolvedMode hooks.
-import { api } from "./api.ts";
+// Viewer-side theme controller. There is one fixed theme now (GitHub, light +
+// dark) — multi-theme was removed. It still drives three things: the chrome
+// palette (a <style> of viewerThemeCss injected into <head>, on top of the
+// styles.css defaults), the shiki theme for markdown/diff/code, and the html
+// surface parts (each iframe src carries ?theme= so the server injects matching
+// tokens). activeTheme is constant; prefersDark tracks the OS light/dark flip,
+// and both live in the zustand store so components re-render. The functions
+// below are non-reactive snapshots; components use useActiveTheme/useResolvedMode.
 import { useBoard } from "./state.ts";
 import { DEFAULT_THEME_ID, type Mode, themeById, viewerThemeCss } from "../../server/themes.ts";
 
@@ -56,9 +50,7 @@ export function applyTheme(id: string) {
   set({ activeTheme: theme.id });
 }
 
-// Fetch the persisted board theme on startup. There is no in-app switcher
-// anymore, so this is the only place the theme is set (fixed per board).
-export async function initTheme() {
-  const res = await api<{ id: string }>("/api/theme").catch(() => null);
-  applyTheme(res?.id ?? DEFAULT_THEME_ID);
+// Apply the (single) theme on startup — injects the chrome palette <style>.
+export function initTheme() {
+  applyTheme(DEFAULT_THEME_ID);
 }

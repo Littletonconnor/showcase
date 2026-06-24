@@ -735,7 +735,6 @@ test("public read full mode allows unauthenticated GETs but not writes", async (
   assert.equal((await app.request("/")).status, 200);
   assert.equal((await app.request("/session/anything")).status, 200);
   assert.equal((await app.request("/api/sessions")).status, 200);
-  assert.equal((await app.request("/api/theme")).status, 200);
   assert.equal((await app.request("/api/version")).status, 200);
 
   const created = (await (
@@ -753,7 +752,6 @@ test("public read session mode allows scoped reads and denies root/session list"
 
   assert.equal((await app.request("/")).status, 401);
   assert.equal((await app.request("/api/sessions")).status, 401);
-  assert.equal((await app.request("/api/theme")).status, 200);
   assert.equal((await app.request("/api/version")).status, 200);
 
   const created = (await (
