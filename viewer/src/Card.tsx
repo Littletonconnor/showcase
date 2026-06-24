@@ -231,6 +231,45 @@ export function Card(props: { surface: Surface }) {
     }
   };
 
+  // Per-surface secondary actions (copy link / open / delete) — shared by the
+  // collapsed footer bar and the persistent-composer footer (see Thread).
+  const surfaceActions = (
+    <>
+      <IconAction
+        label="Copy link to this surface"
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(surfaceLink(surfaceId));
+            toast("Link copied");
+          } catch {
+            toast("Couldn't copy the link");
+          }
+        }}
+      >
+        <LinkIcon />
+      </IconAction>
+      <IconAction label="Open in a new tab" href={surfaceLink(surfaceId)}>
+        <OpenIcon />
+      </IconAction>
+      {!isReadonly() ? (
+        <>
+          <span className="mx-1 h-4 w-px bg-border" />
+          <IconAction
+            label="Delete surface"
+            danger
+            onClick={async () => {
+              if (confirm(`Delete "${props.surface.title}"?`)) {
+                await api(`/api/surfaces/${surfaceId}`, { method: "DELETE" });
+              }
+            }}
+          >
+            <TrashIcon />
+          </IconAction>
+        </>
+      ) : null}
+    </>
+  );
+
   return (
     <div
       className="card mb-5 overflow-hidden rounded-xl border-[0.5px] border-border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04),0_2px_6px_rgba(0,0,0,0.05)] transition-[box-shadow,border-color] duration-[0.18s] ease-in-out hover:shadow-[0_1px_2px_rgba(0,0,0,0.05),0_6px_16px_rgba(0,0,0,0.07)]"
@@ -342,40 +381,10 @@ export function Card(props: { surface: Surface }) {
               </IconAction>
             ) : null}
             <span className="flex-1" />
-            <IconAction
-              label="Copy link to this surface"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(surfaceLink(surfaceId));
-                  toast("Link copied");
-                } catch {
-                  toast("Couldn't copy the link");
-                }
-              }}
-            >
-              <LinkIcon />
-            </IconAction>
-            <IconAction label="Open in a new tab" href={surfaceLink(surfaceId)}>
-              <OpenIcon />
-            </IconAction>
-            {!isReadonly() ? (
-              <>
-                <span className="mx-1 h-4 w-px bg-border" />
-                <IconAction
-                  label="Delete surface"
-                  danger
-                  onClick={async () => {
-                    if (confirm(`Delete "${props.surface.title}"?`)) {
-                      await api(`/api/surfaces/${surfaceId}`, { method: "DELETE" });
-                    }
-                  }}
-                >
-                  <TrashIcon />
-                </IconAction>
-              </>
-            ) : null}
+            {surfaceActions}
           </TooltipProvider>
         )}
+        secondaryActions={<TooltipProvider delayDuration={300}>{surfaceActions}</TooltipProvider>}
         send={(text) => sendComment({ surface: surfaceId, text, author: "user" }, surfaceId, text)}
       />
     </div>
@@ -393,10 +402,18 @@ function Thread(props: {
   collapsible?: boolean;
   readonly?: boolean;
   actions?: (startReply: () => void) => ReactNode;
+  // Link/open/delete, shown under the persistent composer once a card has
+  // messages — the chat input takes the footer, these recede beneath it.
+  secondaryActions?: ReactNode;
 }) {
   const [replying, setReplying] = useState(false);
   const comments = useBoard((s) => s.comments);
   const list = comments.filter((c) => c.surfaceId === props.surfaceId);
+  const hasMessages = list.length > 0;
+  // Once a card has a conversation, pin the composer at the bottom like a chat
+  // input; an untouched card keeps it collapsed behind the Comment action so it
+  // stays compact.
+  const showComposer = !props.readonly && (hasMessages || replying);
   return (
     <div className="thread">
       {list.length ? (
@@ -407,19 +424,24 @@ function Thread(props: {
         </div>
       ) : null}
       {props.collapsible ? (
-        // Pin the footer height and center its content so swapping the action
-        // bar for the inline composer (and back) never changes the footer
-        // height — the card above must not pop when you start or finish a
-        // comment.
-        <div className="flex min-h-11 items-center border-t-[0.5px] border-border px-2 py-[5px] [&>*]:min-w-0 [&>*]:flex-1">
-          {!props.readonly && replying ? (
-            <Composer
-              placeholder={props.placeholder}
-              send={props.send}
-              autofocus
-              onCancel={() => setReplying(false)}
-            />
+        <div className="border-t-[0.5px] border-border px-2.5 py-2">
+          {showComposer ? (
+            <div className="flex flex-col gap-1.5">
+              <Composer
+                placeholder={props.placeholder}
+                send={props.send}
+                autofocus={replying}
+                onCancel={hasMessages ? undefined : () => setReplying(false)}
+              />
+              {hasMessages && props.secondaryActions ? (
+                <div className="flex items-center justify-end gap-0.5">
+                  {props.secondaryActions}
+                </div>
+              ) : null}
+            </div>
           ) : (
+            // Pin a min height so swapping the bar for the inline composer (when
+            // you start the first comment) never pops the card above.
             <div className="flex min-h-[34px] items-center gap-0.5">
               {props.actions?.(() => setReplying(true))}
             </div>
