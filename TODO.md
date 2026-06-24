@@ -71,12 +71,14 @@ Migrating `styles.css` → Tailwind utilities + shadcn components.
 - [x] Tailwind v4 + shadcn foundation, bridged to the theme system
 - [x] Surface-card elevation pass
 - [x] Session list rebuilt in Tailwind (clear active state)
-- [ ] Card action bar → shadcn `Button` + `Tooltip`
+- [x] Card action bar → shadcn `Button` + `Tooltip`
+- [x] Removed theme switcher (engine kept as fixed GitHub light/dark — it still
+      colours the part-iframes) and the Stream/Timeline toggle (stream-only now)
 - [ ] Version selector → shadcn `Select`; version chip → shadcn `Badge`
-- [ ] Composer buttons → shadcn `Button`
-- [ ] Theme picker → shadcn `Select`; view toggle → shadcn-style segmented control
+- [ ] Composer (input + buttons) → shadcn `Input` + `Button`
 - [ ] Header polish (session title, meta)
 - [ ] Finish migrating the rest of `styles.css` → Tailwind; delete dead rules
+      (incl. now-dormant state.ts `viewMode`/trace code, `.card-actions .act*`)
 
 ## Future directions
 
