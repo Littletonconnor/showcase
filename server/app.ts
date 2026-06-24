@@ -878,11 +878,17 @@ export function createApp({
     }
     const partParam = c.req.query("part");
     const publicBasePath = requestBasePath(c.req.raw);
-    if (partParam == null && publicBasePath) {
-      return c.redirect(`${publicBasePath}/?surface=${encodeURIComponent(surface.id)}`, 302);
-    }
     const idx = Number(partParam ?? 0);
     const part = parts[idx];
+    // A bare /s/:id (no ?part=) is a human opening the link directly — the
+    // viewer's own embeds always pass ?part=N. Send them to the full viewer
+    // (all parts + the comment thread) rather than a single part in isolation
+    // when this is a deployed board, or whenever part 0 isn't a renderable html
+    // part — otherwise the link dead-ends on "No html part at that index". A
+    // lone html part still renders standalone (direct embeds, og previews).
+    if (partParam == null && (publicBasePath || part?.kind !== "html")) {
+      return c.redirect(`${publicBasePath}/?surface=${encodeURIComponent(surface.id)}`, 302);
+    }
     if (!part || part.kind !== "html") return c.text("No html part at that index", 404);
     c.header("X-Content-Type-Options", "nosniff");
     // Theme: an explicit ?theme= (the viewer keys iframe srcs by it so a switch

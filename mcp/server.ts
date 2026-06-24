@@ -72,7 +72,7 @@ server.registerTool(
         body: JSON.stringify({ title, parts, session }),
       }),
     );
-    return text({ ...created, url: `${API}/s/${created.id}` });
+    return text({ ...created, url: `${API}/session/${created.sessionId}/s/${created.id}` });
   },
 );
 
@@ -86,7 +86,7 @@ server.registerTool(
     const updated = JSON.parse(
       await api(`/api/surfaces/${id}`, { method: "PUT", body: JSON.stringify({ parts, title }) }),
     );
-    return text({ ...updated, url: `${API}/s/${updated.id}` });
+    return text({ ...updated, url: `${API}/session/${updated.sessionId}/s/${updated.id}` });
   },
 );
 
@@ -104,7 +104,7 @@ server.registerTool(
         body: JSON.stringify({ title, parts: [{ kind: "html", html, kits }], session }),
       }),
     );
-    return text({ ...created, url: `${API}/s/${created.id}` });
+    return text({ ...created, url: `${API}/session/${created.sessionId}/s/${created.id}` });
   },
 );
 
@@ -119,7 +119,7 @@ server.registerTool(
     const updated = JSON.parse(
       await api(`/api/surfaces/${id}`, { method: "PUT", body: JSON.stringify({ parts, title }) }),
     );
-    return text({ ...updated, url: `${API}/s/${updated.id}` });
+    return text({ ...updated, url: `${API}/session/${updated.sessionId}/s/${updated.id}` });
   },
 );
 

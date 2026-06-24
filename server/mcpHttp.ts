@@ -60,7 +60,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
         id: result.surface.id,
         sessionId: result.surface.sessionId,
         version: result.surface.version,
-        url: `${origin}/s/${result.surface.id}`,
+        url: `${origin}/session/${result.surface.sessionId}/s/${result.surface.id}`,
         ...(result.userFeedback && { userFeedback: result.userFeedback }),
       },
       null,

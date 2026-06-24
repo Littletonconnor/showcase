@@ -317,7 +317,7 @@ function out(value) {
 }
 
 function outSurface(surface) {
-  out({ ...surface, url: `${BASE}/s/${surface.id}` });
+  out({ ...surface, url: `${BASE}/session/${surface.sessionId}/s/${surface.id}` });
 }
 
 const CONTENT_TYPES = {
@@ -927,7 +927,7 @@ const commands = {
     });
     const parts = [{ kind: "markdown", markdown: readContent(positionals[0]) }];
     const surface = await publishSurface(parts, flags);
-    out({ ...surface, url: `${BASE}/s/${surface.id}` });
+    out({ ...surface, url: `${BASE}/session/${surface.sessionId}/s/${surface.id}` });
   },
 
   async terminal() {
@@ -953,7 +953,7 @@ const commands = {
       },
     ];
     const surface = await publishSurface(parts, flags);
-    out({ ...surface, url: `${BASE}/s/${surface.id}` });
+    out({ ...surface, url: `${BASE}/session/${surface.sessionId}/s/${surface.id}` });
   },
 
   async mermaid() {
