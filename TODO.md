@@ -13,7 +13,7 @@ A live visual surface for AI: an agent publishes **surfaces** (cards built from
 typed parts — html, markdown, mermaid, diff, terminal, image, json, code, trace)
 and they render in a browser you watch and comment on. Today the agent lives in
 your editor (Cursor / Claude Code) and reaches _out_ to showcase. The roadmap
-(section 6, Pillar A) turns showcase into a **local Claude chat app** where the
+(section 6, Pillar B) turns showcase into a **local Claude chat app** where the
 AI runs server-side and surfaces are its inline visual artifacts.
 
 **Stack:** runtime-agnostic Hono server (`server/`) + a React 19 / zustand /
@@ -89,7 +89,7 @@ The agent receives it when it next touches showcase:
 3. Background watch (CLI).
    Per-session, exactly-once (an `agentSeq` cursor). **Gotcha:** after a turn the
    agent isn't listening — the reliable pattern is _comment → tell the agent to
-   check_. Reducing this friction is a roadmap item (Pillar E). Surface URLs handed
+   check_. Reducing this friction is a roadmap item (Pillar C). Surface URLs handed
    to humans are the viewer deep link (`/session/:sid/s/:id`), not `/s/:id`.
 
 ---
@@ -103,7 +103,7 @@ The agent receives it when it next touches showcase:
   asserts only on trusted-origin DOM hooks (`.card[data-id]`, per-part
   `<iframe>`s, and `.thread .cmt.user` carrying the comment text) so it survives
   a restyle but catches a broken change. **Keep these hooks intact.** (Gap: desktop-chromium
-  only — see Pillar E.)
+  only — see Pillar F.)
 - **Verify before reporting done** (all must pass): `npm run typecheck`
   (node + viewer tsc), `npm run lint` (oxlint, warnings = errors),
   `npm run build:viewer`, `npx playwright test`. For UI, screenshot via a headless
@@ -127,9 +127,56 @@ The agent receives it when it next touches showcase:
 
 Each pillar is scoped enough to execute solo: **problem → approach → acceptance
 → effort (AI time)**. Pillars are independent; do them in any order. Effort is a
-rough first-cut estimate, not a commitment.
+rough first-cut estimate, not a commitment. The order below is roughly by
+leverage — **A and B are where the product actually wins.**
 
-### Pillar A ⭐ — In-browser chat (turn showcase into a local Claude app)
+### Shipped (the foundation — don't redo it, build on it)
+
+The viewer redesign and the full design-polish backlog are complete. This is the
+stable base everything below assumes.
+
+- **Redesign** — viewer ported Solid → React 19 + zustand + Tailwind v4 + shadcn;
+  styling fully on Tailwind utilities (no `styles.css` rules); one self-contained
+  `index.html`.
+- **Slimmed** — removed the Stream/Timeline toggle (stream-only), the server-side
+  session-trace pipeline, the Cloudflare SqlStore, and the multi-theme engine —
+  now one fixed GitHub light/dark theme with `server/themes.ts` as the single
+  color source for chrome + sandboxed parts.
+- **Chat thread** — the comment thread is a real chat-bubble UI (sender shown by
+  alignment + colour, no labels) with a persistent composer.
+- **claude.ai-grade chrome (Pillar F, F1–F17 — all done)** — shadcn `Sidebar`
+  (collapsible rail, mobile offcanvas, persisted state), per-session overflow menu
+  (rename / delete / copy-link), live search, refined rows/groups/header/footer, a
+  proper app header, surface-card chrome, skeletons + empty states, a unified
+  lucide icon set, a subtle motion pass, Sonner toasts, one type/spacing scale,
+  and a dark-mode pass.
+
+### Pillar A ⭐ — Richer surfaces (the main priority)
+
+The output side is the least-developed, highest-upside part of the product: html
+parts and kits make surfaces _interactive explainers_, not static pictures — and
+that's the thing no terminal can do. **Build here first.**
+
+Kits are the cheap extension point: a registry entry in `server/kits.ts` + a
+guide bullet, no new part kind. The html-part CSP already allowlists
+jsdelivr/cdnjs/unpkg, so CDN libs work today.
+
+- **KaTeX kit** (math) and a **chart kit** (Vega-Lite / Chart.js) — the two most
+  obviously-missing explainer primitives. _Effort:_ ~30–45m each.
+- **Drill-down loop** — html parts can already call `sendPrompt()`; make
+  "explain this deeper" buttons idiomatic so an interactive explainer asks the
+  agent to go further in place. This is the kit work that closes the loop:
+  output → tap → agent revises. _Effort:_ ~1–2h + a guide pattern the agent can
+  copy.
+- **A small kit gallery / guide pass** — document the kit pattern + the
+  `sendPrompt`/`openLink` bridge in `guide/` with copy-paste examples, so the
+  agent reaches for rich html parts instead of plain markdown. _Effort:_ ~1–2h.
+- **Canvas view (bigger bet, opt-in).** An optional spatial board — arrange a
+  session's surfaces freely (tldraw-style) instead of the vertical stream, for
+  "map a whole system" layouts. Behind a flag; the stream stays the default.
+  _Effort:_ large; only worth it if the system-explainer use case proves out.
+
+### Pillar B ⭐ — In-browser chat (turn showcase into a local Claude app)
 
 The flagship direction. A polished, claude.ai-style chat in the viewer where the
 AI runs **server-side** and emits surfaces as inline artifacts.
@@ -161,7 +208,47 @@ AI runs **server-side** and emits surfaces as inline artifacts.
   focused sessions; do behind a flag so the existing publish/watch flow keeps
   working.
 
-### Pillar B — Showing other people
+### Pillar C — Sharpen the loop (the differentiator)
+
+The reason showcase isn't just a prettier markdown viewer is the
+publish → render → **comment** → revise loop. The redesign made the chrome
+beautiful; this makes the _comment_ half as rich as the _publish_ half — the
+things no editor-side rendering can do because the surface is live and in front
+of you. Pairs naturally with Pillar A (rich html parts are what you annotate).
+
+- **Anchored annotations.** Click a region of a surface — a diagram node, a diff
+  line, a paragraph — and pin a comment to it, so the agent receives _"the user
+  is asking about **this**"_ instead of a floating comment it has to guess at.
+  The html-part sandbox bridge already round-trips clicks (`sendPrompt`,
+  `openLink`); add an "annotate" mode that posts an anchor (selector or `{x,y}` +
+  a label) alongside the comment text, render a pin on the card, and pass the
+  anchor through on `userFeedback`. _Acceptance:_ click a part → leave a pinned
+  note → it shows on the card and the agent's feedback carries the anchor.
+  _Effort:_ medium (start with html parts, then diff/markdown).
+- **Visual version diff.** Surfaces already version (`v1`, `v2 ⌄`); add a
+  "compare" next to the version `Select` that shows what changed between two
+  versions of a part — side-by-side or overlay. _Acceptance:_ pick `v2` vs `v1`
+  on a diff/markdown/code part and see the delta. _Effort:_ ~2–3h for text-y
+  parts; html parts are a later screenshot-diff problem.
+- **Structured feedback.** Approve / revise / reject affordances (one click, typed
+  signal) on a card via the `sendPrompt` bridge, not just free text — so common
+  replies are fast and the agent gets a clean intent. _Effort:_ ~1–2h.
+- **Close the nudge gap.** Today a comment doesn't reach the editor agent until it
+  next touches showcase (§4). This mostly dissolves once Pillar B's server agent
+  is actively listening; until then, surface an unread badge / desktop
+  notification when the agent has feedback it hasn't seen, so you know to nudge.
+  _Effort:_ ~1–2h.
+
+### Pillar D — Personal knowledge base
+
+- **Persistent / pinned surfaces** — a "library" of diagrams that survives the
+  session; a visual wiki for "understand a system." _Effort:_ ~2–4h (store +
+  a pinned view).
+- **Reading/learning mode** — focused, one-explainer-at-a-time view. _Effort:_ ~2h.
+
+### Pillar E — Share & present (lower priority)
+
+Showing other people — worthwhile, but after the product itself is richer.
 
 - **Static export** — `showcase export <session>` → one self-contained read-only
   `.html` to send anyone. The viewer is already single-file; bake a session
@@ -171,180 +258,38 @@ AI runs **server-side** and emits surfaces as inline artifacts.
   on the `slides` kit). _Effort:_ ~1–2h.
 - **Live share** — re-add a Cloudflare Workers deploy, or a `cloudflared` tunnel,
   so others watch live / it works on a phone. _Effort:_ Workers ~2–3h; tunnel ~20m.
+  Note: the SqlStore was removed, so a Workers path means re-introducing a
+  Durable-Object store behind the `Store` interface (the contract test still
+  exists to hold it honest).
 
-### Pillar C — Richer explainers (mostly kits)
+### Pillar F — Foundation & confidence
 
-Kits are the cheap extension point: a registry entry in `server/kits.ts` + a
-guide bullet, no new part kind. The html-part CSP already allowlists
-jsdelivr/cdnjs/unpkg, so CDN libs work today.
+The polish backlog that used to live here is **shipped** (see Shipped, above).
+What's left is a thin safety net — pick these up only when something below them
+needs it, not for their own sake.
 
-- **KaTeX kit** (math) and a **chart kit** (Vega-Lite / Chart.js). _Effort:_
-  ~30–45m each.
-- **Drill-down loop** — html parts can already call `sendPrompt()`; make
-  "explain this deeper" buttons idiomatic so an interactive explainer asks the
-  agent to go further in place. _Effort:_ ~1–2h + a guide pattern.
-
-### Pillar D — Personal knowledge base
-
-- **Persistent / pinned surfaces** — a "library" of diagrams that survives the
-  session; a visual wiki for "understand a system." _Effort:_ ~2–4h (store +
-  a pinned view).
-- **Reading/learning mode** — focused, one-explainer-at-a-time view. _Effort:_ ~2h.
-
-### Pillar E — Loop + foundation (keeps everything else safe)
-
-- **Tighten feedback** — structured approve/reject/revise buttons via the
-  `sendPrompt` bridge; element-level annotations (click a diagram box → ask about
-  it); reduce the "comment doesn't reach the agent until I nudge it" gotcha
-  (esp. once Pillar A's server agent can be actively listening).
-- **Harden the oracle** — add WebKit + a mobile viewport + a per-part-kind render
-  check; consider a CI workflow (none today) so background changes are gated
-  automatically.
-
-### Pillar F ⭐ — Design polish (background-agent backlog)
-
-A deep visual-polish pass to bring showcase up to **claude.ai-grade**. Built as
-an ordered list of small, independent tasks so a background agent can work
-through them one at a time. Reference target: the claude.ai sidebar — calm,
-content-first, a collapsible rail, hover affordances, per-item overflow menus,
-generous-but-tight spacing, restrained type.
-
-**North star (the taste to hold across every task):** refined-minimal. The
-chrome recedes; surfaces are the star. Hairline borders + soft shadows, not
-heavy lines. One accent (the theme `--accent`). Tabular-ish calm. Motion is
-subtle and fast (120–180ms) and respects `prefers-reduced-motion`. When unsure,
-look at how claude.ai does it.
-
-**Rules every task in this backlog follows** (don't restate them per task):
-
-- One task = one branch off `main` = one commit; merge (fast-forward) when green.
-- Style with Tailwind utilities + shadcn components on the JSX. **Never** add
-  rules to `styles.css`; new palette tokens go through the `index.css` `@theme`
-  bridge. Add shadcn components with `npx shadcn@latest add <name>` (they land in
-  `viewer/src/components/ui` via the `@/` alias).
-- **Keep the oracle hooks intact:** `.card[data-id="…"]`, `.card-title`, per-part
-  `<iframe>`s, and `.thread .cmt.user` carrying the comment text. Keep the sandbox
-  invariant (§3).
-- Verify before merging: `npm run typecheck` + `npm run lint` + `npm run
-build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
-  mobile viewport** with a headless Playwright script and actually look at both.
-  `npm run format` last.
-
-#### Foundation (do first, in order — later tasks build on these)
-
-- [x] **F1 — Adopt the shadcn `Sidebar` primitive.** Replace the hand-rolled
-      `<aside>` + the bespoke `max-[700px]` mobile-drawer logic in `App.tsx` with
-      shadcn's `Sidebar` (collapsible rail + built-in mobile offcanvas + a11y +
-      persisted collapsed state). `npx shadcn@latest add sidebar` (pulls
-      `Sheet`/`Tooltip`/`Skeleton`/`Separator`/`useIsMobile`). Wrap the app in
-      `<SidebarProvider>`; build `<Sidebar collapsible="icon">` with
-      `SidebarHeader` (wordmark + `SidebarTrigger`), `SidebarContent`
-      (the session groups), `SidebarFooter` (the links). Map `sessionGroups` →
-      `SidebarGroup`/`SidebarGroupLabel`/`SidebarMenu`/`SidebarMenuItem`/
-      `SidebarMenuButton`. Remove the old `navOpen`/body-drawer code it replaces.
-      _Acceptance:_ a toggle collapses the sidebar to an icon rail and the state
-      persists across reload; mobile offcanvas opens/closes; the session list,
-      groups, and active highlight all render; oracle green; desktop + mobile +
-      collapsed screenshots look right.
-- [x] **F2 — Per-session overflow menu (rename / delete / copy link).** Replace
-      the hover `✕` with a shadcn `DropdownMenu` on a `SidebarMenuAction` (`⋯`)
-      revealed on hover/active, like claude.ai. `npx shadcn@latest add
-dropdown-menu`. Items: **Rename** (inline edit or a small `Dialog` →
-      `PUT /api/sessions/:id` title), **Delete** (confirm → existing
-      `DELETE /api/sessions/:id`), **Copy link** (the session deep link).
-      _Acceptance:_ hover a chat → `⋯` appears → menu works; delete confirms and
-      removes; rename persists; keyboard-accessible; oracle green.
-- [x] **F3 — Search / filter chats.** A search affordance in `SidebarHeader`
-      (icon that expands to an `Input`, or a `Command` palette on Cmd/Ctrl-K)
-      that live-filters sessions by title, with a "no matches" empty state.
-      _Acceptance:_ typing filters the list; clearing restores; focus management
-      and Escape behave.
-
-#### Sidebar refinement
-
-- [x] **F4 — Session row polish.** On the `SidebarMenuButton`: calm hover/active/
-      focus-visible states, the agent mark, title truncation with the
-      surface-count as a quiet parenthetical, a refined unread dot, vacant-session
-      dimming. Match claude.ai spacing/type. _Acceptance:_ rows feel responsive
-      and quiet; active state is unmistakable but not loud.
-- [x] **F5 — Group headers & density.** Refine the Today/Yesterday/Earlier labels
-      (size, tracking, spacing); tune row density and the scroll area
-      (`ScrollArea` if it improves the look). _Acceptance:_ the list reads as a
-      calm, scannable history.
-- [x] **F6 — Sidebar header & footer.** Polish the `showcase` wordmark + live
-      dot; place the collapse `SidebarTrigger` cleanly; fold the footer links
-      (design guide / agent setup / connect Claude Code) into a tidy cluster or a
-      footer `DropdownMenu`/settings affordance. _Acceptance:_ header and footer
-      feel intentional, not leftover.
-
-#### Broader viewer polish
-
-- [x] **F7 — Top header bar.** The session-title row (`SessionView` head):
-      typography for the editable title, the meta line, spacing, and a home for
-      per-session actions if they move here. Make it a proper app header.
-- [x] **F8 — Surface card refinement.** Tune card elevation/radius/spacing, the
-      `card-head` (title + version `Select` sizing + timestamp), and the spacing
-      between parts. Keep `.card`/`.card-title` hooks.
-- [x] **F9 — Chat thread micro-polish.** Enter-to-send affordance + a send
-      **icon** button (lucide) instead of the "Comment" label; group consecutive
-      same-sender bubbles (tighter stack); auto-scroll to the newest message;
-      refined optimistic/pending bubble; timestamps on hover. Keep
-      `.thread .cmt.user` carrying the comment text (no sender label).
-- [x] **F10 — Empty & loading states.** `Skeleton` placeholders for the session
-      list and the stream while loading; a polished empty board, empty session,
-      and the onboarding/connect card. _Acceptance:_ nothing ever looks blank or
-      janky on first paint.
-
-#### Systemic polish (apply across the app)
-
-- [x] **F11 — Icon consistency.** Replace ad-hoc glyphs (`✕`, `⧉`, `☰`, the
-      comment/link/open/trash inline SVGs in `icons.tsx`) with a consistent
-      `lucide-react` set (already a dep). Uniform sizing/stroke/alignment.
-- [x] **F12 — Motion pass.** Subtle, fast enter animations for cards and chat
-      messages (use `tw-animate-css`, already imported), hover transitions, and
-      the sidebar collapse easing. Gate everything behind
-      `motion-reduce:` / `prefers-reduced-motion`.
-- [x] **F13 — Toasts → shadcn `Sonner`.** Replace the hand-rolled `#toast` in
-      `App.tsx` + the `toast()` in `state.ts` with shadcn `Sonner`
-      (`npx shadcn@latest add sonner`). _Acceptance:_ same call sites, nicer toasts.
-- [x] **F14 — Type & spacing system.** A consistent type scale and spacing rhythm
-      across sidebar, header, cards, and chat — the unifying pass once F1–F13 land.
-- [x] **F15 — Dark-mode review.** Walk every screen in dark (`prefers-color-
-scheme: dark`) after the above and fix contrast/elevation. The theme bridge
-      means most adapts automatically — this catches the gaps.
-
-#### Tech-debt sweeps (independent, low-risk; good warm-ups)
-
-- [x] **F16 — Guide freshness.** Sweep `guide/AGENT_HOWTO.md` + `DESIGN_GUIDE.md`
-      for stale wording left by the theming/timeline removal (e.g. the trace part
-      described as a "timeline").
-- [x] **F17 — Multi-theme engine deleted.** Collapsed to one fixed theme
-      (GitHub light/dark): removed the 6 other presets, the `/api/theme` routes +
-      `theme-changed` event + viewer switcher plumbing, and the now-dead
-      board-settings store. The single palette still feeds chrome vars, sandboxed
-      part tokens, and shiki/mermaid theming.
-
-**Running this backlog autonomously:** go top-to-bottom (F1 first — it's load-
-bearing). For each: branch, implement, run the verify suite, screenshot desktop
-
-- mobile and look, fix until it's genuinely polished (not just functional), then
-  merge to `main` and move on. Pause and ask the user only on the items marked
-  "confirm with the user" (F17) or if a task can't keep the oracle green.
+- **Harden the oracle** — `e2e/loop.spec.ts` is desktop-chromium only; add WebKit,
+  a mobile (480px) viewport, and a per-part-kind render check so a broken part can
+  never merge green. Most valuable once Pillar A adds new part/kit kinds worth
+  guarding. _Effort:_ ~2–3h.
+- **Store durability** — `JsonFileStore` is fine for one user today, but before
+  the chat app (Pillar B) holds real history, confirm atomic/crash-safe writes
+  (write-temp-then-rename) so a crash mid-write can't corrupt a board. _Effort:_ ~1h.
 
 ---
 
 ## 7. Open decisions (flag to the user before building the affected pillar)
 
-- **Pillar A engine:** plain `@anthropic-ai/sdk` agent loop (full control, build
+- **Pillar B engine:** plain `@anthropic-ai/sdk` agent loop (full control, build
   the tool surface ourselves) vs the **Claude Agent SDK** (Claude Code's engine,
   bash/file/MCP/subagents out of the box). The Agent SDK is the strongest fit for
   a "local Claude Code in the browser"; the plain SDK is leaner for an
   explainer-focused assistant. Confirm which.
-- **Pillar A tool surface:** explainer-only (publish_surface + web tools) vs
+- **Pillar B tool surface:** explainer-only (publish_surface + web tools) vs
   full coding agent (also bash/edit). Affects the security posture.
 - **API key handling:** read `ANTHROPIC_API_KEY` from env; confirm where it lives
   (`.env`, shell). Never commit it.
-- **Auth/sharing for Pillar B live share:** the one-board/one-user stance means
+- **Auth/sharing for Pillar E live share:** the one-board/one-user stance means
   shared views should default to read-only.
 
 ---
@@ -353,7 +298,7 @@ bearing). For each: branch, implement, run the verify suite, screenshot desktop
 
 1. Read sections 1–5 of this file and `AGENTS.md`.
 2. `git branch --show-current` — if not on a task branch, branch from `main`.
-3. Pick a pillar/item; if it's Pillar A or another "open decision" item, confirm
+3. Pick a pillar/item; if it's Pillar B or another "open decision" item, confirm
    the decision in §7 first.
 4. Build in small commits; after each, run the §5 verify suite. For UI, screenshot
    and look.
