@@ -1,6 +1,22 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { MoreHorizontal, Link2, Pencil, Trash2 } from "lucide-react";
 import { AgentMark } from "./agentMarks.tsx";
-import { api, isReadonly, layoutMode, relTime, sessionLabel, type SessionRow } from "./api.ts";
+import {
+  api,
+  isReadonly,
+  layoutMode,
+  relTime,
+  sessionLabel,
+  sessionLink,
+  type SessionRow,
+} from "./api.ts";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { routeGet, routeSubscribe, root } from "./host.ts";
 import { Card, cardEls, frameForSource } from "./Card.tsx";
 import { cx } from "./cx.ts";
@@ -13,6 +29,7 @@ import {
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
@@ -454,6 +471,8 @@ function SessionItem(props: { session: SessionRow }) {
   const selected = useBoard((s) => s.selected);
   const unread = useBoard((s) => s.unread);
   const { setOpenMobile } = useSidebar();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const label = sessionLabel(props.session);
   const isSel = props.session.id === selected;
   const isUnread = unread.has(props.session.id);
@@ -463,6 +482,56 @@ function SessionItem(props: { session: SessionRow }) {
     select(props.session.id);
     setOpenMobile(false);
   };
+  const rename = async (next: string) => {
+    setRenaming(false);
+    const trimmed = next.trim();
+    if (!trimmed || trimmed === label) return;
+    await api(`/api/sessions/${props.session.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title: trimmed }),
+    });
+  };
+  const remove = async () => {
+    if (!confirm(`Delete "${label}" and its surfaces?`)) return;
+    await api(`/api/sessions/${props.session.id}`, { method: "DELETE" });
+  };
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(sessionLink(props.session.id));
+      toast("Link copied");
+    } catch {
+      toast("Couldn't copy the link");
+    }
+  };
+
+  // While renaming, the whole row becomes a borderless input pinned to the
+  // session-title type so the edit lands exactly where the label was.
+  if (renaming) {
+    return (
+      <SidebarMenuItem data-id={props.session.id}>
+        <div className="flex h-auto items-center gap-2 rounded-lg px-2 py-2">
+          <span className="flex-none">
+            <AgentMark agent={props.session.agent} />
+          </span>
+          <input
+            autoFocus
+            defaultValue={label}
+            spellCheck={false}
+            className="min-w-0 flex-1 rounded-[5px] bg-card px-1 py-px text-[13px] font-medium text-foreground shadow-[0_0_0_0.5px_var(--border-2)] outline-none"
+            onBlur={(e) => rename(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+              else if (e.key === "Escape") {
+                e.currentTarget.value = label;
+                e.currentTarget.blur();
+              }
+            }}
+          />
+        </div>
+      </SidebarMenuItem>
+    );
+  }
+
   return (
     <SidebarMenuItem data-id={props.session.id}>
       <SidebarMenuButton
@@ -510,22 +579,43 @@ function SessionItem(props: { session: SessionRow }) {
           </span>
         </span>
       </SidebarMenuButton>
+      {/* The unread dot hides once the row is hovered or its menu is open, so it
+          never collides with the ⋯ action. */}
       {isUnread ? (
-        <span className="pointer-events-none absolute top-1/2 right-2.5 size-[7px] -translate-y-1/2 rounded-full bg-brand group-data-[collapsible=icon]:hidden group-hover/menu-item:hidden" />
+        <span
+          className={cx(
+            "pointer-events-none absolute top-1/2 right-2.5 size-[7px] -translate-y-1/2 rounded-full bg-brand group-data-[collapsible=icon]:hidden group-hover/menu-item:hidden",
+            menuOpen && "hidden",
+          )}
+        />
       ) : null}
       {!isReadonly() ? (
-        <button
-          className="absolute top-1/2 right-1.5 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-faint opacity-0 transition group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 hover:bg-hover hover:text-foreground focus-visible:opacity-100 group-data-[collapsible=icon]:hidden"
-          title="Delete session"
-          aria-label={`Delete session "${label}"`}
-          onClick={async (e) => {
-            e.stopPropagation();
-            if (!confirm(`Delete "${label}" and its surfaces?`)) return;
-            await api(`/api/sessions/${props.session.id}`, { method: "DELETE" });
-          }}
-        >
-          ✕
-        </button>
+        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuAction
+              showOnHover
+              aria-label={`Session options for "${label}"`}
+              className={cx("text-faint hover:text-foreground", menuOpen && "opacity-100")}
+            >
+              <MoreHorizontal />
+            </SidebarMenuAction>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="right" align="start" className="w-44">
+            <DropdownMenuItem onSelect={() => setRenaming(true)}>
+              <Pencil />
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={copyLink}>
+              <Link2 />
+              Copy link
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={remove}>
+              <Trash2 />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       ) : null}
     </SidebarMenuItem>
   );

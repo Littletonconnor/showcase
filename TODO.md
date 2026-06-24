@@ -246,7 +246,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
       persists across reload; mobile offcanvas opens/closes; the session list,
       groups, and active highlight all render; oracle green; desktop + mobile +
       collapsed screenshots look right.
-- [ ] **F2 — Per-session overflow menu (rename / delete / copy link).** Replace
+- [x] **F2 — Per-session overflow menu (rename / delete / copy link).** Replace
       the hover `✕` with a shadcn `DropdownMenu` on a `SidebarMenuAction` (`⋯`)
       revealed on hover/active, like claude.ai. `npx shadcn@latest add
     dropdown-menu`. Items: **Rename** (inline edit or a small `Dialog` →

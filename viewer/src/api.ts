@@ -88,6 +88,12 @@ export function surfaceLink(id: string): string {
   return `${location.origin}${appPath(`/s/${encodeURIComponent(id)}`)}`;
 }
 
+// Viewer deep link to a session (the human-facing route, /session/:id) — what
+// the overflow menu's "Copy link" puts on the clipboard.
+export function sessionLink(id: string): string {
+  return `${location.origin}${appPath(`/session/${encodeURIComponent(id)}`)}`;
+}
+
 export async function api<T = unknown>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(
     appPath(path),
