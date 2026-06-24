@@ -272,12 +272,12 @@ export function Card(props: { surface: Surface }) {
 
   return (
     <div
-      className="card mb-5 overflow-hidden rounded-xl border-[0.5px] border-border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04),0_2px_6px_rgba(0,0,0,0.05)] transition-[box-shadow,border-color] duration-[0.18s] ease-in-out hover:shadow-[0_1px_2px_rgba(0,0,0,0.05),0_6px_16px_rgba(0,0,0,0.07)]"
+      className="card mb-4 overflow-hidden rounded-xl border-[0.5px] border-border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.035),0_1px_3px_rgba(0,0,0,0.045)] transition-[box-shadow,border-color] duration-200 ease-out hover:border-[var(--border-2)] hover:shadow-[0_1px_2px_rgba(0,0,0,0.05),0_8px_20px_rgba(0,0,0,0.07)]"
       data-id={surfaceId}
       ref={cardRef}
     >
-      <div className="flex items-center gap-2.5 px-4 py-[13px]">
-        <span className="card-title text-sm font-[550] tracking-[-0.006em] text-foreground max-[700px]:min-w-0 max-[700px]:flex-[0_1_auto] max-[700px]:truncate">
+      <div className="flex items-center gap-2 px-4 py-3">
+        <span className="card-title truncate text-[14px] font-semibold tracking-[-0.01em] text-foreground max-[700px]:min-w-0 max-[700px]:flex-[0_1_auto]">
           {props.surface.title}
         </span>
         {/* A new version rebuilds the select, resetting the selection to the
@@ -295,7 +295,7 @@ export function Card(props: { surface: Surface }) {
           >
             <SelectTrigger
               size="sm"
-              className="h-6 gap-1 rounded-full px-2.5 text-[11px] text-muted-foreground"
+              className="h-[22px] flex-none gap-1 rounded-full border-border px-2.5 text-[11px] font-medium text-muted-foreground"
             >
               <SelectValue />
             </SelectTrigger>
@@ -308,12 +308,17 @@ export function Card(props: { surface: Surface }) {
             </SelectContent>
           </Select>
         ) : (
-          <Badge variant="outline" className="rounded-full font-normal text-muted-foreground">
+          <Badge
+            variant="outline"
+            className="flex-none rounded-full border-border px-2 py-0 text-[11px] font-normal text-faint"
+          >
             v1
           </Badge>
         )}
         <span className="flex-1"></span>
-        <span className="text-xs text-faint">{relTime(props.surface.updatedAt)}</span>
+        <span className="flex-none text-[11.5px] text-faint tabular-nums">
+          {relTime(props.surface.updatedAt)}
+        </span>
       </div>
       {/* Parts render in order, dispatched by kind. The fallback is reserved for
           a kind this viewer build doesn't know — which happens when a long-open

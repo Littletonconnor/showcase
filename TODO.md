@@ -282,7 +282,7 @@ build:viewer` + `npx playwright test`, then screenshot **desktop and a 480px
 - [x] **F7 — Top header bar.** The session-title row (`SessionView` head):
       typography for the editable title, the meta line, spacing, and a home for
       per-session actions if they move here. Make it a proper app header.
-- [ ] **F8 — Surface card refinement.** Tune card elevation/radius/spacing, the
+- [x] **F8 — Surface card refinement.** Tune card elevation/radius/spacing, the
       `card-head` (title + version `Select` sizing + timestamp), and the spacing
       between parts. Keep `.card`/`.card-title` hooks.
 - [ ] **F9 — Chat thread micro-polish.** Enter-to-send affordance + a send

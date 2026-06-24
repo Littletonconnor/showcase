@@ -467,7 +467,7 @@ function WhatsNewCard() {
   if (!v?.notes) return null;
   return (
     <div
-      className="card group mb-5 overflow-hidden rounded-xl border-[0.5px] border-border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.04),0_2px_6px_rgba(0,0,0,0.05)] transition-[box-shadow,border-color] duration-[0.18s] ease-in-out hover:shadow-[0_1px_2px_rgba(0,0,0,0.05),0_6px_16px_rgba(0,0,0,0.07)]"
+      className="card group mb-4 overflow-hidden rounded-xl border-[0.5px] border-border bg-card shadow-[0_1px_2px_rgba(0,0,0,0.035),0_1px_3px_rgba(0,0,0,0.045)] transition-[box-shadow,border-color] duration-200 ease-out hover:border-[var(--border-2)] hover:shadow-[0_1px_2px_rgba(0,0,0,0.05),0_8px_20px_rgba(0,0,0,0.07)]"
       id="whatsNew"
     >
       <div className="flex items-center gap-2.5 px-4 py-[13px]">
