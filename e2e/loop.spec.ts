@@ -203,6 +203,40 @@ test("a review session rolls its finding badges into a header summary", async ({
   await expect(header.getByRole("button", { name: "1 Nit" })).toBeVisible();
 });
 
+test("approving a finding strikes it through in the header verdict bar", async ({
+  page,
+  request,
+}) => {
+  // The verdict bar burns down: a finding the user Approves resolves and its
+  // chip strikes through, so you watch the review close out.
+  const session = await (
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "burndown" } })
+  ).json();
+  const surface = await (
+    await request.post("/api/surfaces", {
+      data: {
+        session: session.id,
+        title: "Bug finding",
+        badge: { tone: "critical", label: "Bug" },
+        parts: [{ kind: "markdown", markdown: "a bug" }],
+      },
+    })
+  ).json();
+  await page.goto(`/?surface=${surface.id}`);
+
+  const header = page.locator("#sessionView > div").first();
+  const chip = header.getByRole("button", { name: "1 Bug" });
+  await expect(chip).toBeVisible();
+  await expect(chip).not.toHaveAttribute("title", "Bug — resolved");
+
+  // Approve the finding from its card footer.
+  const card = page.locator(`.card[data-id="${surface.id}"]`);
+  await card.getByRole("button", { name: "Approve — looks good" }).click();
+
+  // The chip flips to resolved (title changes; line-through is applied).
+  await expect(chip).toHaveAttribute("title", "Bug — resolved", { timeout: 10_000 });
+});
+
 test("pinning a surface collects it in the Library across sessions", async ({ page, request }) => {
   const { surfaceId } = await seedSurface(request);
   await page.goto(`/?surface=${surfaceId}`);

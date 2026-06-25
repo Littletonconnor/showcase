@@ -222,8 +222,9 @@ workflows compose.
       per-label chips ("1 Bug · 1 Request changes · 1 Nit"), worst-severity first,
       each jumping to its finding. It's automatic (no agent authoring) and stays
       accurate as findings are added/resolved; the agent's verdict card adds the
-      verdict word + table + coverage on top. Oracle-guarded. _(Follow-up: roll the
-      user's Approve/dismiss decisions into the bar too — currently badge-only.)_
+      verdict word + table + coverage on top. Oracle-guarded. **Decisions roll in
+      too:** a finding the user **Approves** (👍) or **Dismisses** (⊘, new action)
+      resolves and its chip strikes through, so you watch the review burn down.
 - **R3 — `showcase review` ingestion.** One command turns a PR/diff into a review
   session: read `gh pr diff <n>` / `git diff <range>`, create a session titled
   after the PR, and seed a verdict placeholder — so the agent starts from a

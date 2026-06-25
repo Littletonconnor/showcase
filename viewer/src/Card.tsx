@@ -37,6 +37,7 @@ import {
   ArrowUp,
   Bookmark,
   Check,
+  CircleSlash,
   ExternalLink,
   Link2,
   MapPin,
@@ -58,6 +59,8 @@ import {
 } from "./theme.ts";
 import { TracePart } from "./TracePart.tsx";
 import {
+  APPROVAL_MARK,
+  DISMISS_MARK,
   focusSurface,
   notifyComposing,
   sendComment,
@@ -374,12 +377,34 @@ export function Card(props: { surface: Surface }) {
     <IconAction
       label="Approve — looks good"
       onClick={() => {
-        const text = "✓ Approved — this looks good.";
-        void sendComment({ surface: surfaceId, text, author: "user" }, surfaceId, text);
+        void sendComment(
+          { surface: surfaceId, text: APPROVAL_MARK, author: "user" },
+          surfaceId,
+          APPROVAL_MARK,
+        );
         toast("Sent approval to your agent");
       }}
     >
       <ThumbsUp />
+    </IconAction>
+  ) : null;
+
+  // Dismiss — the "won't change this" decision. Like Approve it posts a
+  // recognizable user marker and resolves the finding (the header verdict bar
+  // strikes resolved findings); the agent reads it as "drop this one".
+  const dismissAction = !isReadonly() ? (
+    <IconAction
+      label="Dismiss — not changing this"
+      onClick={() => {
+        void sendComment(
+          { surface: surfaceId, text: DISMISS_MARK, author: "user" },
+          surfaceId,
+          DISMISS_MARK,
+        );
+        toast("Dismissed — told your agent to drop it");
+      }}
+    >
+      <CircleSlash />
     </IconAction>
   ) : null;
 
@@ -607,6 +632,7 @@ export function Card(props: { surface: Surface }) {
             {!isReadonly() ? (
               <>
                 {approveAction}
+                {dismissAction}
                 {annotateAction}
                 <IconAction label="Request a change" onClick={startReply}>
                   <MessageSquare />
@@ -620,6 +646,7 @@ export function Card(props: { surface: Surface }) {
         secondaryActions={
           <TooltipProvider delayDuration={300}>
             {approveAction}
+            {dismissAction}
             {annotateAction}
             {surfaceActions}
           </TooltipProvider>

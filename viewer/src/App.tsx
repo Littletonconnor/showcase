@@ -79,6 +79,7 @@ import {
   dismissUpdate,
   goHome,
   groupSessions,
+  isResolutionComment,
   nearBottom,
   refreshSessions,
   refreshSessionsQuiet,
@@ -820,14 +821,34 @@ function SessionItem(props: { session: SessionRow }) {
 // scannable count chips ("2 Bug · 1 Nit"), worst-severity first, so the review
 // reads as one artifact instead of a scattered pile. Derived from the cards the
 // agent already publishes — no extra authoring — and each chip jumps to the
-// first finding of that label. Renders nothing for a session with no badges.
+// first finding of that label. A finding the user has Approved or Dismissed is
+// "resolved"; once every finding under a label is resolved the chip strikes
+// through and dims, so you watch the review burn down. Nothing for no badges.
 function ReviewSummary(props: { surfaces: Surface[] }) {
-  const byLabel = new Map<string, { tone: SurfaceBadge["tone"]; count: number; firstId: string }>();
+  const comments = useBoard((s) => s.comments);
+  const resolved = useMemo(() => {
+    const ids = new Set<string>();
+    for (const c of comments) {
+      if (c.surfaceId && isResolutionComment(c)) ids.add(c.surfaceId);
+    }
+    return ids;
+  }, [comments]);
+
+  const byLabel = new Map<
+    string,
+    { tone: SurfaceBadge["tone"]; total: number; done: number; firstId: string }
+  >();
   for (const s of props.surfaces) {
     if (!s.badge) continue;
-    const existing = byLabel.get(s.badge.label);
-    if (existing) existing.count += 1;
-    else byLabel.set(s.badge.label, { tone: s.badge.tone, count: 1, firstId: s.id });
+    const g = byLabel.get(s.badge.label) ?? {
+      tone: s.badge.tone,
+      total: 0,
+      done: 0,
+      firstId: s.id,
+    };
+    g.total += 1;
+    if (resolved.has(s.id)) g.done += 1;
+    byLabel.set(s.badge.label, g);
   }
   if (byLabel.size === 0) return null;
   const groups = [...byLabel.entries()].sort(
@@ -840,26 +861,40 @@ function ReviewSummary(props: { surfaces: Surface[] }) {
   // "Request changes") surfaces the verdict on its own.
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-0.5">
-      {groups.map(([label, g]) => (
-        <button
-          key={label}
-          type="button"
-          title={`Jump to ${label}`}
-          onClick={() => jumpTo(g.firstId)}
-          className={cx(
-            "inline-flex items-center gap-1.5 rounded-full py-[3px] pr-2 pl-[7px] text-[11px] leading-none font-semibold ring-1 ring-inset transition-opacity hover:opacity-80",
-            BADGE_TONE_CLASS[g.tone] ?? BADGE_TONE_CLASS.neutral,
-          )}
-        >
-          <span
+      {groups.map(([label, g]) => {
+        const allDone = g.done === g.total;
+        return (
+          <button
+            key={label}
+            type="button"
+            title={
+              allDone
+                ? `${label} — resolved`
+                : g.done > 0
+                  ? `Jump to ${label} (${g.done}/${g.total} resolved)`
+                  : `Jump to ${label}`
+            }
+            onClick={() => jumpTo(g.firstId)}
             className={cx(
-              "size-1.5 rounded-full",
-              BADGE_DOT_CLASS[g.tone] ?? BADGE_DOT_CLASS.neutral,
+              "inline-flex items-center gap-1.5 rounded-full py-[3px] pr-2 pl-[7px] text-[11px] leading-none font-semibold ring-1 ring-inset transition-all hover:opacity-80",
+              BADGE_TONE_CLASS[g.tone] ?? BADGE_TONE_CLASS.neutral,
+              allDone && "opacity-55 line-through",
             )}
-          />
-          {g.count} {label}
-        </button>
-      ))}
+          >
+            {allDone ? (
+              <Check className="size-2.5" strokeWidth={3} />
+            ) : (
+              <span
+                className={cx(
+                  "size-1.5 rounded-full",
+                  BADGE_DOT_CLASS[g.tone] ?? BADGE_DOT_CLASS.neutral,
+                )}
+              />
+            )}
+            {g.total} {label}
+          </button>
+        );
+      })}
     </div>
   );
 }

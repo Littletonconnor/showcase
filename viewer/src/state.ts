@@ -350,6 +350,15 @@ async function loadLibrary() {
   if (get().library) mergeComments(lists.flatMap((r) => r?.comments ?? []));
 }
 
+// Resolution markers posted by a card's Approve / Dismiss actions. A finding is
+// "resolved" once the user approves (fixed) or dismisses (won't change) it; the
+// header verdict bar strikes resolved findings. Kept here so the action that
+// posts the marker and the rollup that reads it can't drift apart.
+export const APPROVAL_MARK = "✓ Approved — this looks good.";
+export const DISMISS_MARK = "⊘ Dismissed — not changing this.";
+export const isResolutionComment = (c: { author: string; text: string }) =>
+  c.author === "user" && (c.text.startsWith("✓ Approved") || c.text.startsWith("⊘ Dismissed"));
+
 // "I'm still composing" heartbeat. While the user is typing or has a composer
 // focused, ping the server so a parked agent wait holds its batch open until
 // they finish queueing messages (see FEEDBACK_COMPOSING_TTL_MS server-side).
