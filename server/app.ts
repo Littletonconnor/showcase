@@ -93,6 +93,13 @@ export interface AppOptions {
   guideMarkdown: string;
   setupText: string;
   agentHowtoText?: string;
+  // Dev-only live reload. When true, the served viewer HTML gets a tiny
+  // reconnecting EventSource snippet and a GET /api/livereload endpoint that
+  // streams this process's boot id. `npm run dev` rebuilds viewer/dist and
+  // restarts the server on change; the new process has a new boot id, so
+  // connected browsers see it on reconnect and refresh. Never set in production
+  // (the route is unregistered and the snippet is not injected).
+  dev?: boolean;
   // When set (cloud deployments), this hook authorizes requests before any
   // app route runs. Return true to allow, false to use the default 401, or a
   // Response for custom denials. This is intentionally lower-level than
@@ -237,6 +244,7 @@ export function createApp({
   guideMarkdown,
   setupText,
   agentHowtoText = setupText,
+  dev = false,
   authenticate,
   authToken,
   basePath,
@@ -566,12 +574,25 @@ export function createApp({
       : `${script}${text}`;
   };
 
-  const configuredViewerHtml = (c: Context) =>
-    withViewerConfig(
+  // Dev live-reload snippet: a reconnecting EventSource that reloads the page
+  // when the server's boot id changes (i.e. after a restart). Injected only when
+  // `dev`; a no-op string otherwise.
+  const liveReloadSnippet =
+    `<script>(function(){var b=null;function open(){var es=new EventSource("/api/livereload");` +
+    `es.addEventListener("boot",function(e){if(b===null){b=e.data;}else if(e.data!==b){location.reload();}});}open();})();</script>`;
+  const withLiveReload = (html: string) => {
+    const i = html.lastIndexOf("</body>");
+    return i >= 0 ? html.slice(0, i) + liveReloadSnippet + html.slice(i) : html + liveReloadSnippet;
+  };
+
+  const configuredViewerHtml = (c: Context) => {
+    const base = withViewerConfig(
       withOrigin(viewerHtml, { req: { url: c.req.url } }),
       c.req.raw,
       !!publicRead && !isAuthenticated(c),
     );
+    return dev ? withLiveReload(base) : base;
+  };
   app.get("/", (c) => c.html(configuredViewerHtml(c)));
   app.get("/session/:id", async (c) => {
     if (isUnauthenticatedSessionRead(c) && !(await store.getSession(c.req.param("id")))) {
@@ -592,6 +613,25 @@ export function createApp({
   app.get("/guide", (c) => c.text(withOrigin(guideMarkdown, c)));
   app.get("/setup", (c) => c.text(withOrigin(setupText, c)));
   app.get("/agent-howto", (c) => c.text(withOrigin(agentHowtoText, c)));
+
+  if (dev) {
+    // Hold the SSE open and re-emit this process's boot id. A restart (node
+    // --watch-path on the rebuilt viewer/dist) drops the stream; the browser
+    // reconnects to the new process, sees a different boot id, and reloads.
+    const bootId = crypto.randomUUID();
+    app.get("/api/livereload", (c) =>
+      streamSSE(c, async (stream) => {
+        let open = true;
+        stream.onAbort(() => {
+          open = false;
+        });
+        while (open) {
+          await stream.writeSSE({ event: "boot", data: bootId });
+          await stream.sleep(10_000);
+        }
+      }),
+    );
+  }
 
   // Opt-in html kits available on this board (id, label, summary, classes) —
   // for discovery (`showcase kits`); the CSS/JS payloads are server-only.

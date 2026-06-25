@@ -9,7 +9,7 @@
   },
   "type": "module",
   "scripts": {
-    "dev": "vite build && (vite build --watch & node --watch server/index.ts)",
+    "dev": "vite build && (vite build --watch & SHOWCASE_DEV=1 node --watch-path=./server --watch-path=./viewer/dist server/index.ts)",
     "start": "vite build && node server/index.ts",
     "serve": "node bin/showcase.js serve",
     "build:viewer": "vite build",

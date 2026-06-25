@@ -32,6 +32,8 @@ const app = createApp({
   agentHowtoText,
   authToken: process.env.SHOWCASE_TOKEN,
   publicRead,
+  // `npm run dev` sets this; it adds the live-reload endpoint + snippet.
+  dev: process.env.SHOWCASE_DEV === "1",
   // Update check is off for this personal fork — there is no published
   // "showcase" package to compare against (the public npm package of that
   // name is unrelated). Set SHOWCASE_VERSION to re-enable for manual testing.
