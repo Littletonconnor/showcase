@@ -821,7 +821,10 @@ function CommentRow(props: { comment: ViewComment; startsRun: boolean }) {
       <div
         className={cx(
           "max-w-[88%] rounded-2xl px-3 py-1.5 text-[13px] leading-snug break-words whitespace-pre-wrap",
-          isUser ? "bg-brand text-primary-foreground" : "bg-muted text-foreground",
+          // Sender by tone, not a saturated fill: the user gets a soft peach
+          // (brand-subtle) bubble with coral text, the agent a warm-gray bubble —
+          // distinct, but quieter and more Claude-like than a loud coral block.
+          isUser ? "bg-brand-subtle text-brand" : "bg-muted text-foreground",
         )}
         title={relTime(props.comment.createdAt)}
       >
