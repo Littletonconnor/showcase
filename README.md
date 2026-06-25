@@ -23,12 +23,18 @@ Two flagship workflows:
 
 ### 🔍 Visual PR review
 
-_"The future of code review is multimodal."_ Point your agent at a branch and it
-publishes **finding cards** — each one a severity **badge** (Bug / Nit / Question
-/ Praise), a plain-English explanation, a **mermaid diagram of the relevant
-flow**, and the **diff** of the fix, all in a single card. You read, push back in
-the thread, and the agent revises the fix in place as a new version. Far faster to
-grasp than a wall of inline comments, and it leads with a verdict you can scan.
+_"The future of code review is multimodal."_ Run `showcase review <branch>` and
+your agent breaks the PR into critical pieces, publishing one **finding card** per
+piece via the `review_finding` tool — each a severity **badge** (Bug / Nit /
+Question / Praise), a plain-English explanation, the **diff inline**, and an
+optional **mermaid diagram** of the relevant flow. You read, push back in the
+thread, approve or dismiss to burn down a live verdict bar, and the agent revises
+the fix in place. Far faster than a wall of inline comments.
+
+**Make it _your_ reviewer:** drop a `~/.showcase/review.md` (or point
+`$SHOWCASE_REVIEW_PROFILE` at one) holding your standing review conventions and
+the skills to load — `showcase review` folds it into every review prompt, so the
+agent applies your standards and loads your tools each time.
 
 ### 📚 Understand & explain code
 

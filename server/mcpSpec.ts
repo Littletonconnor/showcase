@@ -11,7 +11,10 @@ export const MCP_INSTRUCTIONS =
   "renders to an SVG (flowchart, sequence, ERD, …), a `diff` part is a patch the viewer renders as " +
   "a syntax-highlighted split/unified diff. Combine them — e.g. a markdown rationale above a diff part — " +
   "in one card. publish_surface is the general tool; publish_snippet is " +
-  "sugar for a single html part. Call get_design_guide once before your first publish. On your first " +
+  "sugar for a single html part. FOR A CODE REVIEW: call review_finding once per critical piece — it " +
+  "composes a severity badge + explanation + the diff inline into a card from plain fields — instead " +
+  "of dumping the whole review into one markdown surface (that wall of text is the failure mode). " +
+  "Call get_design_guide once before your first publish. On your first " +
   'publish, also pass sessionTitle to name the session after the task (e.g. "Auth refactor"). The ' +
   "user can comment in their browser; call wait_for_feedback after publishing something you want a " +
   "reaction to. Any publish/update/reply result may carry a userFeedback array — comments the user " +

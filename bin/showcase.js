@@ -18,7 +18,9 @@ usage:
   showcase review <branch> [options]      scaffold a review session from a diff
       --base <branch>   base to diff against (default: origin/HEAD or main)
       --title <t>       session title (default: "Review: <branch>")
-      prints the session id + URL + a ready-to-paste prompt for your agent
+      prints the session id + URL + a ready-to-paste prompt for your agent.
+      Reads a review profile (your standing conventions + skills to load) from
+      $SHOWCASE_REVIEW_PROFILE or ~/.showcase/review.md and folds it in.
   showcase finding [options]              publish one structured review finding
       --title <t>       the finding (required)    --problem <text>  what's wrong (required)
       --severity <s>    bug|nit|question|praise|note   --file <f> --line <n>
@@ -1087,7 +1089,7 @@ const commands = {
       "| --- | --- |",
       ...rows,
       "",
-      "_Findings appear below as the agent reviews. Approve a card (👍) once it's addressed._",
+      "_One **finding card per critical piece** appears below as the agent reviews — each with its diff inline. Approve (👍) or dismiss (⊘) a card once it's addressed._",
     ].join("\n");
 
     const surface = await api("/api/surfaces", {
@@ -1101,17 +1103,35 @@ const commands = {
       }),
     });
 
+    // Review profile (optional): the user's standing review conventions + which
+    // skills to load. Injected verbatim into the prompt so every review applies
+    // their standards and loads their tools. See `showcase review --help`.
+    const profilePath =
+      process.env.SHOWCASE_REVIEW_PROFILE || join(userInfo().homedir, ".showcase", "review.md");
+    let profile = "";
+    try {
+      if (existsSync(profilePath)) profile = readFileSync(profilePath, "utf8").trim();
+    } catch {}
+
+    const prompt = [
+      profile && `Apply your review profile first (load any skills it names):\n${profile}`,
+      `Review the branch ${branch} against ${base} on showcase (session ${surface.sessionId}). Call get_design_guide first.`,
+      `Break the PR into its CRITICAL PIECES — the entity, the wiring, the test coverage — not file-by-file. Read the actual code paths, not just the diff hunks.`,
+      `For EACH piece, call review_finding ONCE: pass a severity, a title, the file/line, the problem (and a fix), and the relevant hunk as \`patch\` so the diff shows inline. Add a mermaid \`diagram\` when control/data flow or structure matters.`,
+      `Do NOT dump the whole review into one markdown surface — that is the failure mode this replaces. One review_finding per piece.`,
+      `Finish by updating the "In review" verdict card (surface ${surface.id}) with your verdict: set its badge to "Request changes" or "Approve", and summarize the findings + what you did/didn't cover.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
     out({
       session: surface.sessionId,
       surface: surface.id,
       url: `${BASE}/session/${surface.sessionId}/s/${surface.id}`,
       range,
       files: names.split("\n").length,
-      prompt:
-        `Review the branch ${branch} against ${base} and publish finding cards to showcase ` +
-        `(session ${surface.sessionId}). Call get_design_guide first, then follow the visual PR ` +
-        `review recipe: one finding card each (severity badge + What/Why/Fix + a mermaid of the ` +
-        `relevant flow + the diff), and update the "In review" verdict card with your verdict.`,
+      profile: profile ? profilePath : null,
+      prompt,
     });
   },
 

@@ -75,36 +75,25 @@ This is showcase's flagship workflow — _"the future of code review is multimod
 
 **Start from a scaffold:** `showcase review <branch> [--base <base>]` creates a "Review: <branch>" session seeded with a verdict-placeholder card (the diffstat + file list) and prints the session id + a ready-to-paste prompt. Review into that session, then publish your finding cards. **Be thorough — a shallow review is worse than none.** Read the actual code paths, not just the diff hunks; trace how the change behaves at runtime; and back every claim with a concrete file:line and the real values involved.
 
-**Each finding card** = a `badge` (severity), a title that names the location (`"Unbounded asset upload — server/app.ts:747"`), and parts in this order:
+**Break the PR into its critical pieces** — the entity, the wiring, the test coverage — not file-by-file. **One `review_finding` per piece.** Do NOT dump the whole review into a single markdown surface — that wall of text is the exact failure this replaces.
 
-1. a **markdown** part with a structured body — don't hand-wave, use these labelled beats:
-   - **What** — the precise behavior, naming the symbol/function and `file:line`.
-   - **Why it matters** — the concrete impact (who hits it, how bad, under what input). Quantify when you can ("a 2 GB upload allocates 2 GB before the 5 MB check").
-   - **Fix** — what to change and why that's correct.
-2. a **mermaid** part when control/data flow or state matters — diagram the path that produces the bug (the request flow, the state machine, the call graph). Skip it for a pure one-liner.
-3. a **diff** part with the proposed fix (a unified `patch` is the compact form), or a **code** part to point at the offending lines when there's no fix yet.
+**Use `review_finding`, not hand-built parts.** You pass fields; showcase composes the multimodal card (badge + a Problem/Fix explanation + the diff inline + an optional diagram). It's one call and far less work than assembling `parts` by hand — so the visual review is the easy path:
 
 ```jsonc
-// publish_surface
+// review_finding — one call → a finding card
 {
-  "title": "Bug: unbounded asset upload — server/app.ts:747",
-  "badge": { "tone": "critical", "label": "Bug" },
-  "parts": [
-    {
-      "kind": "markdown",
-      "markdown": "**What** — `uploadAsset` (server/app.ts:747) calls `c.req.arrayBuffer()` to buffer the whole body into memory *before* the `MAX_ASSET_BYTES` check on line 759.\n\n**Why it matters** — the size guard never runs for an oversized request: a 2 GB upload allocates 2 GB of heap and can OOM the process before the 413 is ever returned. Any unauthenticated client can trigger it (local boards ship with no token).\n\n**Fix** — reject on the `content-length` header before reading the body; fall back to a streaming cap for chunked uploads.",
-    },
-    {
-      "kind": "mermaid",
-      "mermaid": "flowchart LR\n  Client-->read[read full body]\n  read-->size{>5MB?}\n  size--no-->store\n  read-. OOM .->heap[heap exhausted]",
-    },
-    {
-      "kind": "diff",
-      "patch": "@@ -747,6 +747,11 @@\n   const mime = ...\n+  const len = Number(c.req.header('content-length') ?? 0);\n+  if (len > MAX_ASSET_BYTES) return c.json({ error: 'too large' }, 413);\n   const buf = new Uint8Array(await c.req.arrayBuffer());",
-    },
-  ],
+  "severity": "bug", // bug|nit|question|praise|note → the badge
+  "title": "Unbounded asset upload",
+  "file": "server/app.ts",
+  "line": 747, // ride the card title
+  "problem": "`uploadAsset` calls `c.req.arrayBuffer()` to buffer the whole body *before* the `MAX_ASSET_BYTES` check on line 759. A 2 GB upload allocates 2 GB of heap and can OOM the process before the 413 ever fires — any unauthenticated client can trigger it.",
+  "fix": "Reject on the `content-length` header before reading the body; add a streaming cap for chunked uploads.",
+  "patch": "@@ -747,6 +747,11 @@\n   const mime = ...\n+  const len = Number(c.req.header('content-length') ?? 0);\n+  if (len > MAX_ASSET_BYTES) return c.json({ error: 'too large' }, 413);\n   const buf = new Uint8Array(await c.req.arrayBuffer());",
+  "diagram": "flowchart LR\n  Client-->read[read full body]\n  read-->size{>5MB?}\n  size--no-->store\n  read-. OOM .->heap[heap exhausted]",
 }
 ```
+
+**Be thorough, and back every claim.** `problem` names the symbol + `file:line` and the concrete impact (who hits it, how bad, under what input — quantify when you can). `fix` says what to change and why it's right. Pass the **relevant hunk** as `patch` so the change shows inline; add a `diagram` when control/data flow or structure matters. (`review_finding` also works for a _praise_ or a _question_ card, not only problems — call out genuinely good work and flag what you couldn't judge.)
 
 **Lead with a verdict card** — publish it first with `badge:{tone:"warning", label:"Request changes"}` (or `{tone:"success", label:"Approve"}`). Make it a real summary, not a sentence:
 

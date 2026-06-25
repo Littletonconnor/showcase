@@ -353,6 +353,30 @@ test("review scaffolds a session from a branch diff", async () => {
   }
 });
 
+test("review folds in the review profile and demands review_finding", async () => {
+  const server = await serveApp();
+  const repo = gitRepo();
+  const profile = join(mkdtempSync(join(tmpdir(), "showcase-prof-")), "review.md");
+  writeFileSync(profile, "Load skills: code-reviewer.\nConventions: checkNotNull required args.");
+  try {
+    const { code, stdout } = await runWith(
+      { cwd: repo, env: { SHOWCASE_URL: server.url, SHOWCASE_REVIEW_PROFILE: profile } },
+      "review",
+      "feature",
+      "--base",
+      "main",
+    );
+    assert.equal(code, 0);
+    const out = JSON.parse(stdout);
+    assert.ok(out.profile, "reports the profile path");
+    assert.match(out.prompt, /code-reviewer/); // the profile is injected verbatim
+    assert.match(out.prompt, /review_finding/); // demands the structured tool
+    assert.match(out.prompt, /failure mode/); // forbids the markdown wall
+  } finally {
+    await server.close();
+  }
+});
+
 test("comment --session posts a session-level (surfaceless) reply", async () => {
   const server = await serveApp();
   try {
