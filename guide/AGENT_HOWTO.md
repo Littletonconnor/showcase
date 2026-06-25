@@ -17,8 +17,9 @@ A surface is a card built from ordered **parts**, each with a `kind`:
 - **`trace`** — agent-run steps rendered as a vertical step list.
 - **`code`** — a source file rendered with syntax highlighting.
 - **`json`** — a JSON value rendered as a collapsible tree.
+- **`chart`** — row-oriented numeric data rendered as a native SVG chart (bar, line, area, or pie). Reach for it for metrics, distributions, before/after comparisons — anything a terminal can't draw.
 
-A surface can combine parts — `[html, diff]` is a diagram with its code review in one card. html parts are sandboxed (you author the markup); diff/markdown/mermaid/terminal/image/trace/code/json parts are data rendered by the trusted viewer.
+A surface can combine parts — `[html, diff]` is a diagram with its code review in one card. html parts are sandboxed (you author the markup); diff/markdown/mermaid/terminal/image/trace/code/json/chart parts are data rendered by the trusted viewer.
 
 ## Before your first publish
 
@@ -42,6 +43,7 @@ showcase publish sketch.html --diff change.patch --title "Retry flow"   # combin
 showcase markdown notes.md --title "Plan"
 showcase mermaid flow.mmd --title "Flow"
 showcase image screenshot.png --title "Screenshot"
+showcase chart latency.json --title "Latency"   # latency.json holds the chart spec (see DESIGN_GUIDE)
 ```
 
 Save the returned `sessionId` and surface `id`; all feedback handling depends on watching the exact session you published to.

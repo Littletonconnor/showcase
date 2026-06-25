@@ -227,6 +227,49 @@ const looseCodePart = z.object({
   lineStart: optionalLooseNumber,
 });
 
+// A chart part carries row-oriented numeric data the viewer renders with
+// Recharts (see ChartPart in types.ts). `chartType` selects the form, `x` names
+// the category field, `y` names the numeric series (one field or several). Strict
+// mode rejects an unknown chartType, empty data, or a missing x/y; loose mode
+// coerces a bad chartType to "bar", drops non-object data rows, and drops the
+// whole part only when data/x/y can't yield a plottable chart.
+const chartTypeEnum = z.enum(["bar", "line", "area", "pie"]);
+const strictChartDatum = z.record(z.union([z.string(), z.number(), z.null()]));
+const strictChartY = z.union([z.string().min(1), z.array(z.string().min(1)).nonempty()]);
+const strictChartPart = z.object({
+  kind: z.literal("chart"),
+  chartType: chartTypeEnum,
+  data: z.array(strictChartDatum).nonempty({ message: 'chart part requires non-empty "data"' }),
+  x: requiredString("x"),
+  y: strictChartY,
+  stacked: z.boolean().optional(),
+  xLabel: z.string().optional(),
+  yLabel: z.string().optional(),
+  caption: z.string().optional(),
+});
+const looseChartPart = z
+  .object({
+    kind: z.literal("chart"),
+    chartType: z.preprocess(
+      (v) => (v === "bar" || v === "line" || v === "area" || v === "pie" ? v : "bar"),
+      chartTypeEnum,
+    ),
+    data: z.preprocess(
+      (raw) => (Array.isArray(raw) ? raw.filter((d) => !!d && typeof d === "object") : []),
+      z.array(z.record(z.unknown())),
+    ),
+    x: z.string(),
+    y: z.union([z.string(), z.array(z.string())]),
+    stacked: z.preprocess((v) => (typeof v === "boolean" ? v : undefined), z.boolean().optional()),
+    xLabel: optionalLooseString,
+    yLabel: optionalLooseString,
+    caption: optionalLooseString,
+  })
+  .refine(
+    (p) => p.data.length > 0 && p.x.length > 0 && (Array.isArray(p.y) ? p.y.length > 0 : !!p.y),
+    { message: 'chart part requires "data", "x", and "y"' },
+  );
+
 const looseSurfacePart = z.union([
   looseHtmlPart,
   looseMarkdownPart,
@@ -237,6 +280,7 @@ const looseSurfacePart = z.union([
   looseTerminalPart,
   looseJsonPart,
   looseCodePart,
+  looseChartPart,
 ]);
 
 // Runtime SurfacePart parser shared by REST and MCP. REST uses strict mode to
@@ -309,6 +353,8 @@ function schemaForKind(kind: unknown): z.ZodType<SurfacePart, z.ZodTypeDef, any>
       return strictJsonPart;
     case "code":
       return strictCodePart;
+    case "chart":
+      return strictChartPart;
     default:
       return null;
   }

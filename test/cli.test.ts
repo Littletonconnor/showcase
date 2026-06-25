@@ -195,6 +195,49 @@ test("publish --kit puts the (deduped) kit ids on the html part", async () => {
   }
 });
 
+test("chart command wraps the spec file as a chart part", async () => {
+  const server = await serveApp();
+  try {
+    const dir = mkdtempSync(join(tmpdir(), "showcase-chart-"));
+    const file = join(dir, "spec.json");
+    const spec = {
+      chartType: "bar",
+      x: "pctl",
+      y: ["before", "after"],
+      data: [{ pctl: "p50", before: 41, after: 12 }],
+      yLabel: "ms",
+    };
+    writeFileSync(file, JSON.stringify(spec));
+    const { code, stdout } = await runWith(
+      { env: { SHOWCASE_URL: server.url } },
+      "chart",
+      file,
+      "--title",
+      "Latency",
+    );
+    assert.equal(code, 0);
+    const out = JSON.parse(stdout);
+    const full = await fetch(`${server.url}/api/surfaces/${out.id}`).then((r) => r.json() as any);
+    assert.deepEqual(full.parts[0], { kind: "chart", ...spec });
+  } finally {
+    await server.close();
+  }
+});
+
+test("chart command rejects a non-object spec with a clear error", async () => {
+  const server = await serveApp();
+  try {
+    const dir = mkdtempSync(join(tmpdir(), "showcase-chart-"));
+    const file = join(dir, "spec.json");
+    writeFileSync(file, "[1, 2, 3]");
+    const { code, stderr } = await runWith({ env: { SHOWCASE_URL: server.url } }, "chart", file);
+    assert.notEqual(code, 0);
+    assert.match(stderr, /chart spec must be a JSON object/);
+  } finally {
+    await server.close();
+  }
+});
+
 test("publish --kit with an unknown id fails with a clear error", async () => {
   const server = await serveApp();
   try {

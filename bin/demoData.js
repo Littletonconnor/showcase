@@ -133,6 +133,23 @@ const QUEUE_METRICS = `
   }
 </script>`;
 
+// A native chart part (Recharts) — a grouped bar chart contrasting queue-wait
+// percentiles before and after the batched-dequeue change. Two series exercise
+// the accent-led palette; `yLabel`/`caption` round out the framing.
+const QUEUE_LATENCY_CHART = {
+  kind: "chart",
+  chartType: "bar",
+  x: "pctl",
+  y: ["before", "after"],
+  data: [
+    { pctl: "p50", before: 41, after: 12 },
+    { pctl: "p95", before: 300, after: 86 },
+    { pctl: "p99", before: 540, after: 140 },
+  ],
+  yLabel: "ms",
+  caption: "Queue wait by percentile — before vs after batched dequeue",
+};
+
 // Seeded in order; the viewer sorts sessions by last activity, so the last
 // session here ends up on top.
 export const DEMO_SESSIONS = [
@@ -143,6 +160,10 @@ export const DEMO_SESSIONS = [
       {
         title: "Queue latency after batched dequeue",
         html: QUEUE_METRICS,
+      },
+      {
+        title: "Latency percentiles, before vs after",
+        parts: [QUEUE_LATENCY_CHART],
       },
     ],
   },

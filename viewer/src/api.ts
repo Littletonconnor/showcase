@@ -1,5 +1,6 @@
 // Thin client over the REST API, typed against the server's data model.
 import type {
+  ChartPart,
   Comment,
   CodePart,
   DiffPart,
@@ -18,6 +19,7 @@ import type {
 import { basePath } from "./host.ts";
 
 export type {
+  ChartPart,
   Comment,
   CodePart,
   DiffPart,

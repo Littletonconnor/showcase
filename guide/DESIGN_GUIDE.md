@@ -60,6 +60,16 @@ a `kind`:
   Reach for it when a whole file or snippet is the point — cleaner than a
   markdown part with one fenced block, and the kind shows up as `code` in the
   card metadata.
+- **`chart`** — row-oriented numeric data the viewer renders as a native SVG
+  chart (Recharts). `chartType` is `bar`, `line`, `area`, or `pie`. `data` is an
+  array of objects (one per row); `x` names the category field (the x axis, or
+  the slice label for pie); `y` names the numeric series — a single field, or an
+  array of fields to plot several series (set `stacked: true` to stack bars or
+  areas). Optional `xLabel`/`yLabel` annotate the axes and `caption` sits below.
+  Colors come from the live theme, so charts re-theme with the board; the first
+  series uses the board accent. Like image/json it is data, not markup — sent as
+  values, rendered with escaped text nodes, so no sandbox is needed. Reach for it
+  for metrics, distributions, and before/after comparisons.
 
 For an issue/PR/CI tree, status board, or stepped deck, reach for an `html`
 part with a kit (see Kits below) rather than a dedicated part kind.
@@ -67,8 +77,8 @@ part with a kit (see Kits below) rather than a dedicated part kind.
 A surface can combine parts, e.g. `[html, diff]` is a diagram with its code
 review in one card, and `[markdown, diff]` is a written rationale above its
 changeset. Trust differs: html parts are sandboxed because you author the
-markup; markdown/mermaid/diff/image/trace/terminal parts are rendered
-by the viewer from data — send data, never markup.
+markup; markdown/mermaid/diff/image/trace/terminal/json/code/chart parts are
+rendered by the viewer from data — send data, never markup.
 
 A **`SurfacePart`** is one of:
 
@@ -83,6 +93,7 @@ A **`SurfacePart`** is one of:
 { "kind": "trace", "assetId": "<id of an uploaded JSON/JSONL trace>", "title": "..." }
 { "kind": "terminal", "text": "<output, may include ANSI SGR escapes>", "cols": 80, "title": "..." }
 { "kind": "json", "data": { "a": 1, "b": [true, null, "hi"] } }
+{ "kind": "chart", "chartType": "bar", "x": "pctl", "y": ["before", "after"], "data": [{ "pctl": "p50", "before": 41, "after": 12 }, { "pctl": "p95", "before": 300, "after": 86 }], "yLabel": "ms" }
 { "kind": "code", "code": "const x = 42;", "language": "ts", "title": "example.ts" }
 { "kind": "code", "code": "...", "language": "ts", "title": "x.ts", "lineStart": 80 }
 { "kind": "html", "html": "<ul class=\"tree\">...</ul>", "kits": ["issues"] }   # opt into a kit (see Kits)

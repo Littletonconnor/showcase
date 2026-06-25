@@ -58,6 +58,10 @@ usage:
   showcase json <file|-> [options]        publish a JSON surface (collapsible tree)
       --title <t>       surface title
       (also: --session, --session-title, --agent, --new-session)
+  showcase chart <file|-> [options]       publish a chart surface (native SVG chart)
+      --title <t>       surface title
+      file holds the chart spec: {chartType,x,y,data[,stacked,xLabel,yLabel,caption]}
+      (also: --session, --session-title, --agent, --new-session)
   showcase code <file|-> [options]        publish a code surface (shiki-highlighted)
       --title <t>       surface (card) title
       --filename <f>    filename shown in the code header bar (defaults to the
@@ -744,6 +748,32 @@ const commands = {
     const parts = [{ kind: "json", data }];
     outSurface(await publishSurface(parts, flags));
   },
+  async chart() {
+    const { values: flags, positionals } = parse({
+      allowPositionals: true,
+      options: {
+        title: { type: "string" },
+        session: { type: "string" },
+        "session-title": { type: "string" },
+        agent: { type: "string" },
+        "new-session": { type: "boolean" },
+      },
+    });
+    if (!positionals[0]) fail("usage: showcase chart <file|-> [--title t]");
+    // The file holds the chart spec object ({chartType, x, y, data, ...}); wrap
+    // it as a chart part. The server validates the shape (chartType/x/y/data).
+    let spec;
+    try {
+      spec = JSON.parse(readContent(positionals[0]));
+    } catch {
+      fail(`invalid JSON${positionals[0] !== "-" ? ` in ${positionals[0]}` : ""}`);
+    }
+    if (!spec || typeof spec !== "object" || Array.isArray(spec)) {
+      fail("chart spec must be a JSON object with chartType, x, y, and data");
+    }
+    const parts = [{ kind: "chart", ...spec }];
+    outSurface(await publishSurface(parts, flags));
+  },
   async code() {
     const { values: flags, positionals } = parse({
       allowPositionals: true,
@@ -946,10 +976,17 @@ const commands = {
         body: JSON.stringify({ agent: demo.agent, title: demo.title }),
       });
       for (const snip of demo.snippets) {
-        const snippet = await api("/api/snippets", {
-          method: "POST",
-          body: JSON.stringify({ session: session.id, title: snip.title, html: snip.html }),
-        });
+        // A snippet is html sugar (POST /api/snippets); a snippet carrying
+        // `parts` is a full multi-part surface (POST /api/surfaces).
+        const snippet = snip.parts
+          ? await api("/api/surfaces", {
+              method: "POST",
+              body: JSON.stringify({ session: session.id, title: snip.title, parts: snip.parts }),
+            })
+          : await api("/api/snippets", {
+              method: "POST",
+              body: JSON.stringify({ session: session.id, title: snip.title, html: snip.html }),
+            });
         for (const step of snip.followups ?? []) {
           if (step.update) {
             await api(`/api/snippets/${snippet.id}`, {

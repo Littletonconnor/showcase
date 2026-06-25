@@ -4,6 +4,7 @@ import {
   appPath,
   isReadonly,
   relTime,
+  type ChartPart as ChartPartData,
   type DiffPart as DiffPartData,
   type ImagePart as ImagePartData,
   type JsonPart as JsonPartData,
@@ -15,6 +16,7 @@ import {
   type TracePart as TracePartData,
   surfaceLink,
 } from "./api.ts";
+import { ChartPart } from "./ChartPart.tsx";
 import { CodePart } from "./CodePart.tsx";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -360,6 +362,8 @@ export function Card(props: { surface: Surface }) {
             return <JsonPart key={i} part={part as JsonPartData} />;
           case "code":
             return <CodePart key={i} part={part as CodePartData} />;
+          case "chart":
+            return <ChartPart key={i} part={part as ChartPartData} />;
           default:
             return (
               <div

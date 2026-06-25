@@ -387,6 +387,84 @@ test("code part without code is rejected", async () => {
   assert.equal(res.status, 400);
 });
 
+test("publishes a chart part; round-trips the spec and 404s on /s", async () => {
+  const app = makeApp();
+  const chart = {
+    kind: "chart",
+    chartType: "bar",
+    x: "pctl",
+    y: ["before", "after"],
+    data: [
+      { pctl: "p50", before: 41, after: 12 },
+      { pctl: "p95", before: 300, after: 86 },
+    ],
+    yLabel: "ms",
+    caption: "before vs after",
+  };
+  const res = await app.request("/api/surfaces", json({ title: "Latency", parts: [chart] }));
+  assert.equal(res.status, 201);
+  const surface = (await res.json()) as any;
+  assert.deepEqual(surface.kinds, ["chart"]);
+
+  const full = (await (await app.request(`/api/surfaces/${surface.id}`)).json()) as any;
+  assert.deepEqual(full.parts[0], chart);
+  // chart is viewer-rendered data, not a sandboxed html doc
+  assert.equal((await app.request(`/s/${surface.id}?part=0`)).status, 404);
+});
+
+test("chart part with a single y field is valid", async () => {
+  const app = makeApp();
+  const res = await app.request(
+    "/api/surfaces",
+    json({
+      title: "Single",
+      parts: [{ kind: "chart", chartType: "line", x: "t", y: "v", data: [{ t: "a", v: 1 }] }],
+    }),
+  );
+  assert.equal(res.status, 201);
+});
+
+test("chart part with an unknown chartType is rejected (strict REST)", async () => {
+  const app = makeApp();
+  const res = await app.request(
+    "/api/surfaces",
+    json({
+      title: "Bad",
+      parts: [{ kind: "chart", chartType: "donut", x: "t", y: "v", data: [{ t: "a", v: 1 }] }],
+    }),
+  );
+  assert.equal(res.status, 400);
+});
+
+test("chart part with empty data is rejected (strict REST)", async () => {
+  const app = makeApp();
+  const res = await app.request(
+    "/api/surfaces",
+    json({ title: "Bad", parts: [{ kind: "chart", chartType: "bar", x: "t", y: "v", data: [] }] }),
+  );
+  assert.equal(res.status, 400);
+});
+
+test("publish_surface MCP tool coerces a bad chartType to bar (loose)", async () => {
+  const app = makeApp();
+  const published = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(1, "tools/call", {
+        name: "publish_surface",
+        arguments: {
+          title: "Chart",
+          parts: [{ kind: "chart", chartType: "donut", x: "t", y: "v", data: [{ t: "a", v: 1 }] }],
+        },
+      }),
+    )
+  ).json()) as any;
+  const payload = JSON.parse(published.result.content[0].text);
+  const full = (await (await app.request(`/api/surfaces/${payload.id}`)).json()) as any;
+  assert.equal(full.parts[0].kind, "chart");
+  assert.equal(full.parts[0].chartType, "bar");
+});
+
 test("code part with lineStart round-trips", async () => {
   const app = makeApp();
   const res = await app.request(

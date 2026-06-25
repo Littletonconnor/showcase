@@ -27,7 +27,8 @@ export type SurfacePartKind =
   | "terminal"
   | "mermaid"
   | "json"
-  | "code";
+  | "code"
+  | "chart";
 
 export interface HtmlPart {
   kind: "html";
@@ -149,6 +150,29 @@ export interface CodePart {
   lineStart?: number;
 }
 
+// A chart part is structured numeric data the trusted viewer renders as an SVG
+// chart with Recharts. Like image/json/trace it is DATA, not markup: Recharts
+// emits the chart through React elements (every label becomes a text node), so
+// it escapes by construction and needs no sandbox — agent-authored chart data
+// can never execute in the trusted viewer origin. Axes/grid/tooltip colors come
+// from the live theme tokens, so charts re-theme with the board.
+//
+// `data` is row-oriented (an array of objects). `x` names the category field
+// (the x axis for bar/line/area, the slice label for pie); `y` names the numeric
+// series — one field, or several to plot multiple series / a stacked chart.
+export interface ChartPart {
+  kind: "chart";
+  chartType: "bar" | "line" | "area" | "pie";
+  data: Array<Record<string, string | number | null>>;
+  x: string;
+  y: string | string[];
+  // Stack bars/areas instead of grouping them (ignored for line/pie).
+  stacked?: boolean;
+  xLabel?: string;
+  yLabel?: string;
+  caption?: string;
+}
+
 export type SurfacePart =
   | HtmlPart
   | DiffPart
@@ -158,7 +182,8 @@ export type SurfacePart =
   | TerminalPart
   | MermaidPart
   | JsonPart
-  | CodePart;
+  | CodePart
+  | ChartPart;
 
 export interface SurfaceVersion {
   version: number;
@@ -347,6 +372,14 @@ export function partsByteLength(parts: SurfacePart[]): number {
     } else if (p.kind === "code") {
       n +=
         p.code.length + (p.language?.length ?? 0) + (p.title?.length ?? 0) + (p.lineStart ? 4 : 0);
+    } else if (p.kind === "chart") {
+      n +=
+        JSON.stringify(p.data).length +
+        p.x.length +
+        (Array.isArray(p.y) ? p.y.join("").length : p.y.length) +
+        (p.xLabel?.length ?? 0) +
+        (p.yLabel?.length ?? 0) +
+        (p.caption?.length ?? 0);
     } else {
       n += (p.assetId?.length ?? 0) + (p.title?.length ?? 0);
       for (const s of p.steps ?? []) {
