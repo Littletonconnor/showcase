@@ -174,6 +174,34 @@ test("a review finding card renders its severity badge in the trusted header", a
   await expect(card.locator("iframe")).toHaveCount(3);
 });
 
+test("reading mode focuses one surface with prev/next paging", async ({ page, request }) => {
+  // W2 L3: a distraction-free reader showing one surface at a time, paging
+  // through the stream.
+  const session = await (
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "read" } })
+  ).json();
+  const mk = (t: string) =>
+    request.post("/api/surfaces", {
+      data: { session: session.id, title: t, parts: [{ kind: "markdown", markdown: t }] },
+    });
+  await mk("First explainer");
+  const second = await (await mk("Second explainer")).json();
+  await page.goto(`/?surface=${second.id}`);
+
+  const card = page.locator(`.card[data-id="${second.id}"]`);
+  await expect(card).toBeVisible();
+  await card.getByRole("button", { name: "Read — focused, one at a time" }).click();
+
+  const reader = page.getByRole("dialog", { name: "Reader" });
+  await expect(reader).toBeVisible();
+  await expect(reader.getByText("2 / 2")).toBeVisible();
+  // Page back to the first; Escape closes.
+  await reader.getByRole("button", { name: "Previous" }).click();
+  await expect(reader.getByText("1 / 2")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(reader).toBeHidden();
+});
+
 test("the animate kit plays a stepped explainer", async ({ page, request }) => {
   // W2 L1: an html part with kits:["animate"] reveals steps one at a time and
   // gets play/scrub controls injected — the explainer building block.

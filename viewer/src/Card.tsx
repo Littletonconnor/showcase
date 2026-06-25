@@ -35,6 +35,7 @@ import { cx } from "./cx.ts";
 import { DiffPart } from "./DiffPart.tsx";
 import {
   ArrowUp,
+  BookOpen,
   Bookmark,
   Check,
   CircleSlash,
@@ -62,6 +63,7 @@ import { TracePart } from "./TracePart.tsx";
 import {
   APPROVAL_MARK,
   DISMISS_MARK,
+  enterReading,
   focusSurface,
   notifyComposing,
   sendComment,
@@ -463,6 +465,9 @@ export function Card(props: { surface: Surface }) {
   const pinned = !!props.surface.pinned;
   const surfaceActions = (
     <>
+      <IconAction label="Read — focused, one at a time" onClick={() => enterReading(surfaceId)}>
+        <BookOpen />
+      </IconAction>
       {!isReadonly() ? (
         <IconAction
           label={pinned ? "Remove from Library" : "Pin to your Library"}

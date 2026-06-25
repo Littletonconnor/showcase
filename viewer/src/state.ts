@@ -67,6 +67,9 @@ interface BoardState {
   // The Library view: when true the stream shows pinned surfaces across all
   // sessions instead of a single session.
   library: boolean;
+  // Reading mode: the surface id being read in the focused, one-at-a-time
+  // overlay (null = off). Prev/next page through the current `surfaces` list.
+  readingId: string | null;
 }
 
 export const useBoard = create<BoardState>(() => ({
@@ -86,7 +89,23 @@ export const useBoard = create<BoardState>(() => ({
   prefersDark: false,
   responding: {},
   library: false,
+  readingId: null,
 }));
+
+// Reading mode: open the focused one-at-a-time reader on a surface, page through
+// the current stream with prev/next, and close it. Stepping clamps to the list.
+export function enterReading(id: string) {
+  useBoard.setState({ readingId: id });
+}
+export function exitReading() {
+  useBoard.setState({ readingId: null });
+}
+export function readingStep(dir: 1 | -1) {
+  const { surfaces, readingId } = useBoard.getState();
+  const i = surfaces.findIndex((s) => s.id === readingId);
+  const next = surfaces[i + dir];
+  if (next) useBoard.setState({ readingId: next.id });
+}
 
 // Non-reactive snapshot accessors — mirror the Solid signal getters so the flow
 // functions below read state the same way regardless of render context.
