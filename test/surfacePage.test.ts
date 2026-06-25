@@ -109,7 +109,7 @@ test("theme tokens are injected and resolve unknown/absent themes to the default
     title: "t",
     html: "<p>x</p>",
     origin: ORIGIN,
-    theme: "github",
+    theme: "showcase",
   });
   assert.ok(themed.includes("--color-background-primary:"), "token CSS missing");
 
@@ -150,7 +150,7 @@ test("a pinned mode forces the scheme into html parts but not transparent rich f
   // would paint an opaque UA canvas behind them. So the tokens are pinned (flat
   // :root, dark --text, no media query) but color-scheme is left unset.
   const rich = renderSandboxedPart({ body: "x", css: "", origin: ORIGIN, mode: "dark" });
-  const dark = themeById("github").dark;
+  const dark = themeById("showcase").dark;
   assert.ok(
     !rich.includes("color-scheme:"),
     "rich frame must NOT force color-scheme (stays transparent)",

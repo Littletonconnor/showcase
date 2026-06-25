@@ -96,7 +96,7 @@ test("tokenThemeCss emits the agent-facing --color-* tokens for each theme", () 
 // media query, so a surface iframe renders the mode the chrome resolved rather
 // than re-deriving it from the OS across the frame boundary.
 test("a pinned mode forces the scheme with no prefers-color-scheme media query", () => {
-  const gh = themeById("github");
+  const gh = themeById(DEFAULT_THEME_ID);
 
   const dark = tokenThemeCss(gh, "dark");
   assert.ok(!dark.includes("@media"), "dark mode must not emit a media query");
@@ -117,7 +117,7 @@ test("a pinned mode forces the scheme with no prefers-color-scheme media query",
 });
 
 test("omitting the mode preserves the OS media-query behavior unchanged", () => {
-  const gh = themeById("github");
+  const gh = themeById(DEFAULT_THEME_ID);
   for (const css of [tokenThemeCss(gh), tokenThemeCss(gh, undefined), viewerThemeCss(gh)]) {
     assert.ok(
       css.includes("@media (prefers-color-scheme: dark)"),

@@ -1,18 +1,19 @@
 :root {
-  /* GitHub Primer (light) — cool blue-grays so the viewer chrome reads as one
-     surface with the github-light/github-dark code + diff themes. */
-  --bg: #f6f8fa;
-  --panel: #eaeef2;
+  /* Showcase palette (light) — clean slate neutrals + an indigo-violet accent.
+     Pre-paint fallback; the active theme (server/themes.ts) overrides these at
+     runtime, so keep them in sync to avoid a flash. */
+  --bg: #f7f7fb;
+  --panel: #eeeef4;
   --surface: #ffffff;
-  --text: #1f2328;
-  --muted: #59636e;
-  --faint: #818b98;
-  --border: #d1d9e0;
-  --border-2: #afb8c1;
-  --accent: #0969da;
-  --accent-bg: #ddf4ff;
-  --hover: #eaeef2;
-  --danger: #cf222e;
+  --text: #1b1c24;
+  --muted: #585e6e;
+  --faint: #878d9c;
+  --border: #e5e5ee;
+  --border-2: #cdcedb;
+  --accent: #574fcf;
+  --accent-bg: #ecebfd;
+  --hover: #eceaf6;
+  --danger: #d12d3b;
   /* Terminal chrome — fallback values for the pre-theme paint. The active theme
      overrides these from its DARK palette (see themes.ts termVars), so the
      terminal adopts the theme's hue but stays dark in both color schemes: a
@@ -24,18 +25,18 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    /* GitHub Primer (dark) — matches github-dark code/diff backgrounds. */
-    --bg: #0d1117;
-    --panel: #161b22;
-    --surface: #1c2128;
-    --text: #e6edf3;
-    --muted: #9198a1;
-    --faint: #6e7681;
-    --border: #30363d;
-    --border-2: #444c56;
-    --accent: #2f81f7;
-    --accent-bg: rgba(56, 139, 253, 0.15);
-    --hover: rgba(177, 186, 196, 0.12);
-    --danger: #f85149;
+    /* Showcase palette (dark) — deep slate + light-violet accent. */
+    --bg: #0d0e14;
+    --panel: #15161f;
+    --surface: #1a1b25;
+    --text: #e8e9f1;
+    --muted: #989eae;
+    --faint: #6a7080;
+    --border: #272834;
+    --border-2: #3a3c4b;
+    --accent: #a99cff;
+    --accent-bg: rgba(126, 110, 242, 0.2);
+    --hover: rgba(150, 142, 220, 0.1);
+    --danger: #ff8c86;
   }
 }

@@ -146,43 +146,50 @@ export function tokenThemeCss(t: Theme, mode?: Mode): string {
 
 export const THEMES: Theme[] = [
   {
-    id: "github",
-    label: "GitHub",
+    id: "showcase",
+    label: "Showcase",
+    // Code/diff syntax stays on the GitHub shiki themes — neutral and legible
+    // under the violet chrome. (The chrome accent and syntax palette are
+    // separate concerns; a violet keyword theme would fight the diff.)
     shiki: { light: "github-light", dark: "github-dark" },
+    // Clean slate neutrals carry the "professional"; one indigo-violet accent
+    // carries the "fun" — it drives links, focus rings, the active session row,
+    // the send button, and mermaid accents. Semantic states stay conventional
+    // (green/amber/red) so a warning still reads as a warning.
     light: {
-      bg: "#f6f8fa",
-      panel: "#eaeef2",
+      bg: "#f7f7fb",
+      panel: "#eeeef4",
       surface: "#ffffff",
-      text: "#1f2328",
-      muted: "#59636e",
-      faint: "#818b98",
-      border: "#d1d9e0",
-      border2: "#afb8c1",
-      hover: "#eaeef2",
-      info: { bg: "#ddf4ff", text: "#0969da", border: "#54aeff" },
-      success: { bg: "#dafbe1", text: "#1a7f37", border: "#4ac26b" },
-      warning: { bg: "#fff8c5", text: "#9a6700", border: "#d4a72c" },
-      danger: { bg: "#ffebe9", text: "#cf222e", border: "#ff8182" },
+      text: "#1b1c24",
+      muted: "#585e6e",
+      faint: "#878d9c",
+      border: "#e5e5ee",
+      border2: "#cdcedb",
+      hover: "#eceaf6",
+      info: { bg: "#ecebfd", text: "#574fcf", border: "#bbb2f2" },
+      success: { bg: "#e4f7ec", text: "#0f854b", border: "#76d2a0" },
+      warning: { bg: "#fdf2d6", text: "#946400", border: "#e6c34d" },
+      danger: { bg: "#fde7e9", text: "#d12d3b", border: "#f5a2a8" },
     },
     dark: {
-      bg: "#0d1117",
-      panel: "#161b22",
-      surface: "#1c2128",
-      text: "#e6edf3",
-      muted: "#9198a1",
-      faint: "#6e7681",
-      border: "#30363d",
-      border2: "#444c56",
-      hover: "rgba(177, 186, 196, 0.12)",
-      info: { bg: "rgba(56, 139, 253, 0.15)", text: "#4493f8", border: "#54aeff" },
-      success: { bg: "rgba(63, 185, 80, 0.15)", text: "#3fb950", border: "#4ac26b" },
-      warning: { bg: "rgba(210, 153, 34, 0.15)", text: "#d29922", border: "#d4a72c" },
-      danger: { bg: "rgba(248, 81, 73, 0.15)", text: "#ff7b72", border: "#ff8182" },
+      bg: "#0d0e14",
+      panel: "#15161f",
+      surface: "#1a1b25",
+      text: "#e8e9f1",
+      muted: "#989eae",
+      faint: "#6a7080",
+      border: "#272834",
+      border2: "#3a3c4b",
+      hover: "rgba(150, 142, 220, 0.10)",
+      info: { bg: "rgba(126, 110, 242, 0.20)", text: "#a99cff", border: "#7e6ef2" },
+      success: { bg: "rgba(52, 200, 124, 0.16)", text: "#46cf8b", border: "#3fb97a" },
+      warning: { bg: "rgba(222, 160, 42, 0.16)", text: "#e0b341", border: "#d4a72c" },
+      danger: { bg: "rgba(245, 95, 95, 0.16)", text: "#ff8c86", border: "#f56b6b" },
     },
   },
 ];
 
-export const DEFAULT_THEME_ID = "github";
+export const DEFAULT_THEME_ID = "showcase";
 
 // One fixed theme now (multi-theme was removed). themeById keeps the name +
 // the null/unknown fallback so callers and the `?theme=` query just resolve to

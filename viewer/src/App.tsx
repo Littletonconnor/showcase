@@ -143,7 +143,7 @@ function SessionSearch(props: { query: string; onQuery: (q: string) => void }) {
         placeholder="Search chats…"
         value={props.query}
         onChange={(e) => props.onQuery(e.target.value)}
-        className="h-8 rounded-lg border-transparent bg-card pr-7 pl-8 text-[13px] shadow-none focus-visible:border-brand focus-visible:ring-0"
+        className="h-8 rounded-lg border-border/70 bg-surface pr-7 pl-8 text-[13px] shadow-none transition-colors hover:border-border focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/20"
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             if (props.query) {
