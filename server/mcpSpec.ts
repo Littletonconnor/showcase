@@ -11,10 +11,11 @@ export const MCP_INSTRUCTIONS =
   "renders to an SVG (flowchart, sequence, ERD, …), a `diff` part is a patch the viewer renders as " +
   "a syntax-highlighted split/unified diff. Combine them — e.g. a markdown rationale above a diff part — " +
   "in one card. publish_surface is the general tool; publish_snippet is " +
-  "sugar for a single html part. FOR A CODE REVIEW: call review_finding once per critical piece — it " +
-  "composes a severity badge + explanation + the diff inline into a card from plain fields — instead " +
-  "of dumping the whole review into one markdown surface (that wall of text is the failure mode). " +
-  "Call get_design_guide once before your first publish. On your first " +
+  "sugar for a single html part. FOR A CODE REVIEW: call publish_review ONCE with a findings[] array " +
+  "(verdict + summary + one finding per critical piece, each with the relevant diff in `patch`) — " +
+  "showcase explodes it into a verdict card + a card per finding (badge + explanation + inline diff). " +
+  "NEVER write a review as one big markdown surface — that wall of text is the failure mode " +
+  "publish_review exists to prevent. Call get_design_guide once before your first publish. On your first " +
   'publish, also pass sessionTitle to name the session after the task (e.g. "Auth refactor"). The ' +
   "user can comment in their browser; call wait_for_feedback after publishing something you want a " +
   "reaction to. Any publish/update/reply result may carry a userFeedback array — comments the user " +
@@ -53,6 +54,13 @@ const d = {
   findingPatch:
     "The relevant diff hunk (unified/git) — rendered INLINE in the card so the change is visible",
   findingDiagram: "Optional mermaid source visualizing the relevant flow/structure",
+  reviewVerdict: "request_changes | approve | comment — the verdict badge on the lead card",
+  reviewBranch: "Branch under review (shows in the verdict header, e.g. 'cl/ALLM-116')",
+  reviewBase: "Base branch the review is against (e.g. 'master')",
+  reviewSummary: "One-paragraph verdict summary for the lead card — markdown",
+  reviewCoverage: "What you reviewed and deliberately skipped, so the user can trust the depth",
+  reviewFindings:
+    "The findings, each its own card. Per finding: severity, title, file/line, problem, fix?, the relevant diff as `patch`, and an optional mermaid `diagram`.",
   session: "Session id from a previous publish (omit on first)",
   sessionTitle:
     'Session name shown in the sidebar — name the task, e.g. "Auth refactor". Honored only when this publish creates the session.',
@@ -177,8 +185,10 @@ export const MCP_TOOL_DESCRIPTIONS = {
     "Publish a surface to the user's showcase board. A surface is an ordered list of parts (html, markdown, mermaid, diff, image, trace). Returns the surface id and view URL. On your first publish, pass sessionTitle naming the task. If the result includes userFeedback, those are new comments from the user. Call get_design_guide first if you have not this session.",
   updateSurface:
     "Revise a surface in place (same card, new version). Prefer this over publishing a near-duplicate. Pass the full replacement parts array. If the result includes userFeedback, read it.",
+  publishReview:
+    "Publish a WHOLE code review in one call — the strongly preferred way to review a PR on showcase. Pass a `verdict` (request_changes|approve|comment), an optional `summary`/`coverage`, and a `findings` array; showcase explodes it into a verdict card + ONE card per finding (each a severity badge + explanation + the diff INLINE + an optional diagram). Same effort as writing the review, but it physically cannot become a wall of markdown — the structure is the API. Put the relevant diff hunk in each finding's `patch`. Returns the sessionId + the created surface ids.",
   reviewFinding:
-    "Publish ONE structured review finding as a multimodal card. showcase composes it from your fields — a severity badge + the explanation + the relevant diff INLINE + an optional diagram. THIS is how you do a code review: break the PR into critical pieces and call review_finding once per piece — never dump the whole review into one markdown surface. Always pass the relevant `patch` so the diff shows in the card. `title` and `problem` are required; `fix`/`patch`/`diagram` are optional. Returns the surface id + URL; pass the returned sessionId as `session` on the rest of the review.",
+    "Publish ONE structured review finding as a multimodal card (prefer publish_review to submit a whole review at once). showcase composes it from your fields — a severity badge + the explanation + the relevant diff INLINE + an optional diagram. Never dump a review into one markdown surface. Always pass the relevant `patch` so the diff shows in the card. `title` and `problem` are required. Returns the surface id + URL; pass the returned sessionId as `session` on the rest of the review.",
   publishSnippet:
     "Publish an HTML snippet — sugar for a surface with one html part. Send a body fragment only. Returns the id, view URL, and sessionId. Pass sessionTitle on first publish. Prefer publish_surface when you want a diff or multiple parts.",
   updateSnippet: "Revise an html snippet in place — sugar for update_surface with one html part.",
@@ -206,6 +216,27 @@ const MCP_BADGE_JSON_SCHEMA = {
   required: ["tone", "label"],
 } as const;
 
+// One finding — shared by review_finding (the whole input) and publish_review
+// (each item in `findings`).
+const MCP_FINDING_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    severity: {
+      type: "string",
+      enum: ["bug", "nit", "question", "praise", "note"],
+      description: d.findingSeverity,
+    },
+    title: { type: "string", description: d.findingTitle },
+    file: { type: "string", description: d.findingFile },
+    line: { type: "number", description: d.findingLine },
+    problem: { type: "string", description: d.findingProblem },
+    fix: { type: "string", description: d.findingFix },
+    patch: { type: "string", description: d.findingPatch },
+    diagram: { type: "string", description: d.findingDiagram },
+  },
+  required: ["title", "problem"],
+} as const;
+
 export const HTTP_MCP_TOOLS = [
   {
     name: "publish_surface",
@@ -224,23 +255,35 @@ export const HTTP_MCP_TOOLS = [
     },
   },
   {
+    name: "publish_review",
+    description: MCP_TOOL_DESCRIPTIONS.publishReview,
+    inputSchema: {
+      type: "object",
+      properties: {
+        verdict: {
+          type: "string",
+          enum: ["request_changes", "approve", "comment"],
+          description: d.reviewVerdict,
+        },
+        branch: { type: "string", description: d.reviewBranch },
+        base: { type: "string", description: d.reviewBase },
+        summary: { type: "string", description: d.reviewSummary },
+        coverage: { type: "string", description: d.reviewCoverage },
+        findings: { type: "array", items: MCP_FINDING_JSON_SCHEMA, description: d.reviewFindings },
+        session: { type: "string", description: d.session },
+        sessionTitle: { type: "string", description: d.sessionTitle },
+        agent: { type: "string", description: d.agent },
+      },
+      required: ["findings"],
+    },
+  },
+  {
     name: "review_finding",
     description: MCP_TOOL_DESCRIPTIONS.reviewFinding,
     inputSchema: {
       type: "object",
       properties: {
-        severity: {
-          type: "string",
-          enum: ["bug", "nit", "question", "praise", "note"],
-          description: d.findingSeverity,
-        },
-        title: { type: "string", description: d.findingTitle },
-        file: { type: "string", description: d.findingFile },
-        line: { type: "number", description: d.findingLine },
-        problem: { type: "string", description: d.findingProblem },
-        fix: { type: "string", description: d.findingFix },
-        patch: { type: "string", description: d.findingPatch },
-        diagram: { type: "string", description: d.findingDiagram },
+        ...MCP_FINDING_JSON_SCHEMA.properties,
         session: { type: "string", description: d.session },
         sessionTitle: { type: "string", description: d.sessionTitle },
         agent: { type: "string", description: d.agent },
@@ -418,11 +461,31 @@ const badgeStdioSchemas = {
     .describe(d.badge),
 };
 
+const findingStdioSchema = z.object({
+  severity: z.enum(["bug", "nit", "question", "praise", "note"]).optional(),
+  title: z.string(),
+  file: z.string().optional(),
+  line: z.number().optional(),
+  problem: z.string(),
+  fix: z.string().optional(),
+  patch: z.string().optional(),
+  diagram: z.string().optional(),
+});
+
 export const STDIO_MCP_INPUT_SCHEMAS = {
   publishSurface: {
     title: z.string().describe(d.title),
     parts: z.array(mcpPartSchema).describe(MCP_PARTS_DESCRIPTION),
     badge: badgeStdioSchemas.badge,
+    sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
+  },
+  publishReview: {
+    verdict: z.enum(["request_changes", "approve", "comment"]).optional().describe(d.reviewVerdict),
+    branch: z.string().optional().describe(d.reviewBranch),
+    base: z.string().optional().describe(d.reviewBase),
+    summary: z.string().optional().describe(d.reviewSummary),
+    coverage: z.string().optional().describe(d.reviewCoverage),
+    findings: z.array(findingStdioSchema).describe(d.reviewFindings),
     sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
   },
   reviewFinding: {

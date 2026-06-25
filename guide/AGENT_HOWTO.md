@@ -75,33 +75,41 @@ This is showcase's flagship workflow — _"the future of code review is multimod
 
 **Start from a scaffold:** `showcase review <branch> [--base <base>]` creates a "Review: <branch>" session seeded with a verdict-placeholder card (the diffstat + file list) and prints the session id + a ready-to-paste prompt. Review into that session, then publish your finding cards. **Be thorough — a shallow review is worse than none.** Read the actual code paths, not just the diff hunks; trace how the change behaves at runtime; and back every claim with a concrete file:line and the real values involved.
 
-**Break the PR into its critical pieces** — the entity, the wiring, the test coverage — not file-by-file. **One `review_finding` per piece.** Do NOT dump the whole review into a single markdown surface — that wall of text is the exact failure this replaces.
+**Break the PR into its critical pieces** — the entity, the wiring, the test coverage — not file-by-file. Read the actual code paths, not just the diff hunks.
 
-**Use `review_finding`, not hand-built parts.** You pass fields; showcase composes the multimodal card (badge + a Problem/Fix explanation + the diff inline + an optional diagram). It's one call and far less work than assembling `parts` by hand — so the visual review is the easy path:
+**Publish the whole review in ONE `publish_review` call.** Do NOT write it as a single markdown surface — that wall of text is the exact failure this replaces. You hand over a `verdict`, a `summary`/`coverage`, and a `findings[]` array (one entry per piece); showcase explodes it into a verdict card + one card per finding (each a severity badge + a Problem/Fix explanation + the diff **inline** + an optional diagram). It's the same effort as writing the review, but it can't become a wall — the structure is the API:
 
 ```jsonc
-// review_finding — one call → a finding card
+// publish_review — one call → a verdict card + a card per finding
 {
-  "severity": "bug", // bug|nit|question|praise|note → the badge
-  "title": "Unbounded asset upload",
-  "file": "server/app.ts",
-  "line": 747, // ride the card title
-  "problem": "`uploadAsset` calls `c.req.arrayBuffer()` to buffer the whole body *before* the `MAX_ASSET_BYTES` check on line 759. A 2 GB upload allocates 2 GB of heap and can OOM the process before the 413 ever fires — any unauthenticated client can trigger it.",
-  "fix": "Reject on the `content-length` header before reading the body; add a streaming cap for chunked uploads.",
-  "patch": "@@ -747,6 +747,11 @@\n   const mime = ...\n+  const len = Number(c.req.header('content-length') ?? 0);\n+  if (len > MAX_ASSET_BYTES) return c.json({ error: 'too large' }, 413);\n   const buf = new Uint8Array(await c.req.arrayBuffer());",
-  "diagram": "flowchart LR\n  Client-->read[read full body]\n  read-->size{>5MB?}\n  size--no-->store\n  read-. OOM .->heap[heap exhausted]",
+  "branch": "cl/ALLM-116",
+  "base": "master",
+  "verdict": "comment", // request_changes | approve | comment
+  "summary": "Adds the FinancialChatFeedback entity + cipher wiring + persistence tests. No P1s.",
+  "coverage": "Read the entity + mapping + cipher wiring; did not exercise the sql-schema repo changes.",
+  "findings": [
+    {
+      "severity": "nit", // bug|nit|question|praise|note → the badge
+      "title": "Constructor doesn't fail-fast on required fields",
+      "file": "FinancialChatFeedback.java",
+      "line": 38,
+      "problem": "`createdAt`/`userId` are assigned without null checks; the `.hbm.xml` enforces not-null at the DB layer, so a null surfaces at flush, not construction.",
+      "fix": "`checkNotNull` each required arg (WF convention, used in `InMemoryDocFileReaderImpl`).",
+      "patch": "@@ -38,2 +38,2 @@\n-    this.createdAt = createdAt;\n+    this.createdAt = checkNotNull(createdAt);",
+    },
+    {
+      "severity": "praise",
+      "title": "Worker cipher split is clean",
+      "file": "LembasWorker.java",
+      "problem": "Worker installs SHARED_CIPHER_INFOS while Lembas installs CIPHER_INFOS — correctly scopes the new cipher.",
+    },
+  ],
 }
 ```
 
-**Be thorough, and back every claim.** `problem` names the symbol + `file:line` and the concrete impact (who hits it, how bad, under what input — quantify when you can). `fix` says what to change and why it's right. Pass the **relevant hunk** as `patch` so the change shows inline; add a `diagram` when control/data flow or structure matters. (`review_finding` also works for a _praise_ or a _question_ card, not only problems — call out genuinely good work and flag what you couldn't judge.)
+**Be thorough, and back every claim.** Each `problem` names the symbol + `file:line` and the concrete impact (who hits it, how bad, under what input — quantify when you can). `fix` says what to change and why. Pass the **relevant hunk** as `patch` so the change shows inline; add a `diagram` when control/data flow matters. Findings aren't only problems — use `praise` for genuinely good work and `question` for what you couldn't judge. (To add a single finding later, `review_finding` takes the same fields for one card.)
 
-**Lead with a verdict card** — publish it first with `badge:{tone:"warning", label:"Request changes"}` (or `{tone:"success", label:"Approve"}`). Make it a real summary, not a sentence:
-
-- a one-line verdict + counts ("**3 findings** · 1 bug · 1 perf · 1 nit");
-- a markdown **table** of every finding — severity · what · `file:line` — so the user can scan the whole review at a glance;
-- a short **Coverage** note: what you reviewed and what you deliberately skipped (e.g. "read the upload + auth paths; did not exercise the migration scripts"), so the user can trust the review's depth.
-
-`update_surface` the verdict as findings resolve. (The session header **automatically** rolls every finding-card badge into a live count summary — "3 findings · 1 Bug · 1 Nit" — and each chip jumps to that finding, so the verdict bar stays accurate on its own. Your verdict card adds the verdict word, the table, and the coverage note on top of that glance.)
+**The verdict card is built for you** from `publish_review`'s `verdict` + `summary` + `coverage` + the `findings[]` (it renders a scannable severity table). The session header **also** rolls every finding badge into a live count summary — "1 Bug · 1 Nit · 1 Praise" — each chip jumping to its finding, and it **burns down** as the user Approves/Dismisses cards. So write a real `summary` and an honest `coverage` note (what you reviewed and deliberately skipped), and the verdict reads as a verdict, not a sentence.
 
 **Calibrate severity honestly:** `critical`→Bug (wrong/unsafe), `warning`→Nit (style/maintainability), `info`→Question (you need context to judge), `success`→Praise (genuinely good — call it out, reviews aren't only negative). Don't inflate; don't pad with trivia.
 

@@ -370,7 +370,7 @@ test("review folds in the review profile and demands review_finding", async () =
     const out = JSON.parse(stdout);
     assert.ok(out.profile, "reports the profile path");
     assert.match(out.prompt, /code-reviewer/); // the profile is injected verbatim
-    assert.match(out.prompt, /review_finding/); // demands the structured tool
+    assert.match(out.prompt, /publish_review/); // demands the structured tool
     assert.match(out.prompt, /failure mode/); // forbids the markdown wall
   } finally {
     await server.close();

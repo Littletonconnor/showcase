@@ -330,6 +330,49 @@ function buildFinding(input: FindingInput): {
   return { title, badge, parts };
 }
 
+// publish_review: the WHOLE review in one call. The agent submits its verdict +
+// a findings[] array; showcase explodes it into a verdict card plus one finding
+// card per entry (each composed by buildFinding). One call, same effort as a
+// markdown dump, but it physically cannot be a wall of text — the structure is
+// the API, so this is the most enforcing path to a broken-down visual review.
+const REVIEW_VERDICT: Record<string, SurfaceBadge> = {
+  request_changes: { tone: "warning", label: "Request changes" },
+  approve: { tone: "success", label: "Approve" },
+  comment: { tone: "neutral", label: "Comments" },
+};
+
+// The verdict card's body: the summary, a scannable findings table, and a
+// coverage note — built from the same findings[] the cards are.
+function buildVerdictMarkdown(input: {
+  branch?: string;
+  base?: string;
+  summary?: string;
+  coverage?: string;
+  findings: FindingInput[];
+}): string {
+  const lines: string[] = [];
+  if (input.branch) {
+    lines.push(`Reviewing **\`${input.branch}\`**${input.base ? ` vs \`${input.base}\`` : ""}.`);
+  }
+  if (input.summary?.trim()) lines.push(input.summary.trim());
+  const real = input.findings.filter((f) => f.title?.trim() && f.problem?.trim());
+  if (real.length > 0) {
+    lines.push("");
+    lines.push("| Severity | Finding | Location |");
+    lines.push("| --- | --- | --- |");
+    for (const f of real) {
+      const sev = FINDING_SEVERITY[f.severity ?? "note"]?.label ?? "Note";
+      const loc = f.file ? `\`${f.file}${Number.isInteger(f.line) ? `:${f.line}` : ""}\`` : "—";
+      lines.push(`| ${sev} | ${f.title.trim()} | ${loc} |`);
+    }
+  }
+  if (input.coverage?.trim()) {
+    lines.push("");
+    lines.push(`**Coverage** — ${input.coverage.trim()}`);
+  }
+  return lines.join("\n") || "_Review in progress._";
+}
+
 export function createApp({
   store,
   viewerHtml,
@@ -487,6 +530,49 @@ export function createApp({
       agent: input.agent,
       cwd: input.cwd,
     });
+  }
+
+  // Publish a whole structured review in one call: a verdict card + one finding
+  // card per findings[] entry, all in one session. The most enforcing review
+  // path — the structure is the API, so the output can't regress to prose.
+  async function publishReview(input: {
+    verdict?: string;
+    branch?: string;
+    base?: string;
+    summary?: string;
+    coverage?: string;
+    findings: FindingInput[];
+    session?: string;
+    sessionTitle?: string;
+    agent?: string;
+    cwd?: string;
+  }): Promise<
+    | { session: string; verdict: string; findings: string[] }
+    | { error: string; status: 400 | 404 | 413 }
+  > {
+    if (!Array.isArray(input.findings)) {
+      return { error: '"findings" must be an array', status: 400 };
+    }
+    const badge = REVIEW_VERDICT[input.verdict ?? "comment"] ?? REVIEW_VERDICT.comment;
+    const verdictResult = await publishSurface({
+      parts: [{ kind: "markdown", markdown: buildVerdictMarkdown(input) }],
+      title: input.branch ? `Review — ${input.branch}` : "Review verdict",
+      badge,
+      session: input.session,
+      sessionTitle: input.sessionTitle ?? (input.branch ? `Review: ${input.branch}` : undefined),
+      agent: input.agent,
+      cwd: input.cwd,
+    });
+    if ("error" in verdictResult) return verdictResult;
+    const session = verdictResult.surface.sessionId;
+    const findings: string[] = [];
+    for (const f of input.findings) {
+      if (!f?.title?.trim() || !f?.problem?.trim()) continue; // skip malformed entries
+      const { title, badge: fbadge, parts } = buildFinding(f);
+      const r = await publishSurface({ parts, title, badge: fbadge, session });
+      if (!("error" in r)) findings.push(r.surface.id);
+    }
+    return { session, verdict: verdictResult.surface.id, findings };
   }
 
   // Store an uploaded blob. Like publishSurface, an explicit session is
@@ -946,6 +1032,40 @@ export function createApp({
     );
   });
 
+  // Whole structured review in one call — a verdict card + a card per finding.
+  // The shared entry for the publish_review MCP tool (stdio) and the CLI.
+  app.post("/api/reviews", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || !Array.isArray(body.findings)) {
+      return c.json({ error: '"findings" array is required' }, 400);
+    }
+    const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+    const findings = body.findings.map((f: any) => ({
+      severity: str(f?.severity),
+      title: String(f?.title ?? ""),
+      file: str(f?.file),
+      line: typeof f?.line === "number" ? f.line : undefined,
+      problem: String(f?.problem ?? ""),
+      fix: str(f?.fix),
+      patch: str(f?.patch),
+      diagram: str(f?.diagram),
+    }));
+    const result = await publishReview({
+      verdict: str(body.verdict),
+      branch: str(body.branch),
+      base: str(body.base),
+      summary: str(body.summary),
+      coverage: str(body.coverage),
+      findings,
+      session: str(body.session),
+      sessionTitle: str(body.sessionTitle),
+      agent: str(body.agent),
+      cwd: str(body.cwd),
+    });
+    if ("error" in result) return c.json({ error: result.error }, result.status);
+    return c.json(result, 201);
+  });
+
   // Legacy html-only entry — sugar for a single html part. An optional `kits`
   // array opts the part into style/behavior bundles; it's validated (strict)
   // like any html part so an unknown kit id is a clean 400.
@@ -1330,6 +1450,7 @@ export function createApp({
     basePath: requestBasePath,
     publishSurface,
     publishFinding,
+    publishReview,
     reviseSurface,
     createComment,
     waitForComments,

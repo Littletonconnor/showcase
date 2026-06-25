@@ -78,6 +78,24 @@ server.registerTool(
 );
 
 server.registerTool(
+  "publish_review",
+  {
+    description: MCP_TOOL_DESCRIPTIONS.publishReview,
+    inputSchema: STDIO_MCP_INPUT_SCHEMAS.publishReview,
+  },
+  async ({ verdict, branch, base, summary, coverage, findings, sessionTitle }) => {
+    const session = await ensureSession(sessionTitle ?? (branch ? `Review: ${branch}` : undefined));
+    const result = JSON.parse(
+      await api("/api/reviews", {
+        method: "POST",
+        body: JSON.stringify({ verdict, branch, base, summary, coverage, findings, session }),
+      }),
+    );
+    return text({ ...result, url: `${API}/session/${result.session}` });
+  },
+);
+
+server.registerTool(
   "review_finding",
   {
     description: MCP_TOOL_DESCRIPTIONS.reviewFinding,

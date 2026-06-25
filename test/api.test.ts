@@ -103,6 +103,53 @@ test("publish into unknown session 404s instead of silently creating", async () 
   assert.equal(res.status, 404);
 });
 
+test("publish_review explodes one call into a verdict card + a card per finding", async () => {
+  const app = makeApp();
+  const res = await app.request(
+    "/api/reviews",
+    json({
+      branch: "cl/ALLM-116",
+      base: "master",
+      verdict: "request_changes",
+      summary: "Adds the entity + cipher wiring.",
+      coverage: "Read the entity; skipped the schema repo.",
+      findings: [
+        {
+          severity: "bug",
+          title: "Null check missing",
+          file: "Foo.java",
+          line: 12,
+          problem: "no checkNotNull",
+          patch: "@@ -1 +1 @@\n-a\n+b",
+        },
+        { severity: "praise", title: "Clean cipher split", problem: "scopes the new cipher" },
+        { title: "", problem: "" }, // malformed entries are skipped, not cards
+      ],
+    }),
+  );
+  assert.equal(res.status, 201);
+  const out = (await res.json()) as any;
+  assert.ok(out.session && out.verdict);
+  assert.equal(out.findings.length, 2, "two valid findings → two cards (malformed skipped)");
+
+  const surfaces = (await (
+    await app.request(`/api/sessions/${out.session}/surfaces`)
+  ).json()) as any[];
+  assert.equal(surfaces.length, 3); // verdict + 2 findings
+  const verdict = surfaces.find((s) => s.id === out.verdict);
+  assert.deepEqual(verdict.badge, { tone: "warning", label: "Request changes" });
+  assert.match(verdict.parts[0].markdown, /Coverage/);
+  assert.match(verdict.parts[0].markdown, /Null check missing/); // the findings table
+  const bug = surfaces.find((s) => s.title.startsWith("Null check missing"));
+  assert.deepEqual(bug.badge, { tone: "critical", label: "Bug" });
+  assert.deepEqual(
+    bug.parts.map((p: any) => p.kind),
+    ["markdown", "diff"],
+  );
+
+  assert.equal((await app.request("/api/reviews", json({ verdict: "approve" }))).status, 400);
+});
+
 test("review_finding composes a multimodal card from structured fields", async () => {
   const app = makeApp();
   const res = await app.request(

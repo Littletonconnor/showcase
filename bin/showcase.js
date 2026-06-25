@@ -1115,11 +1115,10 @@ const commands = {
 
     const prompt = [
       profile && `Apply your review profile first (load any skills it names):\n${profile}`,
-      `Review the branch ${branch} against ${base} on showcase (session ${surface.sessionId}). Call get_design_guide first.`,
+      `Review the branch ${branch} against ${base}, then publish it to showcase with ONE call to the publish_review tool (session ${surface.sessionId}). Call get_design_guide first.`,
       `Break the PR into its CRITICAL PIECES — the entity, the wiring, the test coverage — not file-by-file. Read the actual code paths, not just the diff hunks.`,
-      `For EACH piece, call review_finding ONCE: pass a severity, a title, the file/line, the problem (and a fix), and the relevant hunk as \`patch\` so the diff shows inline. Add a mermaid \`diagram\` when control/data flow or structure matters.`,
-      `Do NOT dump the whole review into one markdown surface — that is the failure mode this replaces. One review_finding per piece.`,
-      `Finish by updating the "In review" verdict card (surface ${surface.id}) with your verdict: set its badge to "Request changes" or "Approve", and summarize the findings + what you did/didn't cover.`,
+      `Call publish_review ONCE: pass verdict (request_changes|approve|comment), a summary, a coverage note, and a findings[] array — one entry per piece, each with severity, title, file/line, the problem (and a fix), the relevant hunk as \`patch\` so the diff shows inline, and a mermaid \`diagram\` when flow/structure matters. showcase turns it into a verdict card + one card per finding.`,
+      `Do NOT write the review as a single markdown surface — that wall of text is the failure mode publish_review replaces. (You can replace the placeholder "In review" card, surface ${surface.id}, or just let publish_review create the verdict.)`,
     ]
       .filter(Boolean)
       .join("\n\n");

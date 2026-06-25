@@ -51,6 +51,28 @@ export interface McpDeps {
     sessionTitle?: string;
     agent?: string;
   }): FlowResult<Surface>;
+  publishReview(input: {
+    verdict?: string;
+    branch?: string;
+    base?: string;
+    summary?: string;
+    coverage?: string;
+    findings: Array<{
+      severity?: string;
+      title: string;
+      file?: string;
+      line?: number;
+      problem: string;
+      fix?: string;
+      patch?: string;
+      diagram?: string;
+    }>;
+    session?: string;
+    sessionTitle?: string;
+    agent?: string;
+  }): Promise<
+    { session: string; verdict: string; findings: string[] } | { error: string; status: number }
+  >;
   reviseSurface(
     id: string,
     patch: { parts?: SurfacePart[]; title?: string; badge?: SurfaceBadge | null },
@@ -110,6 +132,43 @@ export function registerMcp(app: Hono, deps: McpDeps) {
         });
         if ("error" in result) throw new Error(result.error);
         return surfaceResult(result, origin);
+      }
+      case "publish_review": {
+        const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+        const findings = Array.isArray(args.findings)
+          ? args.findings.map((f: any) => ({
+              severity: str(f?.severity),
+              title: String(f?.title ?? ""),
+              file: str(f?.file),
+              line: typeof f?.line === "number" ? f.line : undefined,
+              problem: String(f?.problem ?? ""),
+              fix: str(f?.fix),
+              patch: str(f?.patch),
+              diagram: str(f?.diagram),
+            }))
+          : [];
+        const result = await deps.publishReview({
+          verdict: str(args.verdict),
+          branch: str(args.branch),
+          base: str(args.base),
+          summary: str(args.summary),
+          coverage: str(args.coverage),
+          findings,
+          session: str(args.session),
+          sessionTitle: str(args.sessionTitle),
+          agent: str(args.agent),
+        });
+        if ("error" in result) throw new Error(result.error);
+        return JSON.stringify(
+          {
+            sessionId: result.session,
+            url: `${origin}/session/${result.session}`,
+            verdict: result.verdict,
+            findings: result.findings,
+          },
+          null,
+          2,
+        );
       }
       case "review_finding": {
         const str = (v: unknown) => (typeof v === "string" ? v : undefined);
