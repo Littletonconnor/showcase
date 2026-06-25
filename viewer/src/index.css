@@ -24,8 +24,12 @@
   --color-card-foreground: var(--text);
   --color-popover: var(--surface);
   --color-popover-foreground: var(--text);
-  --color-primary: var(--accent);
-  --color-primary-foreground: #ffffff;
+  /* Claude-style primary: a near-black "ink" button (text color), flipping to
+     cream on dark — so primary CTAs read as ink, and the coral accent stays a
+     sparing highlight (links, focus, active row, user bubbles) rather than
+     coating every button. */
+  --color-primary: var(--text);
+  --color-primary-foreground: var(--surface);
   --color-secondary: var(--panel);
   --color-secondary-foreground: var(--text);
   --color-muted: var(--panel);
