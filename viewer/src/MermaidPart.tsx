@@ -6,16 +6,36 @@ import { useActiveTheme, useResolvedMode } from "./theme.ts";
 // Wrapper styles shipped into the sandbox iframe. Mermaid bakes theme colors
 // into the SVG itself (read from the trusted viewer's vars at render time), so
 // the iframe only needs to center and constrain it.
-// The SVG must be display:block: an inline SVG with height:auto resolves to ~0
-// layout height in some Chrome builds, so it contributes nothing to
-// body.scrollHeight and the sandbox iframe collapses to an empty strip (block
-// content like markdown still measures fine, which is the tell). A block SVG
-// sizes from its viewBox and reports a real height; margin:0 auto centers it
-// (replacing the body text-align that only centered the inline box).
+// Some Chrome builds resolve a mermaid SVG's `height: auto` to ~0 inside an
+// opaque-origin srcdoc iframe, so it contributes nothing to body.scrollHeight and
+// the card collapses to an empty strip (block content like markdown measures
+// fine, which is the tell). wrapMermaid() sidesteps the SVG's own sizing entirely
+// by putting it in an aspect-ratio box: the wrapper's height comes from a
+// padding-bottom PERCENTAGE OF ITS WIDTH (always computable), and the SVG is
+// absolutely positioned to fill it. The bare `svg` rule is the fallback when a
+// diagram has no parseable viewBox.
 const MERMAID_CSS = `
 body { margin: 0; padding: 14px 16px; background: transparent; }
+.mmd { position: relative; width: 100%; margin: 0 auto; }
+.mmd > svg { position: absolute; inset: 0; width: 100% !important; height: 100% !important; max-width: none !important; display: block; }
 svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 `;
+
+// Wrap a rendered mermaid SVG in an aspect-ratio box derived from its viewBox, so
+// the surface gets a guaranteed height regardless of how the browser sizes the
+// SVG. Falls back to the raw SVG when the viewBox can't be parsed.
+function wrapMermaid(svg: string): string {
+  const vb = svg.match(/viewBox\s*=\s*["']\s*[-\d.]+\s+[-\d.]+\s+([\d.]+)\s+([\d.]+)\s*["']/);
+  if (vb) {
+    const w = Number(vb[1]);
+    const h = Number(vb[2]);
+    if (w > 0 && h > 0) {
+      const ratio = ((h / w) * 100).toFixed(3);
+      return `<div class="mmd" style="max-width:${Math.round(w)}px;padding-bottom:${ratio}%">${svg}</div>`;
+    }
+  }
+  return svg;
+}
 
 // mermaid.render namespaces the SVG's internal ids with this; it must be unique
 // per render across the whole document, so a module-level counter, not a uuid.
@@ -134,7 +154,7 @@ export function MermaidPart(props: { part: MermaidPartData }) {
         const { svg: out } = await mermaid.render(`mmd-${seq++}`, src);
         if (!disposed) {
           setError(null);
-          setSvg(out);
+          setSvg(wrapMermaid(out));
         }
       } catch (e) {
         if (!disposed) {
