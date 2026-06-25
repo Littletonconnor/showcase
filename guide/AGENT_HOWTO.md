@@ -119,7 +119,7 @@ Feedback reaches you four ways — prefer them in this order:
    showcase wait --session <sessionId> --timeout 600
    ```
 
-   It exits the moment the user comments. Handle the comments, then re-arm it. Always watch the actual `sessionId` returned by publish — never a guessed or default session. Do not start a blind detached watcher whose output you cannot see.
+   It returns once the user's comments settle — the wait coalesces a burst of messages (and holds briefly while the user is still typing) so you receive everything they queued **as one batch**, not just the first. Treat every comment in the returned list together. Handle them, then re-arm it. Always watch the actual `sessionId` returned by publish — never a guessed or default session. Do not start a blind detached watcher whose output you cannot see.
 
 3. **Checkpoint drain (reliable fallback).** If background output is not surfaced, run a quick drain at the start of each user turn, before final answers, and before major changes:
 

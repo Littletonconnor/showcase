@@ -350,6 +350,24 @@ async function loadLibrary() {
   if (get().library) mergeComments(lists.flatMap((r) => r?.comments ?? []));
 }
 
+// "I'm still composing" heartbeat. While the user is typing or has a composer
+// focused, ping the server so a parked agent wait holds its batch open until
+// they finish queueing messages (see FEEDBACK_COMPOSING_TTL_MS server-side).
+// Throttled and fire-and-forget — the endpoint returns 204, so we don't use
+// `api` (which parses JSON); a dropped ping just means the wait settles sooner.
+let lastComposingPingAt = 0;
+export function notifyComposing(target: { session?: string; surface?: string | null }) {
+  if (!target.session && !target.surface) return;
+  const now = Date.now();
+  if (now - lastComposingPingAt < 1500) return;
+  lastComposingPingAt = now;
+  void fetch(appPath("/api/composing"), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ session: target.session, surface: target.surface ?? undefined }),
+  }).catch(() => {});
+}
+
 // Pin/unpin a surface to the Library. Optimistic; reverts on failure.
 export async function togglePin(surfaceId: string, pinned: boolean) {
   const apply = (p: boolean) =>

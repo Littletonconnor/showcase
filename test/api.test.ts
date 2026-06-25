@@ -835,6 +835,56 @@ test("long-poll resolves when a comment arrives", async () => {
   assert.ok(Date.now() - start < 4000, "should resolve well before the timeout");
 });
 
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+test("a parked feedback wait coalesces a burst of comments into one batch", async () => {
+  const app = makeApp();
+  const s = (await (await app.request("/api/snippets", json({ html: "<p>x</p>" }))).json()) as any;
+  // The agent parks on its session feedback wait...
+  const pending = app.request(`/api/comments?session=${s.sessionId}&author=user&wait=8`);
+  await sleep(100);
+  // ...and the user fires two comments in quick succession (within the settle
+  // window). Pre-fix this woke on the first and the second missed the turn.
+  await app.request("/api/comments", json({ snippet: s.id, text: "one", author: "user" }));
+  await sleep(150);
+  await app.request("/api/comments", json({ snippet: s.id, text: "two", author: "user" }));
+
+  const result = (await (await pending).json()) as any;
+  assert.deepEqual(
+    result.comments.map((c: { text: string }) => c.text),
+    ["one", "two"],
+  );
+});
+
+test("a composing heartbeat keeps the wait open so a slower second message still batches", async () => {
+  const app = makeApp();
+  const s = (await (await app.request("/api/snippets", json({ html: "<p>x</p>" }))).json()) as any;
+  const pending = app.request(`/api/comments?session=${s.sessionId}&author=user&wait=8`);
+  await sleep(100);
+  await app.request("/api/comments", json({ snippet: s.id, text: "one", author: "user" }));
+  // Keep "composing" alive across a gap longer than the settle window — without
+  // the heartbeat the wait would have returned with just "one".
+  await app.request("/api/composing", json({ session: s.sessionId }));
+  await sleep(950);
+  await app.request("/api/composing", json({ session: s.sessionId }));
+  await app.request("/api/comments", json({ snippet: s.id, text: "two", author: "user" }));
+
+  const result = (await (await pending).json()) as any;
+  assert.deepEqual(
+    result.comments.map((c: { text: string }) => c.text),
+    ["one", "two"],
+  );
+});
+
+test("the composing endpoint accepts a session or surface and always 204s", async () => {
+  const app = makeApp();
+  const s = (await (await app.request("/api/snippets", json({ html: "<p>x</p>" }))).json()) as any;
+  assert.equal((await app.request("/api/composing", json({ session: s.sessionId }))).status, 204);
+  assert.equal((await app.request("/api/composing", json({ surface: s.id }))).status, 204);
+  // A stray ping with no resolvable target is still a quiet no-op, never an error.
+  assert.equal((await app.request("/api/composing", json({}))).status, 204);
+});
+
 test("deleting a session cascades to snippets and comments", async () => {
   const app = makeApp();
   const s = (await (await app.request("/api/snippets", json({ html: "<p>x</p>" }))).json()) as any;

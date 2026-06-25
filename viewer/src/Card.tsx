@@ -59,6 +59,7 @@ import {
 import { TracePart } from "./TracePart.tsx";
 import {
   focusSurface,
+  notifyComposing,
   sendComment,
   sessionRespondKey,
   setScrollTarget,
@@ -628,6 +629,11 @@ export function Thread(props: {
   const responding = useResponding(respondKey);
   const list = comments.filter((c) => c.surfaceId === props.surfaceId);
   const hasMessages = list.length > 0;
+  // Heartbeat the agent's feedback wait while this composer is active, so
+  // queueing a second message doesn't get cut off by the first.
+  const onComposing = props.readonly
+    ? undefined
+    : () => notifyComposing({ session: props.sessionId, surface: props.surfaceId });
   // Once a card has a conversation, pin the composer at the bottom like a chat
   // input; an untouched card keeps it collapsed behind the Comment action so it
   // stays compact.
@@ -662,6 +668,7 @@ export function Thread(props: {
                 send={props.send}
                 autofocus={replying}
                 onCancel={hasMessages ? undefined : () => setReplying(false)}
+                onComposing={onComposing}
               />
               {hasMessages && props.secondaryActions ? (
                 <div className="flex items-center justify-end gap-0.5">
@@ -679,7 +686,7 @@ export function Thread(props: {
         </div>
       ) : !props.readonly ? (
         <div className="border-t-[0.5px] border-border px-2.5 py-2">
-          <Composer placeholder={props.placeholder} send={props.send} />
+          <Composer placeholder={props.placeholder} send={props.send} onComposing={onComposing} />
         </div>
       ) : null}
     </div>
@@ -812,6 +819,10 @@ function Composer(props: {
   send: (text: string) => Promise<string | null>;
   autofocus?: boolean;
   onCancel?: () => void;
+  // Fired on focus and on each keystroke so the thread can heartbeat "still
+  // composing" to the server (it throttles), keeping a parked agent's feedback
+  // batch open while the user queues more messages.
+  onComposing?: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   // Track emptiness so the send button can disable when there's nothing to post.
@@ -844,7 +855,11 @@ function Composer(props: {
         aria-label="Comment"
         title="Press Enter to send"
         className="h-8 flex-1 rounded-lg text-[13px]"
-        onInput={(e) => setEmpty(!e.currentTarget.value.trim())}
+        onFocus={() => props.onComposing?.()}
+        onInput={(e) => {
+          setEmpty(!e.currentTarget.value.trim());
+          props.onComposing?.();
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter") send();
           // Escape folds the composer back to the action bar — but only when

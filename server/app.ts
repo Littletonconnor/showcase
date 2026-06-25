@@ -38,6 +38,17 @@ const MAX_BODY_BYTES = 16 * 1024 * 1024;
 const MAX_COMMENT_TEXT = 8000;
 const MAX_TITLE = 500;
 
+// Feedback batching: a parked author=user wait normally wakes on the first
+// comment, which means a second message the user is still typing misses the
+// turn. Instead, once the first comment lands the wait stays open until the
+// user goes quiet: no new comment for SETTLE_MS *and* no "composing" heartbeat
+// from a focused viewer composer for COMPOSING_TTL_MS — bounded by MAX_BATCH_MS
+// so a stuck heartbeat can't pin the agent forever. Tune these to taste.
+const FEEDBACK_SETTLE_MS = 800;
+const FEEDBACK_COMPOSING_TTL_MS = 3000;
+const FEEDBACK_MAX_BATCH_MS = 25000;
+const FEEDBACK_POLL_MS = 250;
+
 // Asset serving policy: only raster images are served inline; everything else
 // (incl. svg, json, text, the octet-stream catch-all) is an attachment, so a
 // top-level open of /a/:id can never execute an uploaded document as a live
@@ -297,6 +308,15 @@ export function createApp({
     }
   };
 
+  // "User is composing" heartbeats per session: the viewer pings while a comment
+  // composer is focused or being typed in, so a parked author=user wait can hold
+  // its batch open until the user finishes queueing messages (see the batching
+  // constants above and waitForComments below).
+  const composingAt = new Map<string, number>();
+  const markComposing = (sessionId: string) => composingAt.set(sessionId, Date.now());
+  const isComposing = (sessionId: string, now: number) =>
+    now - (composingAt.get(sessionId) ?? 0) < FEEDBACK_COMPOSING_TTL_MS;
+
   // Last-resort safety net: any handler that throws (rather than returning a
   // status) becomes a clean JSON 500 instead of leaking a stack or a bare crash.
   // Validation rejects bad input with 4xx before this, so reaching here means an
@@ -523,16 +543,39 @@ export function createApp({
       const presenceSession = q.author === "user" && q.sessionId ? q.sessionId : null;
       if (presenceSession) addWaiter(presenceSession);
       try {
+        // Block until either the overall timeout elapses with no comment, or a
+        // batch of comments arrives and *settles*. Once the first comment lands
+        // we keep the wait open through a short quiet window — extended while
+        // the user is still composing — so several queued messages come back
+        // together instead of waking the agent on the first.
         await new Promise<void>((resolve) => {
-          const timer = setTimeout(done, wait * 1000);
+          const startMs = Date.now();
+          const overallDeadline = startMs + wait * 1000;
+          let firstCommentAt: number | null = null;
+          let lastCommentAt = 0;
           const unsubscribe = bus.subscribe((event) => {
             if (event.type !== "comment-created") return;
             if (q.sessionId && event.sessionId !== q.sessionId) return;
             if (q.surfaceId && event.surfaceId !== q.surfaceId) return;
-            done();
+            const now = Date.now();
+            if (firstCommentAt === null) firstCommentAt = now;
+            lastCommentAt = now;
           });
+          const poll = setInterval(check, FEEDBACK_POLL_MS);
+          function check() {
+            const now = Date.now();
+            if (now >= overallDeadline) return done();
+            // Nothing yet — keep waiting until the overall deadline.
+            if (firstCommentAt === null) return;
+            // Got at least one; return once the user goes quiet (no new comment
+            // for SETTLE_MS and no composing heartbeat), or the batch cap hits.
+            const quiet = now - lastCommentAt >= FEEDBACK_SETTLE_MS;
+            const stillComposing = q.sessionId !== undefined && isComposing(q.sessionId, now);
+            const capped = now - firstCommentAt >= FEEDBACK_MAX_BATCH_MS;
+            if (capped || (quiet && !stillComposing)) done();
+          }
           function done() {
-            clearTimeout(timer);
+            clearInterval(poll);
             unsubscribe();
             signal?.removeEventListener("abort", done);
             resolve();
@@ -907,6 +950,21 @@ export function createApp({
       { ...result.comment, ...(result.userFeedback && { userFeedback: result.userFeedback }) },
       201,
     );
+  });
+
+  // "I'm still composing" heartbeat: the viewer pings this while a comment
+  // composer is focused or being typed in, so a parked agent wait holds its
+  // batch open until the user is done queueing messages (see waitForComments).
+  // Cheap and idempotent — accepts a session id, or a surface id we resolve to
+  // its session. Always 204 so a stray ping never surfaces an error.
+  app.post("/api/composing", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    let sessionId = typeof body?.session === "string" ? body.session : undefined;
+    if (!sessionId && typeof body?.surface === "string") {
+      sessionId = (await store.getSurface(body.surface))?.sessionId;
+    }
+    if (sessionId) markComposing(sessionId);
+    return c.body(null, 204);
   });
 
   // The viewer's update notice: running version vs latest published release.
