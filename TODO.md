@@ -209,9 +209,9 @@ otherwise messages queue until it checks. The UI must surface this honestly.
       message path + a session chat panel so you can talk to the agent generally,
       not only under a surface. (Server: allow a surfaceless comment; viewer: a
       session thread.)
-- [ ] **Sidebar presence dots.** `listening` already rides each session row —
-      surface it as a small dot on the sidebar rows so you can see at a glance
-      which agents are reachable.
+- [x] **Sidebar presence dots (shipped).** A small pulsing green dot on each
+      session row's meta line when that session's agent is parked listening (live
+      via the same `agent-presence` SSE) — reachable agents at a glance.
 - [ ] **Tighten the arm flow.** The "Agent idle" copy-helper is the v1; consider
       a one-command `showcase chat` that parks a wait→reply loop, and richer
       agent-guide phrasing so editor agents naturally hold a conversation.

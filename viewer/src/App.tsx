@@ -691,11 +691,19 @@ function SessionItem(props: { session: SessionRow }) {
           </span>
           <span
             className={cx(
-              "truncate text-[11px] leading-snug",
+              "flex items-center gap-1 truncate text-[11px] leading-snug",
               isSel ? "text-brand/60" : isVacant ? "text-faint/70" : "text-faint/90",
             )}
           >
-            {props.session.agent} · {relTime(props.session.lastActiveAt)}
+            {props.session.listening ? (
+              <span
+                className="inline-block size-1.5 flex-none animate-pulse rounded-full bg-[#4caf78] motion-reduce:animate-none"
+                title="Agent is listening"
+              />
+            ) : null}
+            <span className="truncate">
+              {props.session.agent} · {relTime(props.session.lastActiveAt)}
+            </span>
           </span>
         </span>
       </SidebarMenuButton>
