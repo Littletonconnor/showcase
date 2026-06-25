@@ -281,8 +281,15 @@ theme tokens, so kit output re-themes with the board.
 - **`slides`** — author a `.deck` with `.slide` children; the kit shows one at a
   time and injects prev/dots/counter/next controls. Arrow keys and PageUp/Down
   navigate.
+- **`animate`** — author an `.anim` with `.step` children; the kit reveals them
+  one at a time, **building up** (each step adds to the last), and injects a
+  play/pause button, a scrub range, and a counter. Space toggles play, arrows
+  step, the slider scrubs. Wrap a phrase in `.cue` to highlight it. This is the
+  **explainer** kit — walk the reader through a concept; pair it with an `image`
+  part of the thing you're explaining.
 
-Copy-paste starting points — `issues` (a PR + CI tree) and `slides` (a deck):
+Copy-paste starting points — `issues` (a PR + CI tree), `slides` (a deck), and
+`animate` (a stepped explainer):
 
 ```html
 <!-- kits: ["issues"] -->
@@ -309,6 +316,25 @@ Copy-paste starting points — `issues` (a PR + CI tree) and `slides` (a deck):
   <div class="slide">
     <h2>Fix</h2>
     <p>Batched dequeue — ~20× fewer round-trips.</p>
+  </div>
+</div>
+```
+
+```html
+<!-- kits: ["animate"] -->
+<div class="anim">
+  <div class="step">
+    <h2>How a hash map gets O(1)</h2>
+    <p class="dim">Press play, or scrub.</p>
+  </div>
+  <div class="step">
+    <p>You store a value under a <b>key</b>.</p>
+  </div>
+  <div class="step">
+    <p>A <span class="cue">hash function</span> turns the key into a <b>bucket index</b>.</p>
+  </div>
+  <div class="step">
+    <p>Lookup re-hashes the key → same bucket → the value, in <b>one step</b>.</p>
   </div>
 </div>
 ```

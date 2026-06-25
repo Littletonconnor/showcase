@@ -36,6 +36,16 @@ test("only behavior kits ship js", () => {
   assert.equal(kitAssets(["issues"]).js, "");
 });
 
+test("the animate kit ships its stepper css + play/scrub behavior", () => {
+  const { css, js } = kitAssets(["animate"]);
+  assert.match(css, /\.anim>\.step\.on/); // the cumulative-reveal rule
+  assert.match(css, /@keyframes anim-in/); // the entrance animation
+  assert.match(css, /\.cue/); // the highlight helper
+  assert.match(js, /anim-ctl/); // injected controls
+  assert.match(js, /setInterval/); // auto-play
+  assert.match(js, /type='range'/); // the scrubber
+});
+
 test("isKnownKit gates on the registry", () => {
   assert.ok(isKnownKit("issues"));
   assert.ok(!isKnownKit("issue"));

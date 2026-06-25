@@ -237,9 +237,10 @@ workflows compose.
       @pierre/diffs shadow roots) and posts it out; `CommentAnchor` gained the line
       variant alongside the point one; the thread shows a "Line N" chip. Server +
       real-DOM oracle (composed-click through the sandboxed frame) cover it.
-- **R5 — Post the review back to GitHub (round-trip).** Turn a review session into
-  a `gh pr review` with line comments + verdict — "share the results." Optional,
-  highest effort, biggest payoff for the reviewer identity. _Effort:_ ~3–5h.
+
+_(A GitHub round-trip — `gh pr review` with line comments — was considered and
+**dropped**: showcase is its own surface, not a GitHub front-end. Sharing a
+review with others is the static-export path under Supporting capabilities.)_
 
 ### Workflow 2 ⭐ — Learning & explainers
 
@@ -270,9 +271,10 @@ for their own sake.
 - **Close the nudge gap** _(serves both)_ — an unread badge / desktop notification
   when the agent has feedback it hasn't seen, so you know to nudge an idle editor.
   _Effort:_ ~1–2h.
-- **Static export** _(serves W1 R5 + sharing)_ — `showcase export <session>` → one
-  self-contained read-only `.html` of a review/explainer to send anyone. Bakes a
-  snapshot via the `host.ts` seam, live/comment bits disabled. _Effort:_ ~1–2h.
+- **Static export** _(sharing)_ — `showcase export <session>` → one self-contained
+  read-only `.html` of a review/explainer to send anyone. Bakes a snapshot via
+  the `host.ts` seam, live/comment bits disabled. This is how you share a review,
+  not a GitHub round-trip. _Effort:_ ~1–2h.
 - **Present mode** _(serves W2)_ — full-bleed, arrow-key deck nav over a session's
   cards (builds on the `slides` kit). _Effort:_ ~1–2h.
 - **Canvas view** _(serves W2)_ — opt-in spatial board (tldraw-style) for
@@ -292,8 +294,8 @@ for their own sake.
   user's running editor agent over the existing MCP bridge — not a hosted
   `@anthropic-ai/sdk` / Agent SDK runtime. No API key, no injection surface.
   (Shipped — see "Editor-agent chat" under Shipped capabilities.)
-- **GitHub round-trip auth (W1 R5):** posting a review back needs `gh` auth /
-  a token; confirm the auth path and that it stays opt-in before building R5.
+- **No GitHub round-trip (DECIDED):** showcase is its own surface, not a GitHub
+  front-end. Sharing a review means static export, not posting back to a PR.
 - **Auth/sharing for live share:** the one-board/one-user stance means shared
   views default to read-only.
 
@@ -303,8 +305,8 @@ for their own sake.
 
 1. Read sections 1–5 of this file and `AGENTS.md`.
 2. `git branch --show-current` — if not on a task branch, branch from `main`.
-3. Default to **Workflow 1** (visual PR review), top-down (R1 first). If the item
-   is an "open decision" in §7 (e.g. W1 R5 GitHub round-trip), confirm it first.
+3. Workflow 1 (visual PR review) is shipped (R1–R4); Workflow 2 (learning &
+   explainers) is next. If an item is an "open decision" in §7, confirm it first.
 4. Build in small commits; after each, run the §5 verify suite. For UI, screenshot
    and look.
 5. Keep the oracle green; if you change behavior it covers, update the oracle in

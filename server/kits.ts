@@ -99,6 +99,61 @@ const SLIDES_JS = `
 })();
 `;
 
+// animate: a stepped, building-up explainer. Author `.anim` with `.step`
+// children; the JS reveals them cumulatively (each step adds to the last) and
+// injects a play/pause button, a scrub range, and a counter. Space toggles play,
+// arrows step, the slider scrubs. The just-revealed step animates in; `.cue`
+// highlights a phrase. Built for "walk me through this" explainers (pairs with
+// an image part of the thing being explained).
+const ANIMATE_CSS = `
+.anim{display:block}
+.anim>.step{display:none}
+.anim>.step.on{display:block}
+.anim>.step.now{animation:anim-in .4s ease both}
+@keyframes anim-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.anim>.step.now{animation:none}}
+.cue{background:var(--color-background-info);color:var(--color-text-info);border-radius:var(--border-radius-md);padding:0 4px}
+.anim-ctl{display:flex;align-items:center;gap:12px;margin-top:16px;padding-top:14px;border-top:1px solid var(--color-border-secondary)}
+.anim-play{flex:none;width:30px;height:30px;border-radius:999px;border:1px solid var(--color-border-secondary);background:var(--color-background-secondary);color:var(--color-text-primary);cursor:pointer;font:12px/1 var(--font-sans);display:inline-flex;align-items:center;justify-content:center}
+.anim-play:hover{border-color:var(--color-border-primary)}
+.anim-range{flex:1;min-width:0;accent-color:var(--color-text-info);cursor:pointer}
+.anim-num{flex:none;font:400 13px/1 var(--font-mono);color:var(--color-text-tertiary);min-width:48px;text-align:right}
+`;
+
+const ANIMATE_JS = `
+(function(){
+  var anim=document.querySelector('.anim');if(!anim)return;
+  var steps=[].slice.call(anim.querySelectorAll(':scope > .step'));if(!steps.length)return;
+  var i=0,timer=null;
+  var ctl=document.createElement('div');ctl.className='anim-ctl';
+  var play=document.createElement('button');play.type='button';play.className='anim-play';play.setAttribute('aria-label','Play');play.textContent='\\u25B6';
+  var range=document.createElement('input');range.type='range';range.className='anim-range';range.min='0';range.max=String(steps.length-1);range.value='0';range.setAttribute('aria-label','Step');
+  var num=document.createElement('span');num.className='anim-num';
+  ctl.appendChild(play);ctl.appendChild(range);ctl.appendChild(num);
+  anim.appendChild(ctl);
+  function render(){
+    steps.forEach(function(s,k){s.classList.toggle('on',k<=i);s.classList.toggle('now',k===i);});
+    range.value=String(i);num.textContent=(i+1)+' / '+steps.length;
+  }
+  function go(n){i=Math.max(0,Math.min(steps.length-1,n));render();}
+  function stop(){if(timer){clearInterval(timer);timer=null;}play.textContent='\\u25B6';play.setAttribute('aria-label','Play');}
+  function start(){
+    if(i>=steps.length-1)go(0);
+    play.textContent='\\u275A\\u275A';play.setAttribute('aria-label','Pause');
+    timer=setInterval(function(){if(i>=steps.length-1){stop();return;}go(i+1);},1500);
+  }
+  play.addEventListener('click',function(){timer?stop():start();});
+  range.addEventListener('input',function(){stop();go(Number(range.value));});
+  document.addEventListener('keydown',function(e){
+    if(e.metaKey||e.altKey||e.ctrlKey)return;
+    if(e.key==='ArrowRight'){e.preventDefault();stop();go(i+1);}
+    else if(e.key==='ArrowLeft'){e.preventDefault();stop();go(i-1);}
+    else if(e.key===' '){e.preventDefault();timer?stop():start();}
+  });
+  render();
+})();
+`;
+
 export const KITS: Kit[] = [
   {
     id: "issues",
@@ -114,6 +169,14 @@ export const KITS: Kit[] = [
     classes: "deck · slide (+ injected controls)",
     css: SLIDES_CSS,
     js: SLIDES_JS,
+  },
+  {
+    id: "animate",
+    label: "Animate",
+    summary: "a building-up explainer — steps reveal with play/pause + a scrubber",
+    classes: "anim · step · cue (+ injected play/scrub controls)",
+    css: ANIMATE_CSS,
+    js: ANIMATE_JS,
   },
 ];
 
