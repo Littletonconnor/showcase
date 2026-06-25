@@ -6,9 +6,15 @@ import { useActiveTheme, useResolvedMode } from "./theme.ts";
 // Wrapper styles shipped into the sandbox iframe. Mermaid bakes theme colors
 // into the SVG itself (read from the trusted viewer's vars at render time), so
 // the iframe only needs to center and constrain it.
+// The SVG must be display:block: an inline SVG with height:auto resolves to ~0
+// layout height in some Chrome builds, so it contributes nothing to
+// body.scrollHeight and the sandbox iframe collapses to an empty strip (block
+// content like markdown still measures fine, which is the tell). A block SVG
+// sizes from its viewBox and reports a real height; margin:0 auto centers it
+// (replacing the body text-align that only centered the inline box).
 const MERMAID_CSS = `
-body { margin: 0; padding: 14px 16px; background: transparent; text-align: center; }
-svg { max-width: 100%; height: auto; }
+body { margin: 0; padding: 14px 16px; background: transparent; }
+svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
 `;
 
 // mermaid.render namespaces the SVG's internal ids with this; it must be unique
