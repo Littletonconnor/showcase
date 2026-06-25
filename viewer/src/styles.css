@@ -1,19 +1,19 @@
 :root {
-  /* Showcase palette (light) — clean slate neutrals + an indigo-violet accent.
-     Pre-paint fallback; the active theme (server/themes.ts) overrides these at
-     runtime, so keep them in sync to avoid a flash. */
-  --bg: #f7f7fb;
-  --panel: #eeeef4;
+  /* Showcase palette (light) — Claude-inspired warm ivory neutrals + a
+     terracotta/coral accent. Pre-paint fallback; the active theme
+     (server/themes.ts) overrides these at runtime, so keep them in sync. */
+  --bg: #f7f6f1;
+  --panel: #f0eee6;
   --surface: #ffffff;
-  --text: #1b1c24;
-  --muted: #585e6e;
-  --faint: #878d9c;
-  --border: #e5e5ee;
-  --border-2: #cdcedb;
-  --accent: #574fcf;
-  --accent-bg: #ecebfd;
-  --hover: #eceaf6;
-  --danger: #d12d3b;
+  --text: #1a1915;
+  --muted: #6b6a62;
+  --faint: #928f86;
+  --border: #e7e4d9;
+  --border-2: #d6d2c4;
+  --accent: #bd5b3c;
+  --accent-bg: #f6e7df;
+  --hover: #efece3;
+  --danger: #bf4634;
   /* Terminal chrome — fallback values for the pre-theme paint. The active theme
      overrides these from its DARK palette (see themes.ts termVars), so the
      terminal adopts the theme's hue but stays dark in both color schemes: a
@@ -25,18 +25,18 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    /* Showcase palette (dark) — deep slate + light-violet accent. */
-    --bg: #0d0e14;
-    --panel: #15161f;
-    --surface: #1a1b25;
-    --text: #e8e9f1;
-    --muted: #989eae;
-    --faint: #6a7080;
-    --border: #272834;
-    --border-2: #3a3c4b;
-    --accent: #a99cff;
-    --accent-bg: rgba(126, 110, 242, 0.2);
-    --hover: rgba(150, 142, 220, 0.1);
-    --danger: #ff8c86;
+    /* Showcase palette (dark) — warm charcoal-brown + light-coral accent. */
+    --bg: #1f1e1b;
+    --panel: #262521;
+    --surface: #2b2925;
+    --text: #f0eee6;
+    --muted: #a8a59b;
+    --faint: #78756c;
+    --border: #3a3832;
+    --border-2: #4c4a42;
+    --accent: #e08a6a;
+    --accent-bg: rgba(210, 110, 80, 0.18);
+    --hover: rgba(232, 226, 210, 0.07);
+    --danger: #e89080;
   }
 }

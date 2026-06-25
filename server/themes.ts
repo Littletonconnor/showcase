@@ -149,42 +149,43 @@ export const THEMES: Theme[] = [
     id: "showcase",
     label: "Showcase",
     // Code/diff syntax stays on the GitHub shiki themes — neutral and legible
-    // under the violet chrome. (The chrome accent and syntax palette are
-    // separate concerns; a violet keyword theme would fight the diff.)
+    // under the warm chrome. (The chrome accent and syntax palette are separate
+    // concerns; a coral-tinted keyword theme would fight the diff.)
     shiki: { light: "github-light", dark: "github-dark" },
-    // Clean slate neutrals carry the "professional"; one indigo-violet accent
-    // carries the "fun" — it drives links, focus rings, the active session row,
-    // the send button, and mermaid accents. Semantic states stay conventional
-    // (green/amber/red) so a warning still reads as a warning.
+    // Anthropic/Claude-inspired: warm ivory paper neutrals + warm near-black
+    // text carry the editorial, professional base; the terracotta/coral accent
+    // (Claude's signature) is used with restraint — links, focus rings, the
+    // active session row, the send button, mermaid accents. Semantic states stay
+    // conventional but warmed, so a warning still reads as a warning.
     light: {
-      bg: "#f7f7fb",
-      panel: "#eeeef4",
+      bg: "#f7f6f1",
+      panel: "#f0eee6",
       surface: "#ffffff",
-      text: "#1b1c24",
-      muted: "#585e6e",
-      faint: "#878d9c",
-      border: "#e5e5ee",
-      border2: "#cdcedb",
-      hover: "#eceaf6",
-      info: { bg: "#ecebfd", text: "#574fcf", border: "#bbb2f2" },
-      success: { bg: "#e4f7ec", text: "#0f854b", border: "#76d2a0" },
-      warning: { bg: "#fdf2d6", text: "#946400", border: "#e6c34d" },
-      danger: { bg: "#fde7e9", text: "#d12d3b", border: "#f5a2a8" },
+      text: "#1a1915",
+      muted: "#6b6a62",
+      faint: "#928f86",
+      border: "#e7e4d9",
+      border2: "#d6d2c4",
+      hover: "#efece3",
+      info: { bg: "#f6e7df", text: "#bd5b3c", border: "#dba88e" },
+      success: { bg: "#e7f1e3", text: "#3f7a44", border: "#9cc89a" },
+      warning: { bg: "#fbf0d3", text: "#946618", border: "#e3c068" },
+      danger: { bg: "#fbe7e1", text: "#bf4634", border: "#eda595" },
     },
     dark: {
-      bg: "#0d0e14",
-      panel: "#15161f",
-      surface: "#1a1b25",
-      text: "#e8e9f1",
-      muted: "#989eae",
-      faint: "#6a7080",
-      border: "#272834",
-      border2: "#3a3c4b",
-      hover: "rgba(150, 142, 220, 0.10)",
-      info: { bg: "rgba(126, 110, 242, 0.20)", text: "#a99cff", border: "#7e6ef2" },
-      success: { bg: "rgba(52, 200, 124, 0.16)", text: "#46cf8b", border: "#3fb97a" },
-      warning: { bg: "rgba(222, 160, 42, 0.16)", text: "#e0b341", border: "#d4a72c" },
-      danger: { bg: "rgba(245, 95, 95, 0.16)", text: "#ff8c86", border: "#f56b6b" },
+      bg: "#1f1e1b",
+      panel: "#262521",
+      surface: "#2b2925",
+      text: "#f0eee6",
+      muted: "#a8a59b",
+      faint: "#78756c",
+      border: "#3a3832",
+      border2: "#4c4a42",
+      hover: "rgba(232, 226, 210, 0.07)",
+      info: { bg: "rgba(210, 110, 80, 0.18)", text: "#e08a6a", border: "#c2603f" },
+      success: { bg: "rgba(95, 170, 105, 0.16)", text: "#7fc081", border: "#5a8a5a" },
+      warning: { bg: "rgba(210, 160, 60, 0.16)", text: "#d9b264", border: "#b78a30" },
+      danger: { bg: "rgba(220, 105, 85, 0.16)", text: "#e89080", border: "#bf4634" },
     },
   },
 ];
