@@ -103,6 +103,46 @@ test("publish into unknown session 404s instead of silently creating", async () 
   assert.equal(res.status, 404);
 });
 
+test("review_finding composes a multimodal card from structured fields", async () => {
+  const app = makeApp();
+  const res = await app.request(
+    "/api/findings",
+    json({
+      severity: "bug",
+      title: "Constructor doesn't fail-fast",
+      file: "Foo.java",
+      line: 38,
+      problem: "args assigned without null checks",
+      fix: "checkNotNull each required arg",
+      patch: "@@ -1 +1 @@\n-a\n+b",
+      diagram: "flowchart LR; A-->B",
+      sessionTitle: "ALLM-116 review",
+    }),
+  );
+  assert.equal(res.status, 201);
+  const lean = (await res.json()) as any;
+  // severity → badge, and the file:line rides the title.
+  assert.deepEqual(lean.badge, { tone: "critical", label: "Bug" });
+  // problem + fix + diagram + patch → markdown, mermaid, diff (in that order).
+  assert.deepEqual(lean.kinds, ["markdown", "mermaid", "diff"]);
+
+  const full = (await (await app.request(`/api/surfaces/${lean.id}`)).json()) as any;
+  assert.equal(full.title, "Constructor doesn't fail-fast — Foo.java:38");
+  assert.match(full.parts[0].markdown, /\*\*Problem\*\* — args assigned/);
+  assert.match(full.parts[0].markdown, /\*\*Fix\*\* — checkNotNull/);
+  assert.equal(full.parts[2].patch, "@@ -1 +1 @@\n-a\n+b");
+
+  // Minimal call: just title + problem (note severity, no extras).
+  const minimal = (await (
+    await app.request("/api/findings", json({ title: "x", problem: "y", session: lean.sessionId }))
+  ).json()) as any;
+  assert.deepEqual(minimal.badge, { tone: "neutral", label: "Note" });
+  assert.deepEqual(minimal.kinds, ["markdown"]);
+
+  // title + problem are required.
+  assert.equal((await app.request("/api/findings", json({ title: "x" }))).status, 400);
+});
+
 test("a surface badge is validated, echoed, updatable, and clearable", async () => {
   const app = makeApp();
   const created = (await (

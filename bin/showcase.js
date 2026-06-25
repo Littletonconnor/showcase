@@ -19,6 +19,11 @@ usage:
       --base <branch>   base to diff against (default: origin/HEAD or main)
       --title <t>       session title (default: "Review: <branch>")
       prints the session id + URL + a ready-to-paste prompt for your agent
+  showcase finding [options]              publish one structured review finding
+      --title <t>       the finding (required)    --problem <text>  what's wrong (required)
+      --severity <s>    bug|nit|question|praise|note   --file <f> --line <n>
+      --fix <text>      suggested fix   --patch <file|->  diff shown inline
+      --diagram <file|-> mermaid of the flow   (also: --session, --session-title)
   showcase publish <file|-> [options]     publish an HTML surface (one html part)
       --title <t>       surface title
       --md <file|->     add a markdown part (prose) — combine with html
@@ -1108,6 +1113,52 @@ const commands = {
         `review recipe: one finding card each (severity badge + What/Why/Fix + a mermaid of the ` +
         `relevant flow + the diff), and update the "In review" verdict card with your verdict.`,
     });
+  },
+
+  // Publish ONE structured review finding — showcase composes the multimodal
+  // card (severity badge + explanation + inline diff + optional diagram) from
+  // the fields. The shell tier's review_finding: call it per finding, not one
+  // markdown wall. --patch/--diagram read a file (or - for stdin).
+  async finding() {
+    const { values: flags } = parse({
+      options: {
+        severity: { type: "string" },
+        title: { type: "string" },
+        file: { type: "string" },
+        line: { type: "string" },
+        problem: { type: "string" },
+        fix: { type: "string" },
+        patch: { type: "string" },
+        diagram: { type: "string" },
+        session: { type: "string" },
+        "session-title": { type: "string" },
+        agent: { type: "string" },
+      },
+    });
+    if (!flags.title || !flags.problem) {
+      fail(
+        "usage: showcase finding --title <t> --problem <text> [--severity bug|nit|question|praise|note] [--file f] [--line n] [--fix <text>] [--patch <file|->] [--diagram <file|->]",
+      );
+    }
+    const session = flags.session ?? (await resolveSession(flags, { create: true }));
+    outSurface(
+      await api("/api/findings", {
+        method: "POST",
+        body: JSON.stringify({
+          severity: flags.severity,
+          title: flags.title,
+          file: flags.file,
+          line: flags.line ? Number(flags.line) : undefined,
+          problem: flags.problem,
+          fix: flags.fix,
+          patch: flags.patch ? readContent(flags.patch) : undefined,
+          diagram: flags.diagram ? readContent(flags.diagram) : undefined,
+          session,
+          sessionTitle: flags["session-title"],
+          agent: flags.agent,
+        }),
+      }),
+    );
   },
 
   async demo() {

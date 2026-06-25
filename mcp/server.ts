@@ -78,6 +78,34 @@ server.registerTool(
 );
 
 server.registerTool(
+  "review_finding",
+  {
+    description: MCP_TOOL_DESCRIPTIONS.reviewFinding,
+    inputSchema: STDIO_MCP_INPUT_SCHEMAS.reviewFinding,
+  },
+  async ({ severity, title, file, line, problem, fix, patch, diagram, sessionTitle }) => {
+    const session = await ensureSession(sessionTitle);
+    const created = JSON.parse(
+      await api("/api/findings", {
+        method: "POST",
+        body: JSON.stringify({
+          severity,
+          title,
+          file,
+          line,
+          problem,
+          fix,
+          patch,
+          diagram,
+          session,
+        }),
+      }),
+    );
+    return text({ ...created, url: `${API}/session/${created.sessionId}/s/${created.id}` });
+  },
+);
+
+server.registerTool(
   "update_surface",
   {
     description: MCP_TOOL_DESCRIPTIONS.updateSurface,

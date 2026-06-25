@@ -284,6 +284,52 @@ function parseAnchor(raw: unknown): CommentAnchor | undefined {
   return { xPct: clamp(x), yPct: clamp(y) };
 }
 
+// review_finding: the structured review primitive. The agent passes plain
+// fields and showcase COMPOSES the multimodal finding card — so producing a
+// broken-down, visual review (severity badge + explanation + inline diff +
+// optional diagram) is less effort than dumping one markdown wall, which is why
+// reviews regressed to prose. `severity` picks the badge; `file`/`line` ride the
+// title; `problem`/`fix` become a structured markdown part; `patch` renders as
+// an inline diff and `diagram` as a mermaid.
+const FINDING_SEVERITY: Record<string, SurfaceBadge> = {
+  bug: { tone: "critical", label: "Bug" },
+  nit: { tone: "warning", label: "Nit" },
+  question: { tone: "info", label: "Question" },
+  praise: { tone: "success", label: "Praise" },
+  note: { tone: "neutral", label: "Note" },
+};
+
+export interface FindingInput {
+  severity?: string;
+  title: string;
+  file?: string;
+  line?: number;
+  problem: string;
+  fix?: string;
+  patch?: string;
+  diagram?: string;
+}
+
+function buildFinding(input: FindingInput): {
+  title: string;
+  badge: SurfaceBadge;
+  parts: SurfacePart[];
+} {
+  const badge = FINDING_SEVERITY[input.severity ?? "note"] ?? FINDING_SEVERITY.note;
+  const loc = input.file
+    ? ` — ${input.file}${Number.isInteger(input.line) ? `:${input.line}` : ""}`
+    : "";
+  const title = `${input.title.trim()}${loc}`.slice(0, MAX_TITLE);
+  const fix = input.fix?.trim();
+  const markdown = fix
+    ? `**Problem** — ${input.problem.trim()}\n\n**Fix** — ${fix}`
+    : input.problem.trim();
+  const parts: SurfacePart[] = [{ kind: "markdown", markdown }];
+  if (input.diagram?.trim()) parts.push({ kind: "mermaid", mermaid: input.diagram.trim() });
+  if (input.patch?.trim()) parts.push({ kind: "diff", patch: input.patch });
+  return { title, badge, parts };
+}
+
 export function createApp({
   store,
   viewerHtml,
@@ -418,6 +464,29 @@ export function createApp({
     if (!surface) return { error: "session not found", status: 404 };
     bus.broadcast({ type: "surface-created", id: surface.id, sessionId, version: 1 });
     return { surface, userFeedback: await collectFeedback(sessionId) };
+  }
+
+  // Compose + publish a structured review finding (see buildFinding). The agent
+  // hands over fields; showcase builds the badge + explanation + inline diff +
+  // diagram card and routes it through publishSurface.
+  async function publishFinding(
+    input: FindingInput & { session?: string; sessionTitle?: string; agent?: string; cwd?: string },
+  ): Promise<
+    { surface: Surface; userFeedback?: Feedback[] } | { error: string; status: 400 | 404 | 413 }
+  > {
+    if (!input.title?.trim() || !input.problem?.trim()) {
+      return { error: '"title" and "problem" are required', status: 400 };
+    }
+    const { title, badge, parts } = buildFinding(input);
+    return publishSurface({
+      parts,
+      title,
+      badge,
+      session: input.session,
+      sessionTitle: input.sessionTitle,
+      agent: input.agent,
+      cwd: input.cwd,
+    });
   }
 
   // Store an uploaded blob. Like publishSurface, an explicit session is
@@ -844,6 +913,39 @@ export function createApp({
     return publish(c, body, parsed.parts);
   });
 
+  // Structured review finding — showcase composes the multimodal card from
+  // fields (see buildFinding). The shared entry for the review_finding MCP tool
+  // (stdio transport + CLI) and any HTTP caller.
+  app.post("/api/findings", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body.title !== "string" || typeof body.problem !== "string") {
+      return c.json({ error: '"title" and "problem" strings are required' }, 400);
+    }
+    const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+    const result = await publishFinding({
+      severity: str(body.severity),
+      title: body.title,
+      file: str(body.file),
+      line: typeof body.line === "number" ? body.line : undefined,
+      problem: body.problem,
+      fix: str(body.fix),
+      patch: str(body.patch),
+      diagram: str(body.diagram),
+      session: str(body.session),
+      sessionTitle: str(body.sessionTitle),
+      agent: str(body.agent),
+      cwd: str(body.cwd),
+    });
+    if ("error" in result) return c.json({ error: result.error }, result.status);
+    return c.json(
+      {
+        ...writeResult(result.surface),
+        ...(result.userFeedback && { userFeedback: result.userFeedback }),
+      },
+      201,
+    );
+  });
+
   // Legacy html-only entry — sugar for a single html part. An optional `kits`
   // array opts the part into style/behavior bundles; it's validated (strict)
   // like any html part so an unknown kit id is a clean 400.
@@ -1227,6 +1329,7 @@ export function createApp({
     store,
     basePath: requestBasePath,
     publishSurface,
+    publishFinding,
     reviseSurface,
     createComment,
     waitForComments,

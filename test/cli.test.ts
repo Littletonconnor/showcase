@@ -298,6 +298,33 @@ test("chat --print emits the arming prompt without launching", async () => {
   assert.match(stdout, /reply_to_user/);
 });
 
+test("finding composes a structured review card", async () => {
+  const server = await serveApp();
+  try {
+    const { code, stdout } = await runWith(
+      { env: { SHOWCASE_URL: server.url } },
+      "finding",
+      "--severity",
+      "bug",
+      "--title",
+      "Null check missing",
+      "--problem",
+      "args not checked",
+      "--file",
+      "Foo.java",
+      "--line",
+      "12",
+    );
+    assert.equal(code, 0);
+    const out = JSON.parse(stdout);
+    assert.deepEqual(out.badge, { tone: "critical", label: "Bug" });
+    const full = (await (await fetch(`${server.url}/api/surfaces/${out.id}`)).json()) as any;
+    assert.equal(full.title, "Null check missing — Foo.java:12");
+  } finally {
+    await server.close();
+  }
+});
+
 test("review scaffolds a session from a branch diff", async () => {
   const server = await serveApp();
   const repo = gitRepo();

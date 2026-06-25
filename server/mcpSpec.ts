@@ -39,6 +39,17 @@ export const FEEDBACK_REPLY_NOTE =
 const d = {
   title: "Short human-readable title shown above the card",
   html: "HTML body fragment to render",
+  findingSeverity:
+    "bug | nit | question | praise | note — picks the severity badge (bug→red, nit→amber, question→blue, praise→green, note→gray)",
+  findingTitle: "One-line finding/piece title (the issue itself, not the filename)",
+  findingFile:
+    "File the finding is about — rides the card title (e.g. 'FinancialChatFeedback.java')",
+  findingLine: "Line number — rides the title as :N",
+  findingProblem: "What's wrong, or what this critical piece does and why it matters — markdown",
+  findingFix: "Suggested fix or follow-up — markdown (optional)",
+  findingPatch:
+    "The relevant diff hunk (unified/git) — rendered INLINE in the card so the change is visible",
+  findingDiagram: "Optional mermaid source visualizing the relevant flow/structure",
   session: "Session id from a previous publish (omit on first)",
   sessionTitle:
     'Session name shown in the sidebar — name the task, e.g. "Auth refactor". Honored only when this publish creates the session.',
@@ -163,6 +174,8 @@ export const MCP_TOOL_DESCRIPTIONS = {
     "Publish a surface to the user's showcase board. A surface is an ordered list of parts (html, markdown, mermaid, diff, image, trace). Returns the surface id and view URL. On your first publish, pass sessionTitle naming the task. If the result includes userFeedback, those are new comments from the user. Call get_design_guide first if you have not this session.",
   updateSurface:
     "Revise a surface in place (same card, new version). Prefer this over publishing a near-duplicate. Pass the full replacement parts array. If the result includes userFeedback, read it.",
+  reviewFinding:
+    "Publish ONE structured review finding as a multimodal card. showcase composes it from your fields — a severity badge + the explanation + the relevant diff INLINE + an optional diagram. THIS is how you do a code review: break the PR into critical pieces and call review_finding once per piece — never dump the whole review into one markdown surface. Always pass the relevant `patch` so the diff shows in the card. `title` and `problem` are required; `fix`/`patch`/`diagram` are optional. Returns the surface id + URL; pass the returned sessionId as `session` on the rest of the review.",
   publishSnippet:
     "Publish an HTML snippet — sugar for a surface with one html part. Send a body fragment only. Returns the id, view URL, and sessionId. Pass sessionTitle on first publish. Prefer publish_surface when you want a diff or multiple parts.",
   updateSnippet: "Revise an html snippet in place — sugar for update_surface with one html part.",
@@ -205,6 +218,31 @@ export const HTTP_MCP_TOOLS = [
         agent: { type: "string", description: d.agent },
       },
       required: ["title", "parts"],
+    },
+  },
+  {
+    name: "review_finding",
+    description: MCP_TOOL_DESCRIPTIONS.reviewFinding,
+    inputSchema: {
+      type: "object",
+      properties: {
+        severity: {
+          type: "string",
+          enum: ["bug", "nit", "question", "praise", "note"],
+          description: d.findingSeverity,
+        },
+        title: { type: "string", description: d.findingTitle },
+        file: { type: "string", description: d.findingFile },
+        line: { type: "number", description: d.findingLine },
+        problem: { type: "string", description: d.findingProblem },
+        fix: { type: "string", description: d.findingFix },
+        patch: { type: "string", description: d.findingPatch },
+        diagram: { type: "string", description: d.findingDiagram },
+        session: { type: "string", description: d.session },
+        sessionTitle: { type: "string", description: d.sessionTitle },
+        agent: { type: "string", description: d.agent },
+      },
+      required: ["title", "problem"],
     },
   },
   {
@@ -382,6 +420,20 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
     title: z.string().describe(d.title),
     parts: z.array(mcpPartSchema).describe(MCP_PARTS_DESCRIPTION),
     badge: badgeStdioSchemas.badge,
+    sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
+  },
+  reviewFinding: {
+    severity: z
+      .enum(["bug", "nit", "question", "praise", "note"])
+      .optional()
+      .describe(d.findingSeverity),
+    title: z.string().describe(d.findingTitle),
+    file: z.string().optional().describe(d.findingFile),
+    line: z.number().optional().describe(d.findingLine),
+    problem: z.string().describe(d.findingProblem),
+    fix: z.string().optional().describe(d.findingFix),
+    patch: z.string().optional().describe(d.findingPatch),
+    diagram: z.string().optional().describe(d.findingDiagram),
     sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
   },
   updateSurface: {

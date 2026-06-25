@@ -38,6 +38,19 @@ export interface McpDeps {
     sessionTitle?: string;
     agent?: string;
   }): FlowResult<Surface>;
+  publishFinding(input: {
+    severity?: string;
+    title: string;
+    file?: string;
+    line?: number;
+    problem: string;
+    fix?: string;
+    patch?: string;
+    diagram?: string;
+    session?: string;
+    sessionTitle?: string;
+    agent?: string;
+  }): FlowResult<Surface>;
   reviseSurface(
     id: string,
     patch: { parts?: SurfacePart[]; title?: string; badge?: SurfaceBadge | null },
@@ -94,6 +107,24 @@ export function registerMcp(app: Hono, deps: McpDeps) {
           session: typeof args.session === "string" ? args.session : undefined,
           sessionTitle: typeof args.sessionTitle === "string" ? args.sessionTitle : undefined,
           agent: typeof args.agent === "string" ? args.agent : undefined,
+        });
+        if ("error" in result) throw new Error(result.error);
+        return surfaceResult(result, origin);
+      }
+      case "review_finding": {
+        const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+        const result = await deps.publishFinding({
+          severity: str(args.severity),
+          title: String(args.title ?? ""),
+          file: str(args.file),
+          line: typeof args.line === "number" ? args.line : undefined,
+          problem: String(args.problem ?? ""),
+          fix: str(args.fix),
+          patch: str(args.patch),
+          diagram: str(args.diagram),
+          session: str(args.session),
+          sessionTitle: str(args.sessionTitle),
+          agent: str(args.agent),
         });
         if ("error" in result) throw new Error(result.error);
         return surfaceResult(result, origin);
