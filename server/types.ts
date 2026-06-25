@@ -201,6 +201,9 @@ export interface Surface {
   updatedAt: string;
   version: number;
   history: SurfaceVersion[];
+  // Pinned to the cross-session Library — a persistent visual knowledge base.
+  // Pinning never creates a new version (it's not an edit to the content).
+  pinned?: boolean;
 }
 
 // A pinned location on a surface a comment refers to — a point as a fraction of
@@ -297,6 +300,8 @@ export interface Store {
   getSurface(id: string): Promise<Surface | null>;
   createSurface(input: CreateSurfaceInput): Promise<Surface | null>;
   updateSurface(id: string, patch: UpdateSurfaceInput): Promise<Surface | null>;
+  // Pin/unpin a surface to the Library without bumping its version.
+  setPinned(id: string, pinned: boolean): Promise<Surface | null>;
   removeSurface(id: string): Promise<boolean>;
 
   listComments(query: CommentQuery): Promise<Comment[]>;

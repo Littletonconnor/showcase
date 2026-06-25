@@ -139,3 +139,25 @@ test("an annotation pins a note to a spot and stores the anchor", async ({ page,
   const anchored = all.comments.find((c: { text: string }) => c.text.includes("anchor here"));
   expect(anchored?.anchor?.xPct, "the comment carries the anchor").toBeGreaterThanOrEqual(0);
 });
+
+test("pinning a surface collects it in the Library across sessions", async ({ page, request }) => {
+  const { surfaceId } = await seedSurface(request);
+  await page.goto(`/?surface=${surfaceId}`);
+  const card = page.locator(`.card[data-id="${surfaceId}"]`);
+  await expect(card).toBeVisible();
+
+  // Pin it from the card footer.
+  await card.getByRole("button", { name: "Pin to your Library" }).click();
+  // The action flips to the unpin label once it's pinned.
+  await expect(card.getByRole("button", { name: "Remove from Library" })).toBeVisible();
+
+  // Open the Library from the sidebar; the pinned surface is there.
+  await page.getByRole("button", { name: "Library" }).first().click();
+  const libCard = page.locator(`.card[data-id="${surfaceId}"]`);
+  await expect(libCard).toBeVisible({ timeout: 10_000 });
+  await expect(libCard.locator(".card-title")).toHaveText("Oracle surface");
+
+  // Unpinning from within the Library drops it out of the collection.
+  await libCard.getByRole("button", { name: "Remove from Library" }).click();
+  await expect(libCard).toHaveCount(0, { timeout: 10_000 });
+});

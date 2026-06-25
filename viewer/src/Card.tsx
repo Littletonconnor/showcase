@@ -34,6 +34,7 @@ import { cx } from "./cx.ts";
 import { DiffPart } from "./DiffPart.tsx";
 import {
   ArrowUp,
+  Bookmark,
   Check,
   ExternalLink,
   Link2,
@@ -61,6 +62,7 @@ import {
   sessionRespondKey,
   setScrollTarget,
   toast,
+  togglePin,
   useBoard,
   useResponding,
   type ViewComment,
@@ -355,10 +357,22 @@ export function Card(props: { surface: Surface }) {
     );
   };
 
-  // Per-surface secondary actions (copy link / open / delete) — shared by the
-  // collapsed footer bar and the persistent-composer footer (see Thread).
+  // Per-surface secondary actions (pin / copy link / open / delete) — shared by
+  // the collapsed footer bar and the persistent-composer footer (see Thread).
+  const pinned = !!props.surface.pinned;
   const surfaceActions = (
     <>
+      {!isReadonly() ? (
+        <IconAction
+          label={pinned ? "Remove from Library" : "Pin to your Library"}
+          onClick={() => void togglePin(surfaceId, !pinned)}
+        >
+          <Bookmark
+            className={pinned ? "text-brand" : undefined}
+            fill={pinned ? "currentColor" : "none"}
+          />
+        </IconAction>
+      ) : null}
       <IconAction
         label="Copy link to this surface"
         onClick={async () => {

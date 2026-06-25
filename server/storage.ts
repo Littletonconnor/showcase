@@ -298,6 +298,16 @@ export class JsonFileStore implements Store {
     return clone(surface);
   }
 
+  async setPinned(id: string, pinned: boolean) {
+    await this.load();
+    const surface = this.surfaces.get(id);
+    if (!surface) return null;
+    if (pinned) surface.pinned = true;
+    else delete surface.pinned;
+    await this.persist();
+    return clone(surface);
+  }
+
   async removeSurface(id: string) {
     await this.load();
     const surface = this.surfaces.get(id);

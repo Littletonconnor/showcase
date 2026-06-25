@@ -262,9 +262,13 @@ of you. Pairs naturally with Pillar A (rich html parts are what you annotate).
 
 ### Pillar D — Personal knowledge base
 
-- **Persistent / pinned surfaces** — a "library" of diagrams that survives the
-  session; a visual wiki for "understand a system." _Effort:_ ~2–4h (store +
-  a pinned view).
+- [x] **Persistent / pinned surfaces — the Library (shipped).** A bookmark in
+      every surface footer pins it; pinned surfaces collect in a session-independent
+      **Library** (a sidebar nav row above the session groups). `Surface.pinned` +
+      `Store.setPinned`, `PUT /api/surfaces/:id/pin`, `GET /api/library` (pinned,
+      newest-first). The Library reuses the stream — surfaces load with their threads
+      across sessions; unpinning drops a card out live. Store-contract + API + a
+      real-DOM oracle test (pin → appears in Library → unpin → gone) cover it.
 - **Reading/learning mode** — focused, one-explainer-at-a-time view. _Effort:_ ~2h.
 
 ### Pillar E — Share & present (lower priority)

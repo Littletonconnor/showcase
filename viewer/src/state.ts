@@ -63,6 +63,9 @@ interface BoardState {
   // user sends to a card whose session is listening, cleared when the agent
   // replies (or on a timeout, so it never hangs).
   responding: Record<string, boolean>;
+  // The Library view: when true the stream shows pinned surfaces across all
+  // sessions instead of a single session.
+  library: boolean;
 }
 
 export const useBoard = create<BoardState>(() => ({
@@ -81,6 +84,7 @@ export const useBoard = create<BoardState>(() => ({
   activeTheme: "",
   prefersDark: false,
   responding: {},
+  library: false,
 }));
 
 // Non-reactive snapshot accessors — mirror the Solid signal getters so the flow
@@ -316,11 +320,65 @@ export async function refreshSessions(targetSurfaceId?: string | null) {
   }
 }
 
+// Enter the Library: load every pinned surface (across sessions) into the stream.
+export async function selectLibrary() {
+  set({
+    library: true,
+    selected: null,
+    scrollTarget: null,
+    pillTarget: null,
+    streamLoading: true,
+    surfaces: [],
+    comments: [],
+  });
+  await loadLibrary();
+}
+
+async function loadLibrary() {
+  const metas = await api<{ id: string }[]>("/api/library").catch(() => []);
+  const details = (
+    await Promise.all(metas.map((m) => api<Surface>(`/api/surfaces/${m.id}`).catch(() => null)))
+  ).filter((s): s is Surface => s !== null);
+  if (!get().library) return; // switched away mid-load
+  set({ surfaces: details, streamLoading: false });
+  // Pinned surfaces span sessions, so load each one's comments for its thread.
+  const lists = await Promise.all(
+    details.map((s) =>
+      api<{ comments: Comment[] }>(`/api/comments?surface=${s.id}`).catch(() => null),
+    ),
+  );
+  if (get().library) mergeComments(lists.flatMap((r) => r?.comments ?? []));
+}
+
+// Pin/unpin a surface to the Library. Optimistic; reverts on failure.
+export async function togglePin(surfaceId: string, pinned: boolean) {
+  const apply = (p: boolean) =>
+    set((s) => ({
+      surfaces: s.surfaces.map((su) => (su.id === surfaceId ? { ...su, pinned: p } : su)),
+    }));
+  apply(pinned);
+  try {
+    await api(`/api/surfaces/${surfaceId}/pin`, {
+      method: "PUT",
+      body: JSON.stringify({ pinned }),
+    });
+    toast(pinned ? "Pinned to your Library" : "Removed from Library");
+  } catch {
+    apply(!pinned);
+    toast("Couldn't update the pin");
+    return;
+  }
+  // In the Library view an unpinned surface drops out immediately.
+  if (get().library && !pinned) {
+    set((s) => ({ surfaces: s.surfaces.filter((su) => su.id !== surfaceId) }));
+  }
+}
+
 export async function select(
   id: string,
   opts?: { fromPopState?: boolean; replace?: boolean; initialSurfaceId?: string },
 ) {
-  set({ selected: id });
+  set({ selected: id, library: false });
   if (opts?.fromPopState) {
     // The route already moved (back/forward); don't touch it.
   } else if (opts?.replace) {
@@ -365,7 +423,7 @@ export function focusSurface(surfaceId: string) {
 // selection. Drives the clickable sidebar brand: a guaranteed way back to the
 // empty board from anywhere.
 export function goHome() {
-  set({ selected: null });
+  set({ selected: null, library: false });
   routeNavigate({ sessionId: null, surfaceId: null });
 }
 
@@ -510,6 +568,13 @@ export function connect() {
     // activity the user isn't looking at — other session or hidden tab —
     // marks the session unread, which also badges the tab title
     const away = e.sessionId != null && (e.sessionId !== selectedNow() || document.hidden);
+    // In the Library, a surface change anywhere may add/remove/restyle a pinned
+    // card — reload the pinned set rather than reconcile against a session.
+    if (get().library && e.type.startsWith("surface-")) {
+      await loadLibrary();
+      await refreshSessionsQuiet();
+      return;
+    }
     if (e.type.startsWith("session-")) {
       await refreshSessions();
     } else if (e.type === "surface-created" || e.type === "surface-updated") {

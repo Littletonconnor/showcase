@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowDown,
   ArrowRight,
+  Bookmark,
   BookOpen,
   Check,
   Copy,
@@ -73,6 +74,7 @@ import {
   refreshSessionsQuiet,
   select,
   selectAdjacent,
+  selectLibrary,
   selectedNow,
   sessionsNow,
   sendComment,
@@ -330,6 +332,11 @@ export default function App() {
             <UpdateBanner />
           </SidebarHeader>
           <SidebarContent id="sessionList" className="gap-0 px-1.5">
+            <SidebarGroup className="pt-1.5 pb-0">
+              <SidebarMenu>
+                <LibraryNavItem />
+              </SidebarMenu>
+            </SidebarGroup>
             {sessionsLoading ? (
               <SidebarGroup className="pt-2">
                 <SidebarMenu className="gap-0.5">
@@ -585,6 +592,46 @@ function isOwnFrame(source: unknown): boolean {
   return false;
 }
 
+// The Library: one always-present nav row above the session groups. It's the
+// home for surfaces you've pinned, so it lives apart from the per-session list.
+function LibraryNavItem() {
+  const library = useBoard((s) => s.library);
+  const { setOpenMobile } = useSidebar();
+  const open = () => {
+    void selectLibrary();
+    setOpenMobile(false);
+  };
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        isActive={library}
+        tooltip="Library"
+        aria-current={library ? "true" : undefined}
+        onClick={open}
+        className={cx(
+          "h-9 gap-2 rounded-lg transition-colors duration-150",
+          library
+            ? "bg-brand-subtle hover:bg-brand-subtle data-[active=true]:bg-brand-subtle"
+            : "hover:bg-hover/60 data-[active=true]:bg-brand-subtle",
+        )}
+      >
+        <Bookmark
+          className={cx("size-4 flex-none", library ? "text-brand" : "text-muted-foreground")}
+          fill={library ? "currentColor" : "none"}
+        />
+        <span
+          className={cx(
+            "truncate text-[13px] group-data-[collapsible=icon]:hidden",
+            library ? "font-medium text-brand" : "font-medium text-foreground",
+          )}
+        >
+          Library
+        </span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
 function SessionItem(props: { session: SessionRow }) {
   const selected = useBoard((s) => s.selected);
   const unread = useBoard((s) => s.unread);
@@ -756,47 +803,85 @@ function SessionView() {
   const selected = useBoard((s) => s.selected);
   const surfaces = useBoard((s) => s.surfaces);
   const streamLoading = useBoard((s) => s.streamLoading);
+  const library = useBoard((s) => s.library);
   const current = sessions.find((x) => x.id === selected);
   const surfaceCount = current?.surfaceCount ?? 0;
   return (
-    <div id="sessionView" hidden={sessions.length === 0}>
+    <div id="sessionView" hidden={sessions.length === 0 && !library}>
       <div className="sticky top-0 z-[5] border-b-[0.5px] border-border bg-background/85 px-7 pt-3 pb-2.5 backdrop-blur-md max-[700px]:px-4 max-[700px]:pt-3 max-[700px]:pb-2.5">
         <div className="mx-auto flex max-w-[860px] flex-col gap-0.5">
-          <div className="flex min-w-0 items-center gap-2">
-            {current ? (
-              <span className="flex-none text-muted-foreground">
-                <AgentMark agent={current.agent} />
+          {library ? (
+            <>
+              <div className="flex min-w-0 items-center gap-2">
+                <Bookmark className="size-4 flex-none text-brand" fill="currentColor" />
+                <span className="card-title truncate text-[15px] font-semibold tracking-[-0.01em] text-foreground">
+                  Library
+                </span>
+              </div>
+              <span className="pl-0.5 text-[12px] text-faint">
+                Pinned surfaces across every session — your visual knowledge base
               </span>
-            ) : null}
-            <SessionTitle current={current} />
-            <span className="flex-1" />
-            {current && !isReadonly() ? <AgentPresence agent={current.agent} /> : null}
-          </div>
-          <span className="pl-0.5 text-[12px] text-faint" id="sessMeta">
-            {current
-              ? `${current.agent} · started ${relTime(current.createdAt)}${
-                  surfaceCount > 0
-                    ? ` · ${surfaceCount} surface${surfaceCount === 1 ? "" : "s"}`
-                    : ""
-                }`
-              : ""}
-          </span>
+            </>
+          ) : (
+            <>
+              <div className="flex min-w-0 items-center gap-2">
+                {current ? (
+                  <span className="flex-none text-muted-foreground">
+                    <AgentMark agent={current.agent} />
+                  </span>
+                ) : null}
+                <SessionTitle current={current} />
+                <span className="flex-1" />
+                {current && !isReadonly() ? <AgentPresence agent={current.agent} /> : null}
+              </div>
+              <span className="pl-0.5 text-[12px] text-faint" id="sessMeta">
+                {current
+                  ? `${current.agent} · started ${relTime(current.createdAt)}${
+                      surfaceCount > 0
+                        ? ` · ${surfaceCount} surface${surfaceCount === 1 ? "" : "s"}`
+                        : ""
+                    }`
+                  : ""}
+              </span>
+            </>
+          )}
         </div>
       </div>
       <div
         id="stream"
         className="mx-auto max-w-[860px] px-7 pt-[22px] pb-[120px] max-[700px]:px-3.5 max-[700px]:pt-4 max-[700px]:pb-[120px]"
       >
-        <WhatsNewCard />
+        {!library ? <WhatsNewCard /> : null}
         {streamLoading ? (
           <CardSkeletons />
         ) : surfaces.length === 0 ? (
-          <EmptySession />
+          library ? (
+            <EmptyLibrary />
+          ) : (
+            <EmptySession />
+          )
         ) : (
           surfaces.map((s) => <Card surface={s} key={s.id} />)
         )}
-        {selected && !streamLoading && !isReadonly() ? <SessionChat sessionId={selected} /> : null}
+        {selected && !library && !streamLoading && !isReadonly() ? (
+          <SessionChat sessionId={selected} />
+        ) : null}
       </div>
+    </div>
+  );
+}
+
+// Empty-Library state: explains how to fill it.
+function EmptyLibrary() {
+  return (
+    <div className="px-6 py-24 text-center">
+      <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-hover text-muted-foreground">
+        <Bookmark className="size-5" />
+      </div>
+      <p className="mt-4 text-[14px] font-medium text-foreground">Your Library is empty</p>
+      <p className="mt-1 text-[13px] text-faint">
+        Pin a surface (the bookmark in its footer) to keep it here across sessions.
+      </p>
     </div>
   );
 }
@@ -962,11 +1047,12 @@ const TRY_SNIP =
 
 function Onboard(props: { onConnect: () => void }) {
   const sessions = useBoard((s) => s.sessions);
+  const library = useBoard((s) => s.library);
   return (
     <div
       id="onboard"
       className="mx-auto max-w-[660px] px-7 py-[72px] max-[700px]:px-[18px] max-[700px]:py-10 [&_h1]:mt-0 [&_h1]:mb-1.5 [&_h1]:text-[21px] [&_h1]:font-medium [&_h2]:mt-[26px] [&_h2]:mb-2 [&_h2]:text-[13px] [&_h2]:font-medium [&_h2]:tracking-[0.02em] [&_h2]:text-muted-foreground [&_h2]:lowercase"
-      hidden={sessions.length > 0}
+      hidden={sessions.length > 0 || library}
     >
       {!isReadonly() ? (
         <>
