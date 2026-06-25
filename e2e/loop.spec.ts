@@ -94,3 +94,14 @@ test("a user comment appears live in the surface thread", async ({ page, request
   await expect(card.locator(".thread .cmt.user")).toBeVisible({ timeout: 10_000 });
   await expect(card.locator(".thread .cmt.user")).toContainText("why two axes here?");
 });
+
+test("the Approve quick-action posts a user feedback signal", async ({ page, request }) => {
+  const { surfaceId } = await seedSurface(request);
+  await page.goto(`/?surface=${surfaceId}`);
+  const card = page.locator(`.card[data-id="${surfaceId}"]`);
+  await expect(card).toBeVisible();
+
+  // One tap on the card's Approve action posts a recognizable author=user signal.
+  await card.getByRole("button", { name: "Approve — looks good" }).click();
+  await expect(card.locator(".thread .cmt.user")).toContainText("Approved");
+});

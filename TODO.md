@@ -250,9 +250,11 @@ of you. Pairs naturally with Pillar A (rich html parts are what you annotate).
   versions of a part — side-by-side or overlay. _Acceptance:_ pick `v2` vs `v1`
   on a diff/markdown/code part and see the delta. _Effort:_ ~2–3h for text-y
   parts; html parts are a later screenshot-diff problem.
-- **Structured feedback.** Approve / revise / reject affordances (one click, typed
-  signal) on a card via the `sendPrompt` bridge, not just free text — so common
-  replies are fast and the agent gets a clean intent. _Effort:_ ~1–2h.
+- [x] **Structured feedback (shipped).** A one-tap **Approve** (👍) in the card
+      footer (both before the first comment and under the composer) posts a
+      recognizable author:"user" signal — the fast path for "yes, this is right"
+      during iteration, vs typing it. "Request a change" is the composer. Works on
+      any card; oracle-guarded. (Reject left out — a free-text comment covers it.)
 - **Close the nudge gap.** Today a comment doesn't reach the editor agent until it
   next touches showcase (§4). This mostly dissolves once Pillar B's server agent
   is actively listening; until then, surface an unread badge / desktop

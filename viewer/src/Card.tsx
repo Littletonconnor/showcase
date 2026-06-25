@@ -31,7 +31,16 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cx } from "./cx.ts";
 import { DiffPart } from "./DiffPart.tsx";
-import { ArrowUp, Check, ExternalLink, Link2, MessageSquare, Sparkles, Trash2 } from "lucide-react";
+import {
+  ArrowUp,
+  Check,
+  ExternalLink,
+  Link2,
+  MessageSquare,
+  Sparkles,
+  ThumbsUp,
+  Trash2,
+} from "lucide-react";
 import { ImagePart } from "./ImagePart.tsx";
 import { JsonPart } from "./JsonPart.tsx";
 import { MarkdownPart } from "./MarkdownPart.tsx";
@@ -233,6 +242,24 @@ export function Card(props: { surface: Surface }) {
     }
   };
 
+  // Structured feedback: a one-tap "Approve" that posts a recognizable user
+  // signal to the agent (delivered like any comment — instantly if the agent is
+  // listening, queued otherwise). Lives in the trusted viewer chrome, so it's a
+  // genuine author:"user" message — the fast path for "yes, this is right" during
+  // iteration, vs typing it out. The "Request a change" path is just the composer.
+  const approveAction = !isReadonly() ? (
+    <IconAction
+      label="Approve — looks good"
+      onClick={() => {
+        const text = "✓ Approved — this looks good.";
+        void sendComment({ surface: surfaceId, text, author: "user" }, surfaceId, text);
+        toast("Sent approval to your agent");
+      }}
+    >
+      <ThumbsUp />
+    </IconAction>
+  ) : null;
+
   // Per-surface secondary actions (copy link / open / delete) — shared by the
   // collapsed footer bar and the persistent-composer footer (see Thread).
   const surfaceActions = (
@@ -385,15 +412,23 @@ export function Card(props: { surface: Surface }) {
         actions={(startReply) => (
           <TooltipProvider delayDuration={300}>
             {!isReadonly() ? (
-              <IconAction label="Comment" onClick={startReply}>
-                <MessageSquare />
-              </IconAction>
+              <>
+                {approveAction}
+                <IconAction label="Request a change" onClick={startReply}>
+                  <MessageSquare />
+                </IconAction>
+              </>
             ) : null}
             <span className="flex-1" />
             {surfaceActions}
           </TooltipProvider>
         )}
-        secondaryActions={<TooltipProvider delayDuration={300}>{surfaceActions}</TooltipProvider>}
+        secondaryActions={
+          <TooltipProvider delayDuration={300}>
+            {approveAction}
+            {surfaceActions}
+          </TooltipProvider>
+        }
         send={(text) => sendComment({ surface: surfaceId, text, author: "user" }, surfaceId, text)}
       />
     </div>
