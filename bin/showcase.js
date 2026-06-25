@@ -15,6 +15,10 @@ const HELP = `showcase — a live visual surface for terminal coding agents
 
 usage:
   showcase serve [--port N] [--open]      start the surface (API + viewer)
+  showcase review <branch> [options]      scaffold a review session from a diff
+      --base <branch>   base to diff against (default: origin/HEAD or main)
+      --title <t>       session title (default: "Review: <branch>")
+      prints the session id + URL + a ready-to-paste prompt for your agent
   showcase publish <file|-> [options]     publish an HTML surface (one html part)
       --title <t>       surface title
       --md <file|->     add a markdown part (prose) — combine with html
@@ -482,6 +486,36 @@ function entrypoint(...parts) {
   const built = join(ROOT, "dist", ...parts).replace(/\.ts$/, ".js");
   return existsSync(built) ? built : join(ROOT, ...parts);
 }
+
+// --- git helpers, for `showcase review` ---
+
+// Run git, returning stdout. `soft` swallows failures (returns "") so callers
+// can probe for refs; otherwise a failure exits with a one-line hint.
+function git(args, { soft = false } = {}) {
+  try {
+    return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  } catch {
+    if (soft) return "";
+    fail(`git ${args.join(" ")} failed — run inside a git repo with valid refs`);
+  }
+}
+
+function gitCurrentBranch() {
+  return git(["rev-parse", "--abbrev-ref", "HEAD"], { soft: true }).trim();
+}
+
+// The base branch to diff a review against: the target of origin/HEAD if set,
+// else whichever of main/master exists, else "main".
+function gitDefaultBase() {
+  const head = git(["symbolic-ref", "refs/remotes/origin/HEAD"], { soft: true }).trim();
+  if (head) return head.split("/").pop();
+  for (const b of ["main", "master"]) {
+    if (git(["rev-parse", "--verify", "--quiet", b], { soft: true }).trim()) return b;
+  }
+  return "main";
+}
+
+const FILE_STATUS = { A: "added", M: "modified", D: "deleted", R: "renamed", C: "copied" };
 
 const commands = {
   async serve() {
@@ -1008,6 +1042,72 @@ const commands = {
   async kits() {
     parse();
     out(await api("/api/kits"));
+  },
+
+  // Scaffold a review session from a branch's diff: create a "Review: <branch>"
+  // session with a verdict-placeholder card (diffstat + file list), so an agent
+  // starts from a ready review instead of hand-building it. The agent does the
+  // actual reviewing (publishing finding cards); this just sets the stage and
+  // prints a ready-to-paste prompt.
+  async review() {
+    const { values: flags, positionals } = parse({
+      allowPositionals: true,
+      options: {
+        base: { type: "string" },
+        title: { type: "string" },
+        agent: { type: "string" },
+      },
+    });
+    const branch = positionals[0] || gitCurrentBranch();
+    if (!branch) fail("usage: showcase review <branch> [--base <base>] [--title <t>]");
+    const base = flags.base || gitDefaultBase();
+    const range = `${base}...${branch}`;
+    const names = git(["diff", "--name-status", range]).trim();
+    if (!names) fail(`no changes for ${range} — check the branch and base`);
+    const stat = git(["diff", "--shortstat", range]).trim();
+
+    const rows = names.split("\n").map((line) => {
+      const [status, ...pathParts] = line.split("\t");
+      const label = FILE_STATUS[status[0]] ?? status;
+      return `| ${label} | \`${pathParts.join(" → ")}\` |`;
+    });
+    const title = flags.title || `Review: ${branch}`;
+    const markdown = [
+      `## ${title}`,
+      "",
+      `Reviewing **\`${branch}\`** against **\`${base}\`**.`,
+      stat ? `\n\`${stat}\`` : "",
+      "",
+      "| Change | File |",
+      "| --- | --- |",
+      ...rows,
+      "",
+      "_Findings appear below as the agent reviews. Approve a card (👍) once it's addressed._",
+    ].join("\n");
+
+    const surface = await api("/api/surfaces", {
+      method: "POST",
+      body: JSON.stringify({
+        title,
+        sessionTitle: title,
+        agent: flags.agent ?? process.env.SHOWCASE_AGENT ?? "agent",
+        badge: { tone: "neutral", label: "In review" },
+        parts: [{ kind: "markdown", markdown }],
+      }),
+    });
+
+    out({
+      session: surface.sessionId,
+      surface: surface.id,
+      url: `${BASE}/session/${surface.sessionId}/s/${surface.id}`,
+      range,
+      files: names.split("\n").length,
+      prompt:
+        `Review the branch ${branch} against ${base} and publish finding cards to showcase ` +
+        `(session ${surface.sessionId}). Call get_design_guide first, then follow the visual PR ` +
+        `review recipe: one finding card each (severity badge + What/Why/Fix + a mermaid of the ` +
+        `relevant flow + the diff), and update the "In review" verdict card with your verdict.`,
+    });
   },
 
   async demo() {

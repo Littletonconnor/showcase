@@ -71,7 +71,9 @@ Pass `badge: { tone, label }` on `publish_surface` / `update_surface` (label ≤
 
 ## Recipe: visual PR review
 
-This is showcase's flagship workflow — _"the future of code review is multimodal."_ A reviewing agent publishes one **finding card** per issue, each combining the explanation, a picture of the problem, and the fix, so the user grasps it far faster than a text thread. **Be thorough — a shallow review is worse than none.** Read the actual code paths, not just the diff hunks; trace how the change behaves at runtime; and back every claim with a concrete file:line and the real values involved.
+This is showcase's flagship workflow — _"the future of code review is multimodal."_ A reviewing agent publishes one **finding card** per issue, each combining the explanation, a picture of the problem, and the fix, so the user grasps it far faster than a text thread.
+
+**Start from a scaffold:** `showcase review <branch> [--base <base>]` creates a "Review: <branch>" session seeded with a verdict-placeholder card (the diffstat + file list) and prints the session id + a ready-to-paste prompt. Review into that session, then publish your finding cards. **Be thorough — a shallow review is worse than none.** Read the actual code paths, not just the diff hunks; trace how the change behaves at runtime; and back every claim with a concrete file:line and the real values involved.
 
 **Each finding card** = a `badge` (severity), a title that names the location (`"Unbounded asset upload — server/app.ts:747"`), and parts in this order:
 

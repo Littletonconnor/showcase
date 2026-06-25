@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile, spawn } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -54,6 +54,25 @@ function serveApp() {
       });
     });
   });
+}
+
+// A throwaway git repo with a `feature` branch off `main`: a.txt modified +
+// b.txt added, so `showcase review feature --base main` has a real diff.
+function gitRepo(): string {
+  const dir = mkdtempSync(join(tmpdir(), "showcase-git-"));
+  const g = (...a: string[]) => execFileSync("git", a, { cwd: dir, stdio: "ignore" });
+  g("init", "-q", "-b", "main");
+  g("config", "user.email", "t@example.com");
+  g("config", "user.name", "Test");
+  writeFileSync(join(dir, "a.txt"), "one\n");
+  g("add", "-A");
+  g("commit", "-qm", "base");
+  g("checkout", "-q", "-b", "feature");
+  writeFileSync(join(dir, "a.txt"), "one\ntwo\n");
+  writeFileSync(join(dir, "b.txt"), "new file\n");
+  g("add", "-A");
+  g("commit", "-qm", "feature work");
+  return dir;
 }
 
 const post = (url: string, body: unknown) =>
@@ -277,6 +296,34 @@ test("chat --print emits the arming prompt without launching", async () => {
   assert.equal(stderr, "");
   assert.match(stdout, /wait_for_feedback/);
   assert.match(stdout, /reply_to_user/);
+});
+
+test("review scaffolds a session from a branch diff", async () => {
+  const server = await serveApp();
+  const repo = gitRepo();
+  try {
+    const { code, stdout } = await runWith(
+      { cwd: repo, env: { SHOWCASE_URL: server.url } },
+      "review",
+      "feature",
+      "--base",
+      "main",
+    );
+    assert.equal(code, 0);
+    const out = JSON.parse(stdout);
+    assert.ok(out.session, "prints a session id");
+    assert.equal(out.files, 2, "counts the two changed files");
+    assert.match(out.url, /\/session\//);
+    assert.match(out.prompt, /Review the branch feature against main/);
+
+    // The scaffolded card carries the In-review badge + the diffstat + files.
+    const full = (await (await fetch(`${server.url}/api/surfaces/${out.surface}`)).json()) as any;
+    assert.deepEqual(full.badge, { tone: "neutral", label: "In review" });
+    assert.match(full.parts[0].markdown, /2 files changed/);
+    assert.match(full.parts[0].markdown, /b\.txt/);
+  } finally {
+    await server.close();
+  }
 });
 
 test("comment --session posts a session-level (surfaceless) reply", async () => {
