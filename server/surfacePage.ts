@@ -218,12 +218,7 @@ function __report() {
   __prevH = __lastH;
   __lastH = h;
   __lastT = t;
-  // Report the content width too: when it reads 0 (a Chrome field-trial lays out
-  // opaque-origin srcdoc iframes with innerWidth 0), every width-derived size
-  // collapses, so the host pushes the frame's real width back in (host-width).
-  var __w = (typeof window !== 'undefined' && window.innerWidth) ||
-    (document.documentElement && document.documentElement.clientWidth) || 0;
-  parent.postMessage({ __showcase: true, type: 'resize', height: h, width: __w }, '*');
+  parent.postMessage({ __showcase: true, type: 'resize', height: h }, '*');
 }
 if (document.readyState === 'complete') __report();
 else window.addEventListener('load', function () { requestAnimationFrame(__report); });
@@ -235,20 +230,6 @@ if (window.ResizeObserver) {
   window.__ssRO.observe(document.documentElement);
   if (document.body) window.__ssRO.observe(document.body);
 }
-// Force an explicit layout width when the host detects this frame laid out at
-// width 0. Without a real viewport width, percentage/SVG sizing collapses the
-// surface to an empty strip; setting an explicit px width on the root recovers it.
-window.addEventListener('message', function (e) {
-  var d = e && e.data;
-  if (!d || !d.__showcase || d.type !== 'host-width') return;
-  var w = Number(d.width);
-  if (w > 0 && document.documentElement) {
-    document.documentElement.style.width = w + 'px';
-    if (document.body) document.body.style.width = w + 'px';
-    __lastH = 0; // allow the post-relayout height through the unchanged-guard
-    __report();
-  }
-});
 `;
 
 export const escapeHtml = (s: string) =>

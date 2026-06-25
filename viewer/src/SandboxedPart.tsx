@@ -49,29 +49,10 @@ export function SandboxedPart(props: { body: string; css: string; class?: string
   useEffect(() => {
     const frame = frameRef.current;
     if (!frame) return;
-    // Some Chrome builds lay out opaque-origin srcdoc iframes with innerWidth 0,
-    // so the content (an SVG diagram, a percentage box) collapses to an empty
-    // strip. The frame reports its content width; when it's 0, push the frame's
-    // real element width in so its layout no longer depends on the broken
-    // innerWidth. Bounded so a genuinely 0-width frame can't loop.
-    let widthInjections = 0;
     const onMessage = (ev: MessageEvent) => {
       if (ev.source !== frame.contentWindow) return;
-      const d = ev.data as {
-        __showcase?: boolean;
-        type?: string;
-        height?: number;
-        width?: number;
-      } | null;
+      const d = ev.data as { __showcase?: boolean; type?: string; height?: number } | null;
       if (!d || !d.__showcase || d.type !== "resize") return;
-      if ((!d.width || d.width <= 0) && widthInjections < 3 && frame.clientWidth > 0) {
-        widthInjections++;
-        frame.contentWindow?.postMessage(
-          { __showcase: true, type: "host-width", width: frame.clientWidth },
-          "*",
-        );
-        return;
-      }
       applyFrameHeight(frame, d.height);
     };
     window.addEventListener("message", onMessage);
