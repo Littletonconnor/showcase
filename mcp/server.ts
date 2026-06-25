@@ -2,6 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
+  FEEDBACK_REPLY_NOTE,
   MCP_INSTRUCTIONS,
   MCP_SERVER_INFO,
   MCP_TOOL_DESCRIPTIONS,
@@ -150,6 +151,7 @@ server.registerTool(
         text: c.text,
         at: c.createdAt,
       })),
+      note: FEEDBACK_REPLY_NOTE,
     });
   },
 );

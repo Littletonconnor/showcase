@@ -11,7 +11,12 @@ import {
   type SurfaceBadge,
   type SurfacePart,
 } from "./types.ts";
-import { HTTP_MCP_TOOLS, MCP_INSTRUCTIONS, MCP_SERVER_INFO } from "./mcpSpec.ts";
+import {
+  FEEDBACK_REPLY_NOTE,
+  HTTP_MCP_TOOLS,
+  MCP_INSTRUCTIONS,
+  MCP_SERVER_INFO,
+} from "./mcpSpec.ts";
 import { coerceSurfaceBadge, coerceSurfaceParts } from "./surfaceParts.ts";
 
 // Stateless MCP over streamable HTTP: every request is self-contained, which
@@ -132,6 +137,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
               at: c.createdAt,
             })),
             lastSeq: result.lastSeq,
+            note: FEEDBACK_REPLY_NOTE,
           },
           null,
           2,

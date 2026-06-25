@@ -22,7 +22,19 @@ export const MCP_INSTRUCTIONS =
   "they're done. While you are parked in wait_for_feedback the browser shows a live green " +
   '"Listening" badge, so the user can see you are reachable; when you stop looping it goes idle. ' +
   "Reply with reply_to_user — omit surfaceId to answer in the session-level chat, or pass it to " +
-  "answer under a specific surface.";
+  "answer under a specific surface. " +
+  "KEEP THE CONVERSATION IN THE TAB: when a message arrives via wait_for_feedback, or you need to " +
+  "ask the user anything while a showcase conversation is going, send it with reply_to_user so it " +
+  "appears in the browser tab they are watching — never stop to ask a question in your terminal, " +
+  "which they are not looking at. Ask in the tab, then wait_for_feedback for their answer.";
+
+// Rides on every wait_for_feedback delivery (both transports) as an in-context
+// reminder, right when the agent is deciding how to respond.
+export const FEEDBACK_REPLY_NOTE =
+  "These are messages from the user in the showcase browser tab — that's where this conversation is " +
+  "happening. To answer, or to ask a clarifying question before continuing, call reply_to_user (it " +
+  "shows in the tab); do NOT ask in your terminal — the user is watching the tab, not the terminal. " +
+  "Then call wait_for_feedback again to hear back.";
 
 const d = {
   title: "Short human-readable title shown above the card",
@@ -155,9 +167,9 @@ export const MCP_TOOL_DESCRIPTIONS = {
     "Publish an HTML snippet — sugar for a surface with one html part. Send a body fragment only. Returns the id, view URL, and sessionId. Pass sessionTitle on first publish. Prefer publish_surface when you want a diff or multiple parts.",
   updateSnippet: "Revise an html snippet in place — sugar for update_surface with one html part.",
   waitForFeedback:
-    "Block until the user comments on this session in their browser (or the timeout passes). Returns new comments since the agent last received feedback on any channel. Use timeoutSeconds 0 for a non-blocking check.",
+    "Block until the user comments on this session in their browser (or the timeout passes). Returns new comments since the agent last received feedback on any channel (delivered as one batch — the wait coalesces messages the user queues). Use timeoutSeconds 0 for a non-blocking check. The returned comments are the user talking to you in the tab: answer them — and ask any follow-up questions — with reply_to_user, never in the terminal, then wait again.",
   replyToUser:
-    "Reply to the user in their browser. Pass surfaceId to reply under a specific surface's thread; omit it to reply in the session-level chat (where session-level messages with no surface appear). Use to acknowledge feedback, answer a question, or explain a revision.",
+    "Reply to the user in their browser tab — your voice in showcase. Pass surfaceId to reply under a specific surface's thread; omit it to reply in the session-level chat. Use it to acknowledge feedback, explain a revision, and — crucially — to ask any clarifying question while a showcase conversation is going. Whenever the conversation is happening in showcase, use this instead of pausing for a terminal prompt the user is not watching.",
   listSurfacesHttp: "List surfaces — pass a session id to scope, or omit for all sessions.",
   listSurfacesStdio: "List surfaces in this conversation's session.",
   uploadAsset:

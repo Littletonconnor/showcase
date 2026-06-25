@@ -1417,6 +1417,29 @@ test("feedback consumed via a REST wait is not re-delivered through the MCP wait
   );
 });
 
+test("delivered feedback nudges the agent to reply in the tab, not the terminal", async () => {
+  const app = makeApp();
+  const s = (await (await app.request("/api/snippets", json({ html: "<p>x</p>" }))).json()) as any;
+  await app.request(
+    "/api/comments",
+    json({ snippet: s.id, text: "which variant?", author: "user" }),
+  );
+  const res = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(1, "tools/call", {
+        name: "wait_for_feedback",
+        arguments: { session: s.sessionId, timeoutSeconds: 0 },
+      }),
+    )
+  ).json()) as any;
+  const payload = JSON.parse(res.result.content[0].text);
+  // The in-context reminder rides with every non-empty delivery so the agent
+  // answers via reply_to_user instead of stalling on a terminal prompt.
+  assert.match(payload.note, /reply_to_user/);
+  assert.match(payload.note, /not the terminal/i);
+});
+
 test("mcp publish result carries userFeedback", async () => {
   const app = makeApp();
   const published = (await (
