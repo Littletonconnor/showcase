@@ -174,9 +174,10 @@ bundles its libraries rather than relying on jsdelivr/unpkg.
       trust boundary: surface markup still can't impersonate the user). Documented
       in the design guide with a copy-paste example; demo card included. Closes the
       output → tap → revise loop.
-- **A small kit gallery / guide pass** — document the kit pattern + the
-  `sendPrompt`/`openLink` bridge in `guide/` with copy-paste examples, so the
-  agent reaches for rich html parts instead of plain markdown. _Effort:_ ~1–2h.
+- [x] **Kit gallery / guide pass (shipped).** Added copy-paste markup examples
+      for the `issues` and `slides` kits, and documented the `sendPrompt`
+      drill-down pattern (above) — so agents reach for rich, interactive html
+      parts instead of plain markdown.
 - **Canvas view (bigger bet, opt-in).** An optional spatial board — arrange a
   session's surfaces freely (tldraw-style) instead of the vertical stream, for
   "map a whole system" layouts. Behind a flag; the stream stays the default.

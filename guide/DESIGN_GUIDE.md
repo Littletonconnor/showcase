@@ -282,6 +282,37 @@ theme tokens, so kit output re-themes with the board.
   time and injects prev/dots/counter/next controls. Arrow keys and PageUp/Down
   navigate.
 
+Copy-paste starting points — `issues` (a PR + CI tree) and `slides` (a deck):
+
+```html
+<!-- kits: ["issues"] -->
+<div class="card stack">
+  <div class="between">
+    <span class="title">Add retry with backoff <span class="chip">#482</span></span>
+    <span class="badge ok">merged</span>
+  </div>
+  <ul class="tree">
+    <li class="row"><span class="dot ok"></span> lint <span class="faint">2s</span></li>
+    <li class="row"><span class="dot ok"></span> unit <span class="faint">14s</span></li>
+    <li class="row"><span class="dot danger"></span> e2e <span class="faint">flaky</span></li>
+  </ul>
+</div>
+```
+
+```html
+<!-- kits: ["slides"] -->
+<div class="deck">
+  <div class="slide">
+    <h2>Problem</h2>
+    <p>p95 latency spiked 4× under load.</p>
+  </div>
+  <div class="slide">
+    <h2>Fix</h2>
+    <p>Batched dequeue — ~20× fewer round-trips.</p>
+  </div>
+</div>
+```
+
 ```sh
 showcase publish board.html --kit issues       # CLI (repeatable: --kit a --kit b)
 ```
