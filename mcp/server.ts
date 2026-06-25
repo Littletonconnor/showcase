@@ -158,11 +158,13 @@ server.registerTool(
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.replyToUser,
   },
   async ({ surfaceId, message }) => {
+    // With a surfaceId, reply under that surface's thread; without one, reply in
+    // this conversation's session-level chat (where surfaceless messages live).
+    const body = surfaceId
+      ? { surface: surfaceId, text: message, author: AGENT }
+      : { session: await ensureSession(), text: message, author: AGENT };
     const created = JSON.parse(
-      await api("/api/comments", {
-        method: "POST",
-        body: JSON.stringify({ surface: surfaceId, text: message, author: AGENT }),
-      }),
+      await api("/api/comments", { method: "POST", body: JSON.stringify(body) }),
     );
     return text(created);
   },

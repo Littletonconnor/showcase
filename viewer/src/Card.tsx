@@ -47,6 +47,7 @@ import { TracePart } from "./TracePart.tsx";
 import {
   focusSurface,
   sendComment,
+  sessionRespondKey,
   setScrollTarget,
   toast,
   useBoard,
@@ -399,8 +400,11 @@ export function Card(props: { surface: Surface }) {
   );
 }
 
-function Thread(props: {
+export function Thread(props: {
   surfaceId: string | null;
+  // Set for the session-level chat (surfaceId null): scopes the responding
+  // indicator to `session:<id>` instead of a surface.
+  sessionId?: string;
   placeholder: string;
   send: (text: string) => Promise<string | null>;
   // When set, the composer is hidden behind a Comment action and the other
@@ -416,7 +420,9 @@ function Thread(props: {
 }) {
   const [replying, setReplying] = useState(false);
   const comments = useBoard((s) => s.comments);
-  const responding = useResponding(props.surfaceId);
+  const respondKey =
+    props.surfaceId ?? (props.sessionId ? sessionRespondKey(props.sessionId) : null);
+  const responding = useResponding(respondKey);
   const list = comments.filter((c) => c.surfaceId === props.surfaceId);
   const hasMessages = list.length > 0;
   // Once a card has a conversation, pin the composer at the bottom like a chat
@@ -469,7 +475,9 @@ function Thread(props: {
           )}
         </div>
       ) : !props.readonly ? (
-        <Composer placeholder={props.placeholder} send={props.send} />
+        <div className="border-t-[0.5px] border-border px-2.5 py-2">
+          <Composer placeholder={props.placeholder} send={props.send} />
+        </div>
       ) : null}
     </div>
   );

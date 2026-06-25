@@ -84,6 +84,8 @@ Comments attach to a surface (`surfaceId`); behavior is otherwise unchanged. Whe
 
 **Chatting with the user.** While you are parked in a `wait_for_feedback` / `showcase wait`, the viewer shows a live green **"Listening"** badge in the session header, and a "responding…" indicator appears the moment the user sends — so the user can see you are actually reachable. To hold a real back-and-forth, **loop**: wait → on a comment, reply with `reply_to_user` (or `showcase comment --surface <id>`) → wait again. When you stop looping the badge goes idle, which honestly tells the user their next message will queue until you check back, not reach you live.
 
+Comments arrive two ways: **on a surface** (`surfaceId` set — a remark about that card) or **session-level** (`surfaceId` null — the "Chat with your agent" panel, general conversation). Reply in kind: pass `surfaceId` to `reply_to_user` to answer under a card, or **omit `surfaceId`** to reply in the session-level chat. A session-level reply lands in that panel, not on a card.
+
 ## Remote surfaces
 
 A deployed showcase needs `SHOWCASE_URL` and `SHOWCASE_TOKEN` set in your environment; the CLI and MCP server send the token automatically. For raw curl, add `-H "Authorization: Bearer $SHOWCASE_TOKEN"`.

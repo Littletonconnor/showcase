@@ -145,7 +145,7 @@ export const MCP_TOOL_DESCRIPTIONS = {
   waitForFeedback:
     "Block until the user comments on this session in their browser (or the timeout passes). Returns new comments since the agent last received feedback on any channel. Use timeoutSeconds 0 for a non-blocking check.",
   replyToUser:
-    "Post a short reply under a surface's comment thread. Use to acknowledge feedback or explain a revision.",
+    "Reply to the user in their browser. Pass surfaceId to reply under a specific surface's thread; omit it to reply in the session-level chat (where session-level messages with no surface appear). Use to acknowledge feedback, answer a question, or explain a revision.",
   listSurfacesHttp: "List surfaces — pass a session id to scope, or omit for all sessions.",
   listSurfacesStdio: "List surfaces in this conversation's session.",
   uploadAsset:
@@ -234,7 +234,14 @@ export const HTTP_MCP_TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        surfaceId: { type: "string", description: "Surface whose thread to reply in" },
+        surfaceId: {
+          type: "string",
+          description: "Surface whose thread to reply in (omit to reply session-level)",
+        },
+        sessionId: {
+          type: "string",
+          description: "Session to reply in when no surfaceId — the session-level chat",
+        },
         message: { type: "string", description: d.replyMessage },
         author: {
           type: "string",
@@ -242,7 +249,7 @@ export const HTTP_MCP_TOOLS = [
             'Your agent name (default "agent"; "user" is reserved and coerced to "agent")',
         },
       },
-      required: ["surfaceId", "message"],
+      required: ["message"],
     },
   },
   {
@@ -348,7 +355,10 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
       .describe(`${d.timeout} (default 120, 0 = check only)`),
   },
   replyToUser: {
-    surfaceId: z.string().describe("Surface whose thread to reply in"),
+    surfaceId: z
+      .string()
+      .optional()
+      .describe("Surface whose thread to reply in (omit to reply session-level)"),
     message: z.string().describe(d.replyMessage),
   },
   uploadAsset: {

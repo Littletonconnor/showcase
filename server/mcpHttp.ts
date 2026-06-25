@@ -35,6 +35,7 @@ export interface McpDeps {
   createComment(input: {
     text: string;
     surface?: string;
+    session?: string;
     author: string;
   }): Promise<{ comment: Comment; userFeedback?: Feedback[] } | { error: string; status: number }>;
   waitForComments(q: CommentWait): Promise<{ comments: Comment[]; lastSeq: number }>;
@@ -135,9 +136,11 @@ export function registerMcp(app: Hono, deps: McpDeps) {
         // anything else, but never the user — that would forge feedback.
         const named = typeof args.author === "string" ? args.author.trim() : "";
         const author = named && named !== "user" ? named : "agent";
+        // surfaceId → reply under that surface; otherwise sessionId → session-level.
         const result = await deps.createComment({
           text: String(args.message ?? ""),
-          surface: String(args.surfaceId ?? ""),
+          surface: typeof args.surfaceId === "string" ? args.surfaceId : undefined,
+          session: typeof args.sessionId === "string" ? args.sessionId : undefined,
           author,
         });
         if ("error" in result) throw new Error(result.error);

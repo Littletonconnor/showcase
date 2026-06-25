@@ -204,11 +204,11 @@ otherwise messages queue until it checks. The UI must surface this honestly.
       clickable **"Agent idle"** that copies an arm-your-agent instruction) and a
       **"responding…"** typing indicator that clears on reply or a 90s timeout.
       Guide updated with the wait→reply→wait loop. Proven live end-to-end.
-- [ ] **Session-level chat.** Today every comment needs a `surfaceId`
-      (`createComment` 400s without one), so chat is per-card. Add a session-level
-      message path + a session chat panel so you can talk to the agent generally,
-      not only under a surface. (Server: allow a surfaceless comment; viewer: a
-      session thread.)
+- [x] **Session-level chat (shipped).** `createComment` now accepts a surfaceless
+      comment (`session` id → `surfaceId` null); a **"Chat with your agent"** panel
+      at the bottom of the stream posts and shows these, with the same listening +
+      responding indicators. `reply_to_user` takes an optional `surfaceId` (both
+      MCP transports) — omit it to reply session-level. Proven live end-to-end.
 - [x] **Sidebar presence dots (shipped).** A small pulsing green dot on each
       session row's meta line when that session's agent is parked listening (live
       via the same `agent-presence` SSE) — reachable agents at a glance.

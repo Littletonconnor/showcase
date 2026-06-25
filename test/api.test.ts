@@ -573,13 +573,14 @@ test("comments attach to snippets and filter by author/after", async () => {
   assert.equal(later.comments.length, 0);
 });
 
-test("a comment must target a surface", async () => {
+test("a comment targets a surface or the session", async () => {
   const app = makeApp();
   const s = (await (await app.request("/api/snippets", json({ html: "<p>x</p>" }))).json()) as any;
 
-  // no surface/snippet id — there is no session-level thread to land in
+  // a session id lands in the session-level chat (surfaceId null)
   const res = await app.request("/api/comments", json({ session: s.sessionId, text: "general" }));
-  assert.equal(res.status, 400);
+  assert.equal(res.status, 201);
+  assert.equal(((await res.json()) as any).surfaceId, null);
 
   // a surface that doesn't exist is a 404, not a silent session-level comment
   const ghost = await app.request("/api/comments", json({ snippet: "missing", text: "ghost" }));
@@ -1629,4 +1630,45 @@ test("an aborted wait_for_feedback stops counting toward presence", async () => 
       .listening,
     false,
   );
+});
+
+test("a session-level comment (no surface) is accepted with a null surfaceId", async () => {
+  const app = makeApp();
+  const session = (await (
+    await app.request("/api/sessions", json({ agent: "claude-code" }))
+  ).json()) as any;
+  const res = await app.request(
+    "/api/comments",
+    json({ session: session.id, author: "user", text: "what's the plan?" }),
+  );
+  assert.equal(res.status, 201);
+  const c = (await res.json()) as any;
+  assert.equal(c.surfaceId, null);
+  assert.equal(c.sessionId, session.id);
+});
+
+test("a comment with neither surface nor session is rejected", async () => {
+  const app = makeApp();
+  const res = await app.request("/api/comments", json({ author: "user", text: "orphan" }));
+  assert.equal(res.status, 400);
+});
+
+test("reply_to_user without surfaceId replies session-level (MCP HTTP)", async () => {
+  const app = makeApp();
+  const session = (await (
+    await app.request("/api/sessions", json({ agent: "claude-code" }))
+  ).json()) as any;
+  const published = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(1, "tools/call", {
+        name: "reply_to_user",
+        arguments: { sessionId: session.id, message: "Here's the session-level answer." },
+      }),
+    )
+  ).json()) as any;
+  const payload = JSON.parse(published.result.content[0].text);
+  assert.equal(payload.surfaceId, null);
+  assert.equal(payload.sessionId, session.id);
+  assert.equal(payload.author, "agent");
 });

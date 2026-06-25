@@ -428,18 +428,31 @@ export function createApp({
   async function createComment(input: {
     text: string;
     surface?: string;
+    session?: string;
     author: string;
   }): Promise<
     { comment: Comment; userFeedback?: Feedback[] } | { error: string; status: 400 | 404 }
   > {
-    // Comments always attach to a surface — a comment with nothing to point at
-    // is just a message to the agent, which is what the agent's own prompt is for.
-    if (!input.surface) return { error: 'provide a "surface" id', status: 400 };
-    const surface = await store.getSurface(input.surface);
-    if (!surface) return { error: "surface not found", status: 404 };
+    // A comment attaches to a surface (a remark on that card) OR to the session
+    // (a session-level chat message — `surfaceId` null). One of the two is
+    // required; a surface id wins and resolves its session.
+    let sessionId: string;
+    let surfaceId: string | undefined;
+    if (input.surface) {
+      const surface = await store.getSurface(input.surface);
+      if (!surface) return { error: "surface not found", status: 404 };
+      sessionId = surface.sessionId;
+      surfaceId = surface.id;
+    } else if (input.session) {
+      const session = await store.getSession(input.session);
+      if (!session) return { error: "session not found", status: 404 };
+      sessionId = session.id;
+    } else {
+      return { error: 'provide a "surface" or "session" id', status: 400 };
+    }
     const comment = await store.createComment({
-      sessionId: surface.sessionId,
-      surfaceId: surface.id,
+      sessionId,
+      surfaceId,
       author: input.author,
       text: input.text.trim().slice(0, MAX_COMMENT_TEXT),
     });
@@ -829,6 +842,7 @@ export function createApp({
     const result = await createComment({
       text: body.text,
       surface: typeof surface === "string" ? surface : undefined,
+      session: typeof body.session === "string" ? body.session : undefined,
       author: typeof body.author === "string" ? body.author : "user",
     });
     if ("error" in result) return c.json({ error: result.error }, result.status);

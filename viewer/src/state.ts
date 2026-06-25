@@ -218,13 +218,17 @@ function markResponding(surfaceId: string) {
   );
 }
 
-// Clear the responding indicator once the newest comment on the surface is an
-// agent reply (author != user) — the reply we were waiting for has landed.
-function clearRespondingIfAnswered(surfaceId: string) {
+// A responding indicator is keyed by surfaceId for a card thread, or
+// `session:<id>` for the session-level chat.
+export const sessionRespondKey = (sessionId: string) => `session:${sessionId}`;
+
+// Clear the responding indicator once the newest comment in the matching thread
+// is an agent reply (author != user) — the reply we were waiting for has landed.
+function clearRespondingIfAnswered(respondKey: string, match: (c: ViewComment) => boolean) {
   const newest = get()
-    .comments.filter((c) => c.surfaceId === surfaceId && !c.pending)
+    .comments.filter((c) => match(c) && !c.pending)
     .reduce<ViewComment | undefined>((a, b) => (b.seq >= (a?.seq ?? -1) ? b : a), undefined);
-  if (newest && newest.author !== "user") clearResponding(surfaceId);
+  if (newest && newest.author !== "user") clearResponding(respondKey);
 }
 
 export async function checkVersion() {
@@ -448,10 +452,13 @@ export async function sendComment(
     pending: true,
   };
   set((state) => ({ comments: [...state.comments, local] }));
-  // If the agent is parked listening on this session, a reply is expected —
-  // show the responding indicator on this card until it lands (or times out).
-  if (surfaceId && !!get().sessions.find((r) => r.id === selectedNow())?.listening) {
-    markResponding(surfaceId);
+  // If the agent is parked listening on this session, a reply is expected — show
+  // the responding indicator on this thread until it lands (or times out). The
+  // key is the surface, or `session:<id>` for a session-level message.
+  const respondKey =
+    surfaceId ?? (typeof body.session === "string" ? sessionRespondKey(body.session) : null);
+  if (respondKey && !!get().sessions.find((r) => r.id === selectedNow())?.listening) {
+    markResponding(respondKey);
   }
   try {
     const created = await api<Comment>("/api/comments", {
@@ -522,7 +529,15 @@ export function connect() {
         const query = e.surfaceId ? `surface=${e.surfaceId}` : `session=${e.sessionId}`;
         const res = await api<{ comments: Comment[] }>(`/api/comments?${query}`);
         mergeComments(res.comments);
-        if (e.surfaceId) clearRespondingIfAnswered(e.surfaceId);
+        if (e.surfaceId) {
+          clearRespondingIfAnswered(e.surfaceId, (c) => c.surfaceId === e.surfaceId);
+        } else if (e.sessionId) {
+          const sid = e.sessionId;
+          clearRespondingIfAnswered(
+            sessionRespondKey(sid),
+            (c) => c.surfaceId == null && c.sessionId === sid,
+          );
+        }
       }
     } else if (e.type === "agent-presence") {
       if (e.sessionId) setListening(e.sessionId, !!e.listening);

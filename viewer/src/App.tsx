@@ -6,6 +6,7 @@ import {
   Check,
   Copy,
   Link2,
+  MessageSquare,
   MoreHorizontal,
   Pencil,
   Plug,
@@ -35,7 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { routeGet, routeSubscribe, root } from "./host.ts";
-import { Card, cardEls, frameForSource } from "./Card.tsx";
+import { Card, cardEls, frameForSource, Thread } from "./Card.tsx";
 import { cx } from "./cx.ts";
 import {
   Sidebar,
@@ -74,6 +75,7 @@ import {
   selectAdjacent,
   selectedNow,
   sessionsNow,
+  sendComment,
   setPillTarget,
   toast,
   updateNoticeFrom,
@@ -793,7 +795,34 @@ function SessionView() {
         ) : (
           surfaces.map((s) => <Card surface={s} key={s.id} />)
         )}
+        {selected && !streamLoading && !isReadonly() ? <SessionChat sessionId={selected} /> : null}
       </div>
+    </div>
+  );
+}
+
+// The session-level chat: talk to your agent about the whole session, not a
+// specific card. Posts surfaceless comments; the agent replies session-level
+// (reply_to_user with no surfaceId). Reuses the card Thread with surfaceId=null.
+function SessionChat(props: { sessionId: string }) {
+  const listening = useSessionListening();
+  return (
+    <div className="mt-4 overflow-hidden rounded-xl border-[0.5px] border-border bg-card">
+      <div className="flex items-center gap-2 px-4 py-3">
+        <MessageSquare className="size-4 text-muted-foreground" />
+        <span className="text-[13px] font-semibold text-foreground">Chat with your agent</span>
+        <span className="flex-1" />
+        <span className="text-[11px] text-faint">
+          {listening ? "listening" : "messages queue until your agent checks"}
+        </span>
+      </div>
+      <Thread
+        surfaceId={null}
+        sessionId={props.sessionId}
+        placeholder="Message your agent…"
+        readonly={isReadonly()}
+        send={(text) => sendComment({ session: props.sessionId, text, author: "user" }, null, text)}
+      />
     </div>
   );
 }
