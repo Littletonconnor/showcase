@@ -19,7 +19,8 @@
     "lint": "oxlint . --deny-warnings",
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:chrome": "E2E_CHROME=1 playwright test --project=chrome"
   },
   "dependencies": {
     "@hono/node-server": "^1.14.0",

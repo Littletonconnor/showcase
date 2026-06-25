@@ -290,10 +290,14 @@ The polish backlog that used to live here is **shipped** (see Shipped, above).
 What's left is a thin safety net — pick these up only when something below them
 needs it, not for their own sake.
 
-- **Harden the oracle** — `e2e/loop.spec.ts` is desktop-chromium only; add WebKit,
-  a mobile (480px) viewport, and a per-part-kind render check so a broken part can
-  never merge green. Most valuable once Pillar A adds new part/kit kinds worth
-  guarding. _Effort:_ ~2–3h.
+- [x] **Harden the oracle — render checks + real-Chrome lane (shipped).** Added
+      `e2e/render-smoke.spec.ts`: seeds one of every part kind and asserts each
+      renders at a real size, so a part that collapses to an empty strip can't
+      merge green. Plus an opt-in `chrome` Playwright project
+      (`npm run test:e2e:chrome`, channel:chrome) that runs the smoke on the real
+      Chrome — bundled Chromium hid the mermaid bug; this lane catches it
+      (verified: removing the fix makes the lane fail). (WebKit + mobile viewport
+      still open if wanted.)
 - **Store durability** — `JsonFileStore` is fine for one user today, but before
   the chat app (Pillar B) holds real history, confirm atomic/crash-safe writes
   (write-temp-then-rename) so a crash mid-write can't corrupt a board. _Effort:_ ~1h.

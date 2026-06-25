@@ -16,7 +16,22 @@ export default defineConfig({
     baseURL: `http://localhost:${PORT}`,
     trace: "on-first-retry",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    // Opt-in lane on the user's real Chrome (channel:chrome) running only the
+    // render smoke — it catches browser-specific layout bugs that bundled
+    // Chromium hides (e.g. the srcdoc-no-reparse that left mermaid empty). Off by
+    // default so the suite stays self-contained; run via `npm run test:e2e:chrome`.
+    ...(process.env.E2E_CHROME
+      ? [
+          {
+            name: "chrome",
+            testMatch: /render-smoke\.spec\.ts/,
+            use: { ...devices["Desktop Chrome"], channel: "chrome" },
+          },
+        ]
+      : []),
+  ],
   webServer: {
     command: "npm run start",
     url: `http://localhost:${PORT}`,
