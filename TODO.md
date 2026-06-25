@@ -236,15 +236,14 @@ beautiful; this makes the _comment_ half as rich as the _publish_ half — the
 things no editor-side rendering can do because the surface is live and in front
 of you. Pairs naturally with Pillar A (rich html parts are what you annotate).
 
-- **Anchored annotations.** Click a region of a surface — a diagram node, a diff
-  line, a paragraph — and pin a comment to it, so the agent receives _"the user
-  is asking about **this**"_ instead of a floating comment it has to guess at.
-  The html-part sandbox bridge already round-trips clicks (`sendPrompt`,
-  `openLink`); add an "annotate" mode that posts an anchor (selector or `{x,y}` +
-  a label) alongside the comment text, render a pin on the card, and pass the
-  anchor through on `userFeedback`. _Acceptance:_ click a part → leave a pinned
-  note → it shows on the card and the agent's feedback carries the anchor.
-  _Effort:_ medium (start with html parts, then diff/markdown).
+- [x] **Anchored annotations (shipped).** A 📍 annotate toggle on each card arms a
+      trusted-origin click-capture overlay; clicking a spot drops a pin and opens
+      a small note composer, and the comment is stored with an `anchor`
+      (`{xPct, yPct}`, 0..1 of the card — resolution-independent, works for every
+      part kind, no per-iframe bridge). Pins render over the parts; the anchor
+      rides through to the agent's `userFeedback` so it knows _which spot_ the
+      user means. Oracle + server tests guard it. (v1 is a point anchor; an
+      element-level selector anchor is a later refinement.)
 - **Visual version diff.** Surfaces already version (`v1`, `v2 ⌄`); add a
   "compare" next to the version `Select` that shows what changed between two
   versions of a part — side-by-side or overlay. _Acceptance:_ pick `v2` vs `v1`

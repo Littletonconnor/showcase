@@ -228,6 +228,9 @@ export interface Feedback {
   surfaceTitle: string | null;
   text: string;
   at: string;
+  // Present when the user pinned the comment to a spot on the surface — a point
+  // as 0..1 fractions of the card, so the agent knows what they're pointing at.
+  anchor?: { xPct: number; yPct: number };
 }
 
 // Lean comment shape attached to agent-facing responses.
@@ -236,7 +239,20 @@ const feedbackView = (c: Comment): Feedback => ({
   surfaceTitle: c.surfaceTitle,
   text: c.text,
   at: c.createdAt,
+  ...(c.anchor ? { anchor: c.anchor } : {}),
 });
+
+// Validate a comment anchor from request input: a point as 0..1 fractions of the
+// card. Out-of-range values clamp; anything malformed yields undefined.
+function parseAnchor(raw: unknown): { xPct: number; yPct: number } | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const a = raw as { xPct?: unknown; yPct?: unknown };
+  const x = Number(a.xPct);
+  const y = Number(a.yPct);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return undefined;
+  const clamp = (n: number) => Math.min(1, Math.max(0, n));
+  return { xPct: clamp(x), yPct: clamp(y) };
+}
 
 export function createApp({
   store,
@@ -430,6 +446,7 @@ export function createApp({
     surface?: string;
     session?: string;
     author: string;
+    anchor?: { xPct: number; yPct: number };
   }): Promise<
     { comment: Comment; userFeedback?: Feedback[] } | { error: string; status: 400 | 404 }
   > {
@@ -455,6 +472,8 @@ export function createApp({
       surfaceId,
       author: input.author,
       text: input.text.trim().slice(0, MAX_COMMENT_TEXT),
+      // An anchor only makes sense pinned to a surface, never session-level.
+      ...(input.anchor && surfaceId ? { anchor: input.anchor } : {}),
     });
     if (!comment) return { error: "session not found", status: 404 };
     bus.broadcast({
@@ -844,6 +863,7 @@ export function createApp({
       surface: typeof surface === "string" ? surface : undefined,
       session: typeof body.session === "string" ? body.session : undefined,
       author: typeof body.author === "string" ? body.author : "user",
+      anchor: parseAnchor(body.anchor),
     });
     if ("error" in result) return c.json({ error: result.error }, result.status);
     return c.json(

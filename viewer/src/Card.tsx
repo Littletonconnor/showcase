@@ -5,6 +5,7 @@ import {
   isReadonly,
   relTime,
   type ChartPart as ChartPartData,
+  type CommentAnchor,
   type DiffPart as DiffPartData,
   type ImagePart as ImagePartData,
   type JsonPart as JsonPartData,
@@ -36,6 +37,7 @@ import {
   Check,
   ExternalLink,
   Link2,
+  MapPin,
   MessageSquare,
   Sparkles,
   ThumbsUp,
@@ -173,6 +175,63 @@ function IconAction(props: {
   );
 }
 
+// A pin over the parts region at a comment's anchor (a dot centered on the
+// point). Saved comments show a static dot with the note as a hover tooltip; the
+// draft pin pulses while the note is being typed.
+function AnnotationPin(props: { anchor: CommentAnchor; text?: string; draft?: boolean }) {
+  return (
+    <span
+      className={cx(
+        "pointer-events-auto absolute z-10 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-brand shadow-[0_1px_2px_rgba(0,0,0,0.35)] dark:border-card",
+        props.draft && "animate-pulse motion-reduce:animate-none",
+      )}
+      style={{ left: `${props.anchor.xPct * 100}%`, top: `${props.anchor.yPct * 100}%` }}
+      title={props.text}
+    />
+  );
+}
+
+// A small note input pinned near a draft annotation. Enter sends, Escape cancels.
+// Left-clamped so it stays inside the card (which clips overflow).
+function AnnotationComposer(props: {
+  anchor: CommentAnchor;
+  onSend: (text: string) => Promise<string | null>;
+  onCancel: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+  return (
+    <div
+      className="absolute z-30 mt-2 w-60 max-w-[88%] rounded-lg border-[0.5px] border-border bg-card p-2 shadow-[0_8px_24px_rgba(0,0,0,0.14)]"
+      style={{
+        left: `${Math.min(58, Math.max(2, props.anchor.xPct * 100))}%`,
+        top: `${props.anchor.yPct * 100}%`,
+      }}
+    >
+      <div className="mb-1 flex items-center gap-1 text-[11px] font-medium text-faint">
+        <MapPin className="size-3" /> Note about this spot
+      </div>
+      <Input
+        ref={inputRef}
+        placeholder="What about here?"
+        aria-label="Annotation note"
+        className="h-8 text-[13px]"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            const text = e.currentTarget.value.trim();
+            if (text) void props.onSend(text);
+            else props.onCancel();
+          } else if (e.key === "Escape") {
+            props.onCancel();
+          }
+        }}
+      />
+    </div>
+  );
+}
+
 export function Card(props: { surface: Surface }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const iframesRef = useRef<Set<HTMLIFrameElement>>(new Set());
@@ -183,6 +242,16 @@ export function Card(props: { surface: Surface }) {
   const activeTheme = useActiveTheme();
   const mode = useResolvedMode();
   const scrollTarget = useBoard((s) => s.scrollTarget);
+
+  // Annotations: `annotating` arms the click-capture overlay; clicking drops a
+  // pin (`draftAnchor`) and opens a note composer; on send the comment carries
+  // the anchor. Existing anchored comments render as pins over the parts region.
+  const partsRef = useRef<HTMLDivElement>(null);
+  const [annotating, setAnnotating] = useState(false);
+  const [draftAnchor, setDraftAnchor] = useState<CommentAnchor | null>(null);
+  const anchored = useBoard((s) => s.comments).filter(
+    (cm) => cm.surfaceId === props.surface.id && cm.anchor,
+  );
 
   const surfaceId = props.surface.id;
 
@@ -259,6 +328,32 @@ export function Card(props: { surface: Surface }) {
       <ThumbsUp />
     </IconAction>
   ) : null;
+
+  // Annotate toggle: arm the click-capture overlay (or cancel an in-progress one).
+  const annotateAction = !isReadonly() ? (
+    <IconAction
+      label={annotating ? "Cancel — click the card to cancel" : "Pin a note to a spot"}
+      onClick={() => {
+        setDraftAnchor(null);
+        setAnnotating((v) => !v);
+      }}
+    >
+      <MapPin className={annotating ? "text-brand" : undefined} />
+    </IconAction>
+  ) : null;
+
+  // Post an anchored comment from the draft pin's note composer.
+  const sendAnnotation = (text: string): Promise<string | null> => {
+    const anchor = draftAnchor;
+    if (!anchor) return Promise.resolve(null);
+    setDraftAnchor(null);
+    return sendComment(
+      { surface: surfaceId, text, author: "user", anchor },
+      surfaceId,
+      text,
+      anchor,
+    );
+  };
 
   // Per-surface secondary actions (copy link / open / delete) — shared by the
   // collapsed footer bar and the persistent-composer footer (see Thread).
@@ -355,55 +450,86 @@ export function Card(props: { surface: Surface }) {
           unknown part is not a broken diff), so it shows a neutral refresh hint
           instead. An html iframe src changes only when the version, the active
           theme, or the resolved light/dark mode does, so unrelated refetches
-          never reload it. */}
-      {props.surface.parts.map((part, i) => {
-        switch (part.kind) {
-          case "html":
-            return (
-              <iframe
-                key={i}
-                ref={htmlFrameRef(i)}
-                className="block h-[120px] w-full border-0 border-t-[0.5px] border-border bg-transparent"
-                sandbox="allow-scripts"
-                title={
-                  props.surface.parts.length > 1
-                    ? `${props.surface.title} (part ${i + 1})`
-                    : props.surface.title
-                }
-                src={appPath(
-                  `/s/${surfaceId}?part=${i}&ver=${props.surface.version}&cb=${props.surface.version}&theme=${activeTheme}&mode=${mode}`,
-                )}
-              ></iframe>
-            );
-          case "markdown":
-            return <MarkdownPart key={i} part={part as MarkdownPartData} />;
-          case "mermaid":
-            return <MermaidPart key={i} part={part as MermaidPartData} />;
-          case "diff":
-            return <DiffPart key={i} part={part as DiffPartData} />;
-          case "image":
-            return <ImagePart key={i} part={part as ImagePartData} />;
-          case "trace":
-            return <TracePart key={i} part={part as TracePartData} />;
-          case "terminal":
-            return <TerminalPart key={i} part={part as TerminalPartData} />;
-          case "json":
-            return <JsonPart key={i} part={part as JsonPartData} />;
-          case "code":
-            return <CodePart key={i} part={part as CodePartData} />;
-          case "chart":
-            return <ChartPart key={i} part={part as ChartPartData} />;
-          default:
-            return (
-              <div
-                className="border-t-[0.5px] border-border px-3.5 py-2.5 text-xs text-faint"
-                key={i}
-              >
-                Can&rsquo;t show this part — refresh showcase to update the viewer.
-              </div>
-            );
-        }
-      })}
+          never reload it. The parts sit in a positioned wrapper so annotation
+          pins + the click-capture overlay can layer over them. */}
+      <div className="relative" ref={partsRef}>
+        {props.surface.parts.map((part, i) => {
+          switch (part.kind) {
+            case "html":
+              return (
+                <iframe
+                  key={i}
+                  ref={htmlFrameRef(i)}
+                  className="block h-[120px] w-full border-0 border-t-[0.5px] border-border bg-transparent"
+                  sandbox="allow-scripts"
+                  title={
+                    props.surface.parts.length > 1
+                      ? `${props.surface.title} (part ${i + 1})`
+                      : props.surface.title
+                  }
+                  src={appPath(
+                    `/s/${surfaceId}?part=${i}&ver=${props.surface.version}&cb=${props.surface.version}&theme=${activeTheme}&mode=${mode}`,
+                  )}
+                ></iframe>
+              );
+            case "markdown":
+              return <MarkdownPart key={i} part={part as MarkdownPartData} />;
+            case "mermaid":
+              return <MermaidPart key={i} part={part as MermaidPartData} />;
+            case "diff":
+              return <DiffPart key={i} part={part as DiffPartData} />;
+            case "image":
+              return <ImagePart key={i} part={part as ImagePartData} />;
+            case "trace":
+              return <TracePart key={i} part={part as TracePartData} />;
+            case "terminal":
+              return <TerminalPart key={i} part={part as TerminalPartData} />;
+            case "json":
+              return <JsonPart key={i} part={part as JsonPartData} />;
+            case "code":
+              return <CodePart key={i} part={part as CodePartData} />;
+            case "chart":
+              return <ChartPart key={i} part={part as ChartPartData} />;
+            default:
+              return (
+                <div
+                  className="border-t-[0.5px] border-border px-3.5 py-2.5 text-xs text-faint"
+                  key={i}
+                >
+                  Can&rsquo;t show this part — refresh showcase to update the viewer.
+                </div>
+              );
+          }
+        })}
+        {anchored.map((cm) => (
+          <AnnotationPin key={cm.id} text={cm.text} anchor={cm.anchor!} />
+        ))}
+        {draftAnchor ? <AnnotationPin draft anchor={draftAnchor} /> : null}
+        {annotating ? (
+          <div
+            className="absolute inset-0 z-20 cursor-crosshair bg-brand/[0.04]"
+            title="Click a spot on the card to pin a note"
+            onClick={(e) => {
+              const el = partsRef.current;
+              if (!el) return;
+              const r = el.getBoundingClientRect();
+              const c01 = (n: number) => Math.min(1, Math.max(0, n));
+              setAnnotating(false);
+              setDraftAnchor({
+                xPct: c01((e.clientX - r.left) / r.width),
+                yPct: c01((e.clientY - r.top) / r.height),
+              });
+            }}
+          />
+        ) : null}
+        {draftAnchor ? (
+          <AnnotationComposer
+            anchor={draftAnchor}
+            onSend={sendAnnotation}
+            onCancel={() => setDraftAnchor(null)}
+          />
+        ) : null}
+      </div>
       <Thread
         surfaceId={surfaceId}
         placeholder="Leave a comment…"
@@ -414,6 +540,7 @@ export function Card(props: { surface: Surface }) {
             {!isReadonly() ? (
               <>
                 {approveAction}
+                {annotateAction}
                 <IconAction label="Request a change" onClick={startReply}>
                   <MessageSquare />
                 </IconAction>
@@ -426,6 +553,7 @@ export function Card(props: { surface: Surface }) {
         secondaryActions={
           <TooltipProvider delayDuration={300}>
             {approveAction}
+            {annotateAction}
             {surfaceActions}
           </TooltipProvider>
         }

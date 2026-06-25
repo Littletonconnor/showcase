@@ -439,6 +439,7 @@ export async function sendComment(
   body: Record<string, unknown>,
   surfaceId: string | null,
   text: string,
+  anchor?: { xPct: number; yPct: number },
 ): Promise<string | null> {
   const local: ViewComment = {
     id: `local-${++localSeq}`,
@@ -450,6 +451,7 @@ export async function sendComment(
     text,
     createdAt: new Date().toISOString(),
     pending: true,
+    ...(anchor ? { anchor } : {}),
   };
   set((state) => ({ comments: [...state.comments, local] }));
   // If the agent is parked listening on this session, a reply is expected — show

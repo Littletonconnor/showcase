@@ -1676,3 +1676,72 @@ test("reply_to_user without surfaceId replies session-level (MCP HTTP)", async (
   assert.equal(payload.sessionId, session.id);
   assert.equal(payload.author, "agent");
 });
+
+test("an anchored comment carries its anchor through to agent feedback", async () => {
+  const app = makeApp();
+  const surface = (await (
+    await app.request(
+      "/api/surfaces",
+      json({ title: "S", parts: [{ kind: "markdown", markdown: "hi" }] }),
+    )
+  ).json()) as any;
+  // The user pins a comment to a spot.
+  await app.request(
+    "/api/comments",
+    json({
+      surface: surface.id,
+      author: "user",
+      text: "about here",
+      anchor: { xPct: 0.4, yPct: 0.6 },
+    }),
+  );
+  // An agent reply piggybacks the pending feedback — which must include the anchor.
+  const reply = (await (
+    await app.request(
+      "/api/comments",
+      json({ surface: surface.id, author: "claude-code", text: "ack" }),
+    )
+  ).json()) as any;
+  const fb = (reply.userFeedback ?? []).find((f: any) => f.text === "about here");
+  assert.ok(fb, "the anchored comment was delivered as feedback");
+  assert.deepEqual(fb.anchor, { xPct: 0.4, yPct: 0.6 });
+});
+
+test("a comment anchor is clamped to 0..1 and dropped when malformed or session-level", async () => {
+  const app = makeApp();
+  const surface = (await (
+    await app.request(
+      "/api/surfaces",
+      json({ title: "S", parts: [{ kind: "markdown", markdown: "hi" }] }),
+    )
+  ).json()) as any;
+  // out-of-range values clamp
+  const clamped = (await (
+    await app.request(
+      "/api/comments",
+      json({ surface: surface.id, author: "user", text: "a", anchor: { xPct: 1.5, yPct: -0.2 } }),
+    )
+  ).json()) as any;
+  assert.deepEqual(clamped.anchor, { xPct: 1, yPct: 0 });
+  // malformed anchor is ignored
+  const bad = (await (
+    await app.request(
+      "/api/comments",
+      json({ surface: surface.id, author: "user", text: "b", anchor: { xPct: "nope" } }),
+    )
+  ).json()) as any;
+  assert.equal(bad.anchor, undefined);
+  // an anchor with no surface (session-level) is dropped
+  const sess = (await (
+    await app.request(
+      "/api/comments",
+      json({
+        session: surface.sessionId,
+        author: "user",
+        text: "c",
+        anchor: { xPct: 0.5, yPct: 0.5 },
+      }),
+    )
+  ).json()) as any;
+  assert.equal(sess.anchor, undefined);
+});

@@ -203,6 +203,14 @@ export interface Surface {
   history: SurfaceVersion[];
 }
 
+// A pinned location on a surface a comment refers to — a point as a fraction of
+// the card's rendered part region (0..1, resolution-independent), so the agent
+// knows the user is asking about a specific spot, not the whole card.
+export interface CommentAnchor {
+  xPct: number;
+  yPct: number;
+}
+
 export interface Comment {
   id: string;
   seq: number;
@@ -212,6 +220,8 @@ export interface Comment {
   author: string;
   text: string;
   createdAt: string;
+  // Set when the comment was pinned to a spot on the surface (an annotation).
+  anchor?: CommentAnchor;
 }
 
 // An uploaded blob (image, trace file, arbitrary file) the agent pushes once and
@@ -263,6 +273,7 @@ export interface CreateCommentInput {
   surfaceId?: string;
   author: string;
   text: string;
+  anchor?: CommentAnchor;
 }
 
 export interface CommentQuery {

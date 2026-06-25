@@ -2,6 +2,7 @@
 import type {
   ChartPart,
   Comment,
+  CommentAnchor,
   CodePart,
   DiffPart,
   HtmlPart,
@@ -21,6 +22,7 @@ import { basePath } from "./host.ts";
 export type {
   ChartPart,
   Comment,
+  CommentAnchor,
   CodePart,
   DiffPart,
   HtmlPart,

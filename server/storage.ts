@@ -335,6 +335,7 @@ export class JsonFileStore implements Store {
       author: input.author.trim() || "user",
       text: input.text,
       createdAt: new Date().toISOString(),
+      ...(input.anchor ? { anchor: input.anchor } : {}),
     };
     this.comments.push(comment);
     this.touch(input.sessionId);

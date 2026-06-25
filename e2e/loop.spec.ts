@@ -105,3 +105,37 @@ test("the Approve quick-action posts a user feedback signal", async ({ page, req
   await card.getByRole("button", { name: "Approve — looks good" }).click();
   await expect(card.locator(".thread .cmt.user")).toContainText("Approved");
 });
+
+test("an annotation pins a note to a spot and stores the anchor", async ({ page, request }) => {
+  const session = await (
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "annotate" } })
+  ).json();
+  const surface = await (
+    await request.post("/api/surfaces", {
+      data: {
+        title: "annotate",
+        session: session.id,
+        parts: [{ kind: "markdown", markdown: "# A\n\nline one\n\nline two\n\nline three" }],
+      },
+    })
+  ).json();
+  await page.goto(`/?surface=${surface.id}`);
+  const card = page.locator(`.card[data-id="${surface.id}"]`);
+  await expect(card).toBeVisible();
+
+  // Arm annotate mode, click a spot, type a note.
+  await card.getByRole("button", { name: "Pin a note to a spot" }).click();
+  await card.locator(".cursor-crosshair").click({ position: { x: 200, y: 60 } });
+  const note = card.getByRole("textbox", { name: "Annotation note" });
+  await note.fill("anchor here");
+  await note.press("Enter");
+
+  // The note posts as a user comment and a pin renders at the spot.
+  await expect(card.locator(".thread .cmt.user")).toContainText("anchor here");
+  await expect(card.locator('span[title="anchor here"]')).toBeVisible();
+
+  // The comment carries the anchor server-side (so it reaches the agent).
+  const all = await (await request.get(`/api/comments?surface=${surface.id}`)).json();
+  const anchored = all.comments.find((c: { text: string }) => c.text.includes("anchor here"));
+  expect(anchored?.anchor?.xPct, "the comment carries the anchor").toBeGreaterThanOrEqual(0);
+});
