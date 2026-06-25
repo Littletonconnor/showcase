@@ -230,12 +230,19 @@ export interface Surface {
   pinned?: boolean;
 }
 
-// A pinned location on a surface a comment refers to — a point as a fraction of
-// the card's rendered part region (0..1, resolution-independent), so the agent
-// knows the user is asking about a specific spot, not the whole card.
+// Where on a surface a comment points, so the agent knows the user means a
+// specific spot — not the whole card. Two kinds:
+//   - a POINT (`xPct`/`yPct`, 0..1 of the card's rendered region) — for pinning
+//     a note to a spot on a diagram, image, or chart;
+//   - a LINE (`line` + `lineType`) in a diff/code part — the user clicked an
+//     exact line, the strongest anchor for a code review.
+// Exactly one kind is set; both ride the same field so existing delivery
+// (feedbackView) carries either without a new channel.
 export interface CommentAnchor {
-  xPct: number;
-  yPct: number;
+  xPct?: number;
+  yPct?: number;
+  line?: number;
+  lineType?: "context" | "addition" | "deletion";
 }
 
 export interface Comment {

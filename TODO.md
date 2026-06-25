@@ -230,12 +230,13 @@ workflows compose.
   after the PR, and seed a verdict placeholder — so the agent starts from a
   scaffold instead of hand-building. _Acceptance:_ `showcase review 123` opens a
   ready review session. _Effort:_ ~2–3h.
-- **R4 — Line-anchored diff comments.** Comment on a specific diff line, not a
-  pixel. Extends the anchor model with a line/element variant for `diff`/`code`
-  parts (the diff iframe reports the clicked line over the postMessage bridge,
-  like `sendPrompt`). The differentiating primitive — and the hardest. _Acceptance:_
-  click line 752 of a diff, leave a note, the agent's feedback carries the line.
-  _Effort:_ ~4–6h (bridge into the sandboxed diff frame).
+- [x] **R4 — Line-anchored diff comments (shipped).** Click a diff line and a
+      "Comment on line N" composer opens; the comment carries a line `anchor`
+      (`{line, lineType}`) so the agent knows exactly what to fix. The in-frame
+      bridge resolves the clicked line via `composedPath` (the lines live in
+      @pierre/diffs shadow roots) and posts it out; `CommentAnchor` gained the line
+      variant alongside the point one; the thread shows a "Line N" chip. Server +
+      real-DOM oracle (composed-click through the sandboxed frame) cover it.
 - **R5 — Post the review back to GitHub (round-trip).** Turn a review session into
   a `gh pr review` with line comments + verdict — "share the results." Optional,
   highest effort, biggest payoff for the reviewer identity. _Effort:_ ~3–5h.

@@ -151,7 +151,7 @@ Comments attach to a surface (`surfaceId`); behavior is otherwise unchanged. Whe
 
 Comments arrive two ways: **on a surface** (`surfaceId` set — a remark about that card) or **session-level** (`surfaceId` null — the "Chat with your agent" panel, general conversation). Reply in kind: pass `surfaceId` to `reply_to_user` to answer under a card, or **omit `surfaceId`** to reply in the session-level chat. A session-level reply lands in that panel, not on a card.
 
-**Anchored comments.** A comment may also carry an `anchor` — `{ xPct, yPct }`, a point as 0..1 fractions of the card — when the user pinned it to a spot on the surface (e.g. a specific node in a diagram). Treat it as _"the user is pointing at **here**"_: it tells you which part of the surface they mean, so scope your revision to that region rather than the whole card.
+**Anchored comments.** A comment may carry an `anchor` pointing at a specific spot, in one of two forms. A **point** — `{ xPct, yPct }`, 0..1 fractions of the card — when the user pinned it to a place on a diagram/image. A **line** — `{ line, lineType? }` — when the user clicked an exact **diff line** (`lineType` is `addition` / `deletion` / `context`). Either way, treat it as _"the user is pointing at **here**"_: a line anchor on a review finding means fix **that line**; scope your revision to it rather than the whole card.
 
 ## Remote surfaces
 

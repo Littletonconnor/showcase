@@ -29,10 +29,21 @@ export function applyFrameHeight(iframe: HTMLIFrameElement, reportedHeight: unkn
 // each frame sizes itself from messages whose source is its own contentWindow.
 // (Link clicks and the session-switch shortcut ride App's global bridge handler,
 // which keys off message type, not the frame registry.)
-export function SandboxedPart(props: { body: string; css: string; class?: string }) {
+export function SandboxedPart(props: {
+  body: string;
+  css: string;
+  class?: string;
+  // Diff/code parts: the in-frame bridge reports a clicked line so the host can
+  // pin a comment to it (see server/surfacePage.ts and DiffPart).
+  onLineClick?: (anchor: { line: number; lineType?: "context" | "addition" | "deletion" }) => void;
+}) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const activeTheme = useActiveTheme();
   const mode = useResolvedMode();
+  // Keep the latest callback in a ref so the message effect (keyed on `doc`)
+  // always calls the current handler without re-subscribing.
+  const onLineClickRef = useRef(props.onLineClick);
+  onLineClickRef.current = props.onLineClick;
 
   const doc = useMemo(
     () =>
@@ -51,9 +62,19 @@ export function SandboxedPart(props: { body: string; css: string; class?: string
     if (!frame) return;
     const onMessage = (ev: MessageEvent) => {
       if (ev.source !== frame.contentWindow) return;
-      const d = ev.data as { __showcase?: boolean; type?: string; height?: number } | null;
-      if (!d || !d.__showcase || d.type !== "resize") return;
-      applyFrameHeight(frame, d.height);
+      const d = ev.data as {
+        __showcase?: boolean;
+        type?: string;
+        height?: number;
+        line?: number;
+        lineType?: "context" | "addition" | "deletion";
+      } | null;
+      if (!d || !d.__showcase) return;
+      if (d.type === "resize") {
+        applyFrameHeight(frame, d.height);
+      } else if (d.type === "line-click" && typeof d.line === "number") {
+        onLineClickRef.current?.({ line: d.line, lineType: d.lineType });
+      }
     };
     window.addEventListener("message", onMessage);
 

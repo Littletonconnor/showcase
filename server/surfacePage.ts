@@ -174,7 +174,26 @@ window.copyToClipboard = function (text) {
 };
 document.addEventListener('click', function (e) {
   var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
-  if (a && /^https?:/.test(a.href)) { e.preventDefault(); window.openLink(a.href); }
+  if (a && /^https?:/.test(a.href)) { e.preventDefault(); window.openLink(a.href); return; }
+  // Line-anchored comments: a plain click on a diff/code line (not a text
+  // selection) reports the line, so the host can pin a comment to it.
+  // @pierre/diffs tags each row with data-line-type + data-column-number; the
+  // rows live in a shadow root, so composedPath is needed to see inside it.
+  var sel = window.getSelection && window.getSelection();
+  if (sel && !sel.isCollapsed) return;
+  var path = e.composedPath ? e.composedPath() : [e.target];
+  var row = null;
+  for (var i = 0; i < path.length; i++) {
+    var el = path[i];
+    if (el && el.getAttribute && el.getAttribute('data-line-type') != null) { row = el; break; }
+  }
+  if (!row) return;
+  var n = Number(row.getAttribute('data-column-number'));
+  if (!n) return;
+  var t = row.getAttribute('data-line-type') || '';
+  var lineType = t.indexOf('addition') >= 0 ? 'addition'
+    : t.indexOf('deletion') >= 0 ? 'deletion' : 'context';
+  parent.postMessage({ __showcase: true, type: 'line-click', line: n, lineType: lineType }, '*');
 });
 // Cmd+Option+Up/Down switches sessions in the sidebar, but keydowns fire in
 // whichever document holds focus — once the user clicks into a snippet, this

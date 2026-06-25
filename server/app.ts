@@ -12,6 +12,7 @@ import {
   type Asset,
   type AssetKind,
   type Comment,
+  type CommentAnchor,
   htmlPart,
   MAX_ASSET_BYTES,
   partsByteLength,
@@ -243,9 +244,10 @@ export interface Feedback {
   surfaceTitle: string | null;
   text: string;
   at: string;
-  // Present when the user pinned the comment to a spot on the surface — a point
-  // as 0..1 fractions of the card, so the agent knows what they're pointing at.
-  anchor?: { xPct: number; yPct: number };
+  // Present when the user pinned the comment to a spot on the surface: a point
+  // (0..1 fractions of the card) for a diagram/image, or a `line` number for a
+  // diff line — so the agent knows exactly what they're pointing at.
+  anchor?: CommentAnchor;
 }
 
 // Lean comment shape attached to agent-facing responses.
@@ -259,9 +261,22 @@ const feedbackView = (c: Comment): Feedback => ({
 
 // Validate a comment anchor from request input: a point as 0..1 fractions of the
 // card. Out-of-range values clamp; anything malformed yields undefined.
-function parseAnchor(raw: unknown): { xPct: number; yPct: number } | undefined {
+const LINE_TYPES = new Set(["context", "addition", "deletion"]);
+
+// A comment anchor from request input → a validated point OR line anchor (see
+// CommentAnchor). A line anchor (a clicked diff/code line) takes precedence; a
+// point anchor falls back to xPct/yPct. Returns undefined when neither is valid.
+function parseAnchor(raw: unknown): CommentAnchor | undefined {
   if (!raw || typeof raw !== "object") return undefined;
-  const a = raw as { xPct?: unknown; yPct?: unknown };
+  const a = raw as { xPct?: unknown; yPct?: unknown; line?: unknown; lineType?: unknown };
+  const line = Number(a.line);
+  if (Number.isInteger(line) && line > 0) {
+    const lineType =
+      typeof a.lineType === "string" && LINE_TYPES.has(a.lineType)
+        ? (a.lineType as CommentAnchor["lineType"])
+        : undefined;
+    return { line, ...(lineType ? { lineType } : {}) };
+  }
   const x = Number(a.xPct);
   const y = Number(a.yPct);
   if (!Number.isFinite(x) || !Number.isFinite(y)) return undefined;
@@ -472,7 +487,7 @@ export function createApp({
     surface?: string;
     session?: string;
     author: string;
-    anchor?: { xPct: number; yPct: number };
+    anchor?: CommentAnchor;
   }): Promise<
     { comment: Comment; userFeedback?: Feedback[] } | { error: string; status: 400 | 404 }
   > {

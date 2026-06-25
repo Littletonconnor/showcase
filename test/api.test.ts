@@ -1933,3 +1933,49 @@ test("a comment anchor is clamped to 0..1 and dropped when malformed or session-
   ).json()) as any;
   assert.equal(sess.anchor, undefined);
 });
+
+test("a diff line anchor is stored and delivered to the agent", async () => {
+  const app = makeApp();
+  const surface = (await (
+    await app.request(
+      "/api/surfaces",
+      json({ title: "Review", parts: [{ kind: "diff", patch: "@@ -1 +1 @@\n-a\n+b" }] }),
+    )
+  ).json()) as any;
+
+  const c = (await (
+    await app.request(
+      "/api/comments",
+      json({
+        surface: surface.id,
+        author: "user",
+        text: "off-by-one here",
+        anchor: { line: 752, lineType: "addition" },
+      }),
+    )
+  ).json()) as any;
+  assert.deepEqual(c.anchor, { line: 752, lineType: "addition" });
+
+  // A line anchor takes precedence over stray point fields, and an unknown
+  // lineType is dropped (never coerced).
+  const mixed = (await (
+    await app.request(
+      "/api/comments",
+      json({
+        surface: surface.id,
+        author: "user",
+        text: "this line",
+        anchor: { line: 10, lineType: "bogus", xPct: 0.3, yPct: 0.3 },
+      }),
+    )
+  ).json()) as any;
+  assert.deepEqual(mixed.anchor, { line: 10 });
+
+  // It rides the feedback channel to the agent like any anchor.
+  const fb = (
+    (await (
+      await app.request(`/api/comments?session=${surface.sessionId}&author=user`)
+    ).json()) as any
+  ).comments.find((x: { text: string }) => x.text === "off-by-one here");
+  assert.deepEqual(fb.anchor, { line: 752, lineType: "addition" });
+});

@@ -38,6 +38,7 @@ import {
   Bookmark,
   Check,
   CircleSlash,
+  Code,
   ExternalLink,
   Link2,
   MapPin,
@@ -242,7 +243,10 @@ function AnnotationPin(props: { anchor: CommentAnchor; text?: string; draft?: bo
         "pointer-events-auto absolute z-10 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-brand shadow-[0_1px_2px_rgba(0,0,0,0.35)] dark:border-card",
         props.draft && "animate-pulse motion-reduce:animate-none",
       )}
-      style={{ left: `${props.anchor.xPct * 100}%`, top: `${props.anchor.yPct * 100}%` }}
+      style={{
+        left: `${(props.anchor.xPct ?? 0) * 100}%`,
+        top: `${(props.anchor.yPct ?? 0) * 100}%`,
+      }}
       title={props.text}
     />
   );
@@ -259,20 +263,38 @@ function AnnotationComposer(props: {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+  const isLine = props.anchor.line != null;
   return (
     <div
-      className="absolute z-30 mt-2 w-60 max-w-[88%] rounded-lg border-[0.5px] border-border bg-card p-2 shadow-[0_8px_24px_rgba(0,0,0,0.14)]"
-      style={{
-        left: `${Math.min(58, Math.max(2, props.anchor.xPct * 100))}%`,
-        top: `${props.anchor.yPct * 100}%`,
-      }}
+      className={cx(
+        "absolute z-30 w-60 max-w-[88%] rounded-lg border-[0.5px] border-border bg-card p-2 shadow-[0_8px_24px_rgba(0,0,0,0.14)]",
+        // A line comment has no pixel; float it near the top, centered. A point
+        // comment pins to its spot.
+        isLine && "top-2 left-1/2 -translate-x-1/2",
+      )}
+      style={
+        isLine
+          ? undefined
+          : {
+              left: `${Math.min(58, Math.max(2, (props.anchor.xPct ?? 0) * 100))}%`,
+              top: `${(props.anchor.yPct ?? 0) * 100}%`,
+            }
+      }
     >
       <div className="mb-1 flex items-center gap-1 text-[11px] font-medium text-faint">
-        <MapPin className="size-3" /> Note about this spot
+        {isLine ? (
+          <>
+            <Code className="size-3" /> Comment on line {props.anchor.line}
+          </>
+        ) : (
+          <>
+            <MapPin className="size-3" /> Note about this spot
+          </>
+        )}
       </div>
       <Input
         ref={inputRef}
-        placeholder="What about here?"
+        placeholder={isLine ? "What about this line?" : "What about here?"}
         aria-label="Annotation note"
         className="h-8 text-[13px]"
         onKeyDown={(e) => {
@@ -306,8 +328,10 @@ export function Card(props: { surface: Surface }) {
   const partsRef = useRef<HTMLDivElement>(null);
   const [annotating, setAnnotating] = useState(false);
   const [draftAnchor, setDraftAnchor] = useState<CommentAnchor | null>(null);
+  // Only POINT-anchored comments get a pixel pin over the parts; line-anchored
+  // (diff) comments show their reference in the thread instead.
   const anchored = useBoard((s) => s.comments).filter(
-    (cm) => cm.surfaceId === props.surface.id && cm.anchor,
+    (cm) => cm.surfaceId === props.surface.id && cm.anchor && cm.anchor.xPct != null,
   );
 
   const surfaceId = props.surface.id;
@@ -569,7 +593,13 @@ export function Card(props: { surface: Surface }) {
             case "mermaid":
               return <MermaidPart key={i} part={part as MermaidPartData} />;
             case "diff":
-              return <DiffPart key={i} part={part as DiffPartData} />;
+              return (
+                <DiffPart
+                  key={i}
+                  part={part as DiffPartData}
+                  onLineClick={isReadonly() ? undefined : (a) => setDraftAnchor(a)}
+                />
+              );
             case "image":
               return <ImagePart key={i} part={part as ImagePartData} />;
             case "trace":
@@ -596,7 +626,9 @@ export function Card(props: { surface: Surface }) {
         {anchored.map((cm) => (
           <AnnotationPin key={cm.id} text={cm.text} anchor={cm.anchor!} />
         ))}
-        {draftAnchor ? <AnnotationPin draft anchor={draftAnchor} /> : null}
+        {draftAnchor && draftAnchor.xPct != null ? (
+          <AnnotationPin draft anchor={draftAnchor} />
+        ) : null}
         {annotating ? (
           <div
             className="absolute inset-0 z-20 cursor-crosshair bg-brand/[0.04]"
@@ -864,6 +896,11 @@ function CommentRow(props: { comment: ViewComment; startsRun: boolean }) {
         )}
         title={relTime(props.comment.createdAt)}
       >
+        {props.comment.anchor?.line != null ? (
+          <div className="mb-1 flex items-center gap-1 text-[11px] font-semibold opacity-70">
+            <Code className="size-3" /> Line {props.comment.anchor.line}
+          </div>
+        ) : null}
         {props.comment.text}
       </div>
     </div>

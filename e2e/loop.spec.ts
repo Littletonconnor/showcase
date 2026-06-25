@@ -174,6 +174,66 @@ test("a review finding card renders its severity badge in the trusted header", a
   await expect(card.locator("iframe")).toHaveCount(3);
 });
 
+test("clicking a diff line opens a line-anchored comment", async ({ page, request }) => {
+  // R4: a click on a diff line (inside the sandboxed iframe + its shadow root)
+  // rides the bridge out to the trusted card, which opens a line composer; the
+  // comment carries the exact line so the agent knows what to fix.
+  const session = await (
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "line review" } })
+  ).json();
+  const surface = await (
+    await request.post("/api/surfaces", {
+      data: {
+        session: session.id,
+        title: "Diff",
+        parts: [
+          {
+            kind: "diff",
+            patch:
+              "diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,8 +1,9 @@\n line one\n line two\n line three\n-old four\n+new four a\n+new four b\n line six\n line seven\n line eight",
+          },
+        ],
+      },
+    })
+  ).json();
+  await page.goto(`/?surface=${surface.id}`);
+  const card = page.locator(`.card[data-id="${surface.id}"]`);
+  await expect(card).toBeVisible();
+
+  // Dispatch a real composed click on an actual diff line inside the iframe's
+  // shadow root — this exercises the production bridge (the in-frame listener
+  // resolves the line via composedPath), without guessing a pixel.
+  const iframe = card.locator("iframe").first();
+  await expect(iframe).toBeVisible();
+  const frame = await (await iframe.elementHandle())!.contentFrame();
+  const col = await frame!.evaluate(async () => {
+    for (let i = 0; i < 40; i++) {
+      for (const c of document.querySelectorAll("diffs-container")) {
+        const row = c.shadowRoot?.querySelector("[data-line-type][data-column-number]");
+        if (row) {
+          row.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }));
+          return row.getAttribute("data-column-number");
+        }
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return null;
+  });
+  expect(Number(col), "found a diff line to click").toBeGreaterThan(0);
+
+  // The trusted card opens a line composer; type a note and send.
+  await expect(card.getByText(/Comment on line/)).toBeVisible({ timeout: 10_000 });
+  const note = card.getByRole("textbox", { name: "Annotation note" });
+  await note.fill("off-by-one here");
+  await note.press("Enter");
+
+  await expect(card.locator(".thread .cmt.user")).toContainText("off-by-one here");
+  // The comment carries a diff line server-side (so it reaches the agent).
+  const all = await (await request.get(`/api/comments?surface=${surface.id}`)).json();
+  const c = all.comments.find((x: { text: string }) => x.text.includes("off-by-one"));
+  expect(c?.anchor?.line, "the comment carries the diff line").toBeGreaterThan(0);
+});
+
 test("a review session rolls its finding badges into a header summary", async ({
   page,
   request,

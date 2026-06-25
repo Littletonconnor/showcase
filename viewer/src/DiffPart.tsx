@@ -19,7 +19,9 @@ import { useActiveTheme, useResolvedMode } from "./theme.ts";
 // stylesheet, keyed off :host), so the iframe body only spaces the files.
 const DIFF_CSS = `
 body { margin: 0; padding: 0; background: transparent; font-size: 12.5px; }
-diffs-container { display: block; }
+/* cursor inherits into the @pierre/diffs shadow root, so this is the one hint
+   that lines are clickable (the bridge turns a line click into a comment). */
+diffs-container { display: block; cursor: pointer; }
 diffs-container + diffs-container { border-top: 0.5px solid var(--border); }
 `;
 
@@ -64,7 +66,10 @@ function buildFileDiffs(part: DiffPartData): { diffs: FileDiffMetadata[]; langs:
   return { diffs, langs: [...langs] };
 }
 
-export function DiffPart(props: { part: DiffPartData }) {
+export function DiffPart(props: {
+  part: DiffPartData;
+  onLineClick?: (anchor: { line: number; lineType?: "context" | "addition" | "deletion" }) => void;
+}) {
   const activeTheme = useActiveTheme();
   const mode = useResolvedMode();
   const dark = mode === "dark";
@@ -133,6 +138,7 @@ export function DiffPart(props: { part: DiffPartData }) {
           class="block w-full border-0 bg-transparent"
           body={body ?? ""}
           css={DIFF_CSS}
+          onLineClick={props.onLineClick}
         />
       )}
     </div>
