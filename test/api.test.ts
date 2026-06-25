@@ -981,6 +981,10 @@ test("mcp endpoint: initialize, tools/list, publish round trip", async () => {
   ).json()) as any;
   assert.equal(init.result.serverInfo.name, "showcase");
   assert.ok(init.result.instructions.length > 0);
+  // The MCP instructions prime the chat loop, so a connected agent learns the
+  // wait → reply → wait behavior without the user pasting anything.
+  assert.match(init.result.instructions, /wait_for_feedback/);
+  assert.match(init.result.instructions, /loop/i);
 
   const list = (await (await app.request("/mcp", mcpCall(2, "tools/list"))).json()) as any;
   const names = list.result.tools.map((t: any) => t.name);

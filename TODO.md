@@ -214,14 +214,19 @@ otherwise messages queue until it checks. The UI must surface this honestly.
       via the same `agent-presence` SSE) — reachable agents at a glance.
 - [x] **Tighten the arm flow (shipped).** Agent-guide phrasing strengthened
       (surface vs session-level comments, the wait→reply→wait loop), and CLI
-      parity: `showcase comment --session <id>` posts a session-level reply (was
-      surface-only). A dedicated `showcase chat` command was deemed redundant —
-      `showcase watch` already is the continuous wait→print receive loop; the
-      "Agent idle" header chip remains the one-tap user-side arm helper.
+      parity: `showcase comment --session <id>` posts a session-level reply.
+- [x] **Auto-start the chat loop, no SDK (shipped).** Two no-SDK levers so the
+      user doesn't paste an arm instruction every session: (1) the MCP server's
+      `instructions` now prime the chat-loop behavior, so any connected Claude
+      Code / Cursor learns wait→reply→wait automatically on connect (universal,
+      server-side); (2) `showcase chat` launches Claude Code already armed with an
+      opening prompt that enters the loop (`--print` emits the prompt for Cursor /
+      paste). One command to start; the presence indicator shows the loop is alive.
 
 **Pillar B is complete** (presence/responding, sidebar dots, drill-down relay,
-session-level chat, arm flow). The only thing showcase still cannot do is _push_
-a turn into the editor — that's inherent to MCP, surfaced honestly in the UI.
+session-level chat, arm flow, no-SDK auto-start). The only thing showcase still
+cannot do is _push_ a turn into an idle editor — inherent to MCP; surfaced
+honestly in the UI, and reduced to one command / one trigger.
 
 ### Pillar C — Sharpen the loop (the differentiator)
 

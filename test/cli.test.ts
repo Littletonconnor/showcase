@@ -271,6 +271,14 @@ test("kits lists the board's available kits", async () => {
   }
 });
 
+test("chat --print emits the arming prompt without launching", async () => {
+  const { code, stdout, stderr } = await run("chat", "--print");
+  assert.equal(code, 0);
+  assert.equal(stderr, "");
+  assert.match(stdout, /wait_for_feedback/);
+  assert.match(stdout, /reply_to_user/);
+});
+
 test("comment --session posts a session-level (surfaceless) reply", async () => {
   const server = await serveApp();
   try {

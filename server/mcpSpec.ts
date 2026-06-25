@@ -15,7 +15,14 @@ export const MCP_INSTRUCTIONS =
   'publish, also pass sessionTitle to name the session after the task (e.g. "Auth refactor"). The ' +
   "user can comment in their browser; call wait_for_feedback after publishing something you want a " +
   "reaction to. Any publish/update/reply result may carry a userFeedback array — comments the user " +
-  "left since your last call, delivered once.";
+  "left since your last call, delivered once. " +
+  "CHATTING: the user can talk to you in the browser — under a surface, or in the session-level " +
+  '"Chat with your agent" panel. When they want a conversation, hold a real back-and-forth: after ' +
+  "each reply, call wait_for_feedback again and keep looping (wait → reply → wait), until they say " +
+  "they're done. While you are parked in wait_for_feedback the browser shows a live green " +
+  '"Listening" badge, so the user can see you are reachable; when you stop looping it goes idle. ' +
+  "Reply with reply_to_user — omit surfaceId to answer in the session-level chat, or pass it to " +
+  "answer under a specific surface.";
 
 const d = {
   title: "Short human-readable title shown above the card",
