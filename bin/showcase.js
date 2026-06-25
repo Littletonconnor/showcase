@@ -87,8 +87,9 @@ usage:
                         publish to create one)
       --after <seq>     re-read comments after this cursor on the first poll
                         (default: resume where the agent left off, server-side)
-  showcase comment <text> [options]       reply to the user on a surface
-      --surface <id>    surface to attach the comment to (required)
+  showcase comment <text> [options]       reply to the user (surface or session-level)
+      --surface <id>    reply under a surface's thread
+      --session <id>    reply in the session-level "Chat with your agent" (default: active session)
       --author <name>   defaults to agent name
   showcase list [--session <id>|--all]    list surfaces
   showcase sessions                       list sessions
@@ -918,20 +919,26 @@ const commands = {
       options: {
         surface: { type: "string" },
         snippet: { type: "string" }, // legacy alias
+        session: { type: "string" },
         author: { type: "string" },
         agent: { type: "string" },
       },
     });
     const text = positionals.join(" ").trim();
-    if (!text) fail("usage: showcase comment <text> --surface <id>");
+    if (!text) fail("usage: showcase comment <text> --surface <id> | --session <id>");
+    // Reply under a surface, or session-level (the "Chat with your agent" panel)
+    // when only --session is given. Falls back to the active session.
     const surface = flags.surface ?? flags.snippet;
-    if (!surface) fail("a comment must target a surface — pass --surface <id>");
+    const session = surface ? undefined : (flags.session ?? (await resolveSession(flags)));
+    if (!surface && !session) {
+      fail("a comment must target a surface (--surface) or a session (--session)");
+    }
     out(
       await api("/api/comments", {
         method: "POST",
         body: JSON.stringify({
           text,
-          surface,
+          ...(surface ? { surface } : { session }),
           author: flags.author ?? agentName(flags),
         }),
       }),

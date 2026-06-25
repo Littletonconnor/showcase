@@ -33,7 +33,7 @@ If `SHOWCASE_URL` is unset, the surface is at `http://localhost:8229`. If it is 
 
 ## Publishing
 
-Prefer MCP tools if the showcase MCP server is connected: `publish_surface` `{title, parts, sessionTitle?}`, `update_surface` `{id, title?, parts?}`, `wait_for_feedback`, `reply_to_user` `{surfaceId, message}`, `list_surfaces`. (`publish_snippet` / `update_snippet` remain as html-only sugar aliases.) Otherwise use the CLI — session grouping is automatic:
+Prefer MCP tools if the showcase MCP server is connected: `publish_surface` `{title, parts, sessionTitle?}`, `update_surface` `{id, title?, parts?}`, `wait_for_feedback`, `reply_to_user` `{message, surfaceId?}` (omit `surfaceId` to reply in the session-level chat), `list_surfaces`. (`publish_snippet` / `update_snippet` remain as html-only sugar aliases.) Otherwise use the CLI — session grouping is automatic:
 
 ```sh
 showcase publish sketch.html --title "Cache layout" --agent your-name --session-title "Cache redesign"

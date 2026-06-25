@@ -212,9 +212,16 @@ otherwise messages queue until it checks. The UI must surface this honestly.
 - [x] **Sidebar presence dots (shipped).** A small pulsing green dot on each
       session row's meta line when that session's agent is parked listening (live
       via the same `agent-presence` SSE) — reachable agents at a glance.
-- [ ] **Tighten the arm flow.** The "Agent idle" copy-helper is the v1; consider
-      a one-command `showcase chat` that parks a wait→reply loop, and richer
-      agent-guide phrasing so editor agents naturally hold a conversation.
+- [x] **Tighten the arm flow (shipped).** Agent-guide phrasing strengthened
+      (surface vs session-level comments, the wait→reply→wait loop), and CLI
+      parity: `showcase comment --session <id>` posts a session-level reply (was
+      surface-only). A dedicated `showcase chat` command was deemed redundant —
+      `showcase watch` already is the continuous wait→print receive loop; the
+      "Agent idle" header chip remains the one-tap user-side arm helper.
+
+**Pillar B is complete** (presence/responding, sidebar dots, drill-down relay,
+session-level chat, arm flow). The only thing showcase still cannot do is _push_
+a turn into the editor — that's inherent to MCP, surfaced honestly in the UI.
 
 ### Pillar C — Sharpen the loop (the differentiator)
 

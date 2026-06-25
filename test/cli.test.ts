@@ -270,3 +270,26 @@ test("kits lists the board's available kits", async () => {
     await server.close();
   }
 });
+
+test("comment --session posts a session-level (surfaceless) reply", async () => {
+  const server = await serveApp();
+  try {
+    const session = await post(`${server.url}/api/sessions`, { agent: "claude-code" });
+    const { code, stdout } = await runWith(
+      { env: { SHOWCASE_URL: server.url } },
+      "comment",
+      "Here's the session-level plan",
+      "--session",
+      session.id,
+      "--author",
+      "claude-code",
+    );
+    assert.equal(code, 0);
+    const out = JSON.parse(stdout);
+    assert.equal(out.surfaceId, null);
+    assert.equal(out.sessionId, session.id);
+    assert.equal(out.author, "claude-code");
+  } finally {
+    await server.close();
+  }
+});
