@@ -50,6 +50,7 @@ import {
   setScrollTarget,
   toast,
   useBoard,
+  useResponding,
   type ViewComment,
 } from "./state.ts";
 
@@ -415,6 +416,7 @@ function Thread(props: {
 }) {
   const [replying, setReplying] = useState(false);
   const comments = useBoard((s) => s.comments);
+  const responding = useResponding(props.surfaceId);
   const list = comments.filter((c) => c.surfaceId === props.surfaceId);
   const hasMessages = list.length > 0;
   // Once a card has a conversation, pin the composer at the bottom like a chat
@@ -425,11 +427,12 @@ function Thread(props: {
   const endRef = useRef<HTMLDivElement>(null);
   const count = list.length;
   useEffect(() => {
-    if (count > 0) endRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [count]);
+    if (count > 0 || responding)
+      endRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [count, responding]);
   return (
     <div className="thread">
-      {list.length ? (
+      {list.length || responding ? (
         <div className="flex flex-col border-t-[0.5px] border-border px-3.5 py-3">
           {list.map((c, i) => {
             // First message of a run from the same author wears the label +
@@ -437,6 +440,7 @@ function Thread(props: {
             const startsRun = i === 0 || list[i - 1].author !== c.author;
             return <CommentRow comment={c} startsRun={startsRun} key={c.id} />;
           })}
+          {responding ? <TypingIndicator hasMessages={hasMessages} /> : null}
           <div ref={endRef} />
         </div>
       ) : null}
@@ -467,6 +471,32 @@ function Thread(props: {
       ) : !props.readonly ? (
         <Composer placeholder={props.placeholder} send={props.send} />
       ) : null}
+    </div>
+  );
+}
+
+// The "agent is responding…" bubble — agent-aligned, three softly bouncing dots.
+// Shown while we expect a reply (the user sent to a listening session); cleared
+// when the reply lands or the responding timeout elapses.
+function TypingIndicator(props: { hasMessages: boolean }) {
+  return (
+    <div
+      className={cx(
+        "cmt items-start flex flex-col",
+        props.hasMessages ? "mt-3" : "mt-0",
+        "animate-in fade-in-0 slide-in-from-bottom-1 duration-150 motion-reduce:animate-none",
+      )}
+      aria-label="Agent is responding"
+    >
+      <div className="flex items-center gap-1 rounded-2xl bg-muted px-3 py-2.5">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="size-1.5 animate-bounce rounded-full bg-foreground/40 motion-reduce:animate-none"
+            style={{ animationDelay: `${i * 0.15 - 0.3}s` }}
+          />
+        ))}
+      </div>
     </div>
   );
 }

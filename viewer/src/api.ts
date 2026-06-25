@@ -38,9 +38,11 @@ export type {
 
 export type PublicReadMode = "session" | "full";
 
-// GET /api/sessions decorates each session with its surface count.
+// GET /api/sessions decorates each session with its surface count and whether
+// an agent is currently parked in wait_for_feedback on it (live presence).
 export interface SessionRow extends Session {
   surfaceCount: number;
+  listening?: boolean;
 }
 
 // GET /api/version — upgradeCommand and notes are set only when an update

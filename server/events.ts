@@ -8,7 +8,11 @@ export type FeedEvent =
       sessionId: string;
       surfaceId: string | null;
       seq: number;
-    };
+    }
+  // Emitted when a session gains its first / loses its last agent waiter (an
+  // author=user wait_for_feedback long-poll). Drives the viewer's live
+  // "agent is listening" presence.
+  | { type: "agent-presence"; sessionId: string; listening: boolean };
 
 type Listener = (event: FeedEvent) => void;
 

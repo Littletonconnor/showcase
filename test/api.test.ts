@@ -1571,3 +1571,62 @@ test("/session routes require auth when a token is set", async () => {
   assert.equal(authed.status, 200);
   assert.ok((await authed.text()).includes("viewer"));
 });
+
+test("a parked wait_for_feedback marks the session as listening, cleared on reply", async () => {
+  const app = makeApp();
+  const session = (await (
+    await app.request("/api/sessions", json({ agent: "claude-code" }))
+  ).json()) as any;
+  const surface = (await (
+    await app.request(
+      "/api/surfaces",
+      json({ session: session.id, title: "P", parts: [{ kind: "markdown", markdown: "hi" }] }),
+    )
+  ).json()) as any;
+
+  const listening = async () =>
+    ((await (await app.request("/api/sessions")).json()) as any[]).find((s) => s.id === session.id)
+      .listening;
+
+  // Not listening before any agent parks a wait.
+  assert.equal(await listening(), false);
+
+  // Park an author=user long-poll (the wait_for_feedback path) without awaiting.
+  const waiting = app.request(`/api/comments?session=${session.id}&author=user&wait=5`);
+  await new Promise((r) => setTimeout(r, 60)); // let the waiter register
+  assert.equal(await listening(), true);
+
+  // A real (surfaced) user comment resolves the wait early; presence then clears.
+  const t0 = Date.now();
+  await app.request("/api/comments", json({ surface: surface.id, author: "user", text: "hi" }));
+  await waiting;
+  // The long-poll returned on the comment, not at the 5s timeout.
+  assert.ok(Date.now() - t0 < 2000, "wait should resolve early on the comment");
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(await listening(), false);
+});
+
+test("an aborted wait_for_feedback stops counting toward presence", async () => {
+  const app = makeApp();
+  const session = (await (
+    await app.request("/api/sessions", json({ agent: "claude-code" }))
+  ).json()) as any;
+  const ctrl = new AbortController();
+  const waiting = app
+    .request(`/api/comments?session=${session.id}&author=user&wait=30`, { signal: ctrl.signal })
+    .catch(() => null);
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(
+    ((await (await app.request("/api/sessions")).json()) as any[]).find((s) => s.id === session.id)
+      .listening,
+    true,
+  );
+  ctrl.abort();
+  await waiting;
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(
+    ((await (await app.request("/api/sessions")).json()) as any[]).find((s) => s.id === session.id)
+      .listening,
+    false,
+  );
+});

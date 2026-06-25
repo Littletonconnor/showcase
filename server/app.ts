@@ -256,6 +256,27 @@ export function createApp({
   const app = new Hono();
   const bus = new EventBus();
 
+  // Agent presence: count of active wait_for_feedback waiters per session (an
+  // author=user comment long-poll). A session is "listening" while a terminal
+  // agent is parked waiting on it; the viewer shows this live. Transitions at
+  // the 0↔1 boundary broadcast an agent-presence event.
+  const waiters = new Map<string, number>();
+  const isListening = (sessionId: string) => (waiters.get(sessionId) ?? 0) > 0;
+  const addWaiter = (sessionId: string) => {
+    const n = (waiters.get(sessionId) ?? 0) + 1;
+    waiters.set(sessionId, n);
+    if (n === 1) bus.broadcast({ type: "agent-presence", sessionId, listening: true });
+  };
+  const removeWaiter = (sessionId: string) => {
+    const n = (waiters.get(sessionId) ?? 1) - 1;
+    if (n <= 0) {
+      waiters.delete(sessionId);
+      bus.broadcast({ type: "agent-presence", sessionId, listening: false });
+    } else {
+      waiters.set(sessionId, n);
+    }
+  };
+
   // Last-resort safety net: any handler that throws (rather than returning a
   // status) becomes a clean JSON 500 instead of leaking a stack or a bare crash.
   // Validation rejects bad input with 4xx before this, so reaching here means an
@@ -438,8 +459,11 @@ export function createApp({
   }
 
   // Long-poll: resolves as soon as a matching comment lands, or at timeout.
+  // `signal` (the request's abort signal) ends the wait early on disconnect, so
+  // a dropped agent stops counting toward presence immediately.
   async function waitForComments(
     q: CommentWait,
+    signal?: AbortSignal,
   ): Promise<{ comments: Comment[]; lastSeq: number }> {
     // An author=user session wait with no explicit cursor resumes from the
     // session's agentSeq — "where the agent left off" lives server-side so the
@@ -456,20 +480,30 @@ export function createApp({
     let all = await store.listComments(query);
     let comments = matches(all);
     if (comments.length === 0 && wait > 0) {
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(done, wait * 1000);
-        const unsubscribe = bus.subscribe((event) => {
-          if (event.type !== "comment-created") return;
-          if (q.sessionId && event.sessionId !== q.sessionId) return;
-          if (q.surfaceId && event.surfaceId !== q.surfaceId) return;
-          done();
+      // A parked author=user session wait IS the agent listening — track it as
+      // presence for the duration of the long-poll.
+      const presenceSession = q.author === "user" && q.sessionId ? q.sessionId : null;
+      if (presenceSession) addWaiter(presenceSession);
+      try {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(done, wait * 1000);
+          const unsubscribe = bus.subscribe((event) => {
+            if (event.type !== "comment-created") return;
+            if (q.sessionId && event.sessionId !== q.sessionId) return;
+            if (q.surfaceId && event.surfaceId !== q.surfaceId) return;
+            done();
+          });
+          function done() {
+            clearTimeout(timer);
+            unsubscribe();
+            signal?.removeEventListener("abort", done);
+            resolve();
+          }
+          signal?.addEventListener("abort", done, { once: true });
         });
-        function done() {
-          clearTimeout(timer);
-          unsubscribe();
-          resolve();
-        }
-      });
+      } finally {
+        if (presenceSession) removeWaiter(presenceSession);
+      }
       all = await store.listComments(query);
       comments = matches(all);
     }
@@ -643,7 +677,15 @@ export function createApp({
     const [sessions, surfaces] = await Promise.all([store.listSessions(), store.listSurfaces()]);
     const counts = new Map<string, number>();
     for (const s of surfaces) counts.set(s.sessionId, (counts.get(s.sessionId) ?? 0) + 1);
-    return c.json(sessions.map((s) => ({ ...s, surfaceCount: counts.get(s.id) ?? 0 })));
+    return c.json(
+      sessions.map((s) => ({
+        ...s,
+        surfaceCount: counts.get(s.id) ?? 0,
+        // Current agent presence so a freshly-loaded viewer shows the right
+        // listening state without waiting for the next transition event.
+        listening: isListening(s.id),
+      })),
+    );
   });
 
   app.post("/api/sessions", async (c) => {
@@ -827,13 +869,16 @@ export function createApp({
         }
       }
     }
-    const result = await waitForComments({
-      sessionId,
-      surfaceId,
-      author: c.req.query("author"),
-      afterSeq: c.req.query("after") ? Number(c.req.query("after")) : undefined,
-      waitSeconds: Number(c.req.query("wait") ?? 0) || 0,
-    });
+    const result = await waitForComments(
+      {
+        sessionId,
+        surfaceId,
+        author: c.req.query("author"),
+        afterSeq: c.req.query("after") ? Number(c.req.query("after")) : undefined,
+        waitSeconds: Number(c.req.query("wait") ?? 0) || 0,
+      },
+      c.req.raw.signal,
+    );
     return c.json(result);
   });
 
@@ -999,6 +1044,17 @@ export function createApp({
       stream.onAbort(close);
       c.req.raw.signal.addEventListener("abort", close, { once: true });
       await stream.writeSSE({ event: "hello", data: "{}" });
+      // Send the current agent presence immediately so a freshly-opened viewer
+      // reflects the listening state without waiting for the next transition.
+      if (sessionId) {
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: "agent-presence",
+            sessionId,
+            listening: isListening(sessionId),
+          }),
+        });
+      }
       while (open) {
         while (queue.length > 0) {
           await stream.writeSSE({ data: JSON.stringify(queue.shift()) });

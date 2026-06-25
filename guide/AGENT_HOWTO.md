@@ -82,6 +82,8 @@ Feedback reaches you four ways — prefer them in this order:
 
 Comments attach to a surface (`surfaceId`); behavior is otherwise unchanged. When comments arrive, acknowledge briefly with `showcase comment "..." --surface <id>` when useful; do substantial changes as surface updates, then re-arm the watcher or continue checkpoint-draining.
 
+**Chatting with the user.** While you are parked in a `wait_for_feedback` / `showcase wait`, the viewer shows a live green **"Listening"** badge in the session header, and a "responding…" indicator appears the moment the user sends — so the user can see you are actually reachable. To hold a real back-and-forth, **loop**: wait → on a comment, reply with `reply_to_user` (or `showcase comment --surface <id>`) → wait again. When you stop looping the badge goes idle, which honestly tells the user their next message will queue until you check back, not reach you live.
+
 ## Remote surfaces
 
 A deployed showcase needs `SHOWCASE_URL` and `SHOWCASE_TOKEN` set in your environment; the CLI and MCP server send the token automatically. For raw curl, add `-H "Authorization: Bearer $SHOWCASE_TOKEN"`.

@@ -59,6 +59,10 @@ interface BoardState {
   // Both drive iframe keys and string re-renders, so they live in the store.
   activeTheme: string;
   prefersDark: boolean;
+  // Surfaces with an outstanding "agent is responding…" indicator: set when the
+  // user sends to a card whose session is listening, cleared when the agent
+  // replies (or on a timeout, so it never hangs).
+  responding: Record<string, boolean>;
 }
 
 export const useBoard = create<BoardState>(() => ({
@@ -76,6 +80,7 @@ export const useBoard = create<BoardState>(() => ({
   dismissedUpdate: localStorage.getItem(DISMISSED_UPDATE_KEY),
   activeTheme: "",
   prefersDark: false,
+  responding: {},
 }));
 
 // Non-reactive snapshot accessors — mirror the Solid signal getters so the flow
@@ -160,6 +165,66 @@ export function toast(text: string) {
 
 function markUnread(sessionId: string) {
   set((s) => ({ unread: new Set(s.unread).add(sessionId) }));
+}
+
+// --- Agent presence + responding state ---
+
+// Live "agent is listening" flips the listening flag on the session row (the
+// API seeds it; agent-presence SSE keeps it current). Reactive selector below.
+function setListening(sessionId: string, listening: boolean) {
+  set((s) => {
+    const idx = s.sessions.findIndex((r) => r.id === sessionId);
+    if (idx < 0 || !!s.sessions[idx].listening === listening) return s;
+    const next = s.sessions.slice();
+    next[idx] = { ...next[idx], listening };
+    return { sessions: next };
+  });
+}
+
+export const useSessionListening = () =>
+  useBoard((s) => !!s.sessions.find((r) => r.id === s.selected)?.listening);
+
+export const useResponding = (surfaceId: string | null) =>
+  useBoard((s) => (surfaceId ? !!s.responding[surfaceId] : false));
+
+// A responding indicator auto-clears after this long, so a missed reply (agent
+// stopped listening mid-turn) never leaves a permanent "responding…" bubble.
+const RESPONDING_TIMEOUT_MS = 90_000;
+const respondingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function clearResponding(surfaceId: string) {
+  const t = respondingTimers.get(surfaceId);
+  if (t) {
+    clearTimeout(t);
+    respondingTimers.delete(surfaceId);
+  }
+  set((s) => {
+    if (!s.responding[surfaceId]) return s;
+    const next = { ...s.responding };
+    delete next[surfaceId];
+    return { responding: next };
+  });
+}
+
+function markResponding(surfaceId: string) {
+  const prev = respondingTimers.get(surfaceId);
+  if (prev) clearTimeout(prev);
+  respondingTimers.set(
+    surfaceId,
+    setTimeout(() => clearResponding(surfaceId), RESPONDING_TIMEOUT_MS),
+  );
+  set((s) =>
+    s.responding[surfaceId] ? s : { responding: { ...s.responding, [surfaceId]: true } },
+  );
+}
+
+// Clear the responding indicator once the newest comment on the surface is an
+// agent reply (author != user) — the reply we were waiting for has landed.
+function clearRespondingIfAnswered(surfaceId: string) {
+  const newest = get()
+    .comments.filter((c) => c.surfaceId === surfaceId && !c.pending)
+    .reduce<ViewComment | undefined>((a, b) => (b.seq >= (a?.seq ?? -1) ? b : a), undefined);
+  if (newest && newest.author !== "user") clearResponding(surfaceId);
 }
 
 export async function checkVersion() {
@@ -383,6 +448,11 @@ export async function sendComment(
     pending: true,
   };
   set((state) => ({ comments: [...state.comments, local] }));
+  // If the agent is parked listening on this session, a reply is expected —
+  // show the responding indicator on this card until it lands (or times out).
+  if (surfaceId && !!get().sessions.find((r) => r.id === selectedNow())?.listening) {
+    markResponding(surfaceId);
+  }
   try {
     const created = await api<Comment>("/api/comments", {
       method: "POST",
@@ -403,9 +473,10 @@ export async function sendComment(
 
 interface FeedEvent {
   type: string;
-  id: string;
+  id?: string;
   sessionId?: string;
   surfaceId?: string | null;
+  listening?: boolean;
 }
 
 export function connect() {
@@ -434,7 +505,7 @@ export function connect() {
       await refreshSessions();
     } else if (e.type === "surface-created" || e.type === "surface-updated") {
       if (away && e.sessionId) markUnread(e.sessionId);
-      if (e.sessionId === selectedNow()) await upsertSurface(e.id);
+      if (e.id && e.sessionId === selectedNow()) await upsertSurface(e.id);
       await refreshSessionsQuiet();
     } else if (e.type === "surface-deleted") {
       set((state) => {
@@ -451,7 +522,10 @@ export function connect() {
         const query = e.surfaceId ? `surface=${e.surfaceId}` : `session=${e.sessionId}`;
         const res = await api<{ comments: Comment[] }>(`/api/comments?${query}`);
         mergeComments(res.comments);
+        if (e.surfaceId) clearRespondingIfAnswered(e.surfaceId);
       }
+    } else if (e.type === "agent-presence") {
+      if (e.sessionId) setListening(e.sessionId, !!e.listening);
     }
   };
 }

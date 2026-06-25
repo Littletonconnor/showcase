@@ -78,6 +78,7 @@ import {
   toast,
   updateNoticeFrom,
   useBoard,
+  useSessionListening,
 } from "./state.ts";
 
 // The shadcn SidebarProvider persists its open/collapsed state to a
@@ -758,6 +759,8 @@ function SessionView() {
               </span>
             ) : null}
             <SessionTitle current={current} />
+            <span className="flex-1" />
+            {current && !isReadonly() ? <AgentPresence agent={current.agent} /> : null}
           </div>
           <span className="pl-0.5 text-[12px] text-faint" id="sessMeta">
             {current
@@ -822,6 +825,46 @@ function EmptySession() {
         Surfaces your agent publishes to this session will appear here.
       </p>
     </div>
+  );
+}
+
+// Live presence chip in the session header: green "Listening" while the agent
+// is parked in wait_for_feedback (messages reach it instantly), or a clickable
+// "Agent idle" that copies an instruction to arm the agent's chat loop. This is
+// the honest signal for the pull-based bridge — showcase can't push to the
+// editor, so the user needs to see whether a reply is even coming.
+function AgentPresence(props: { agent: string }) {
+  const listening = useSessionListening();
+  const label = props.agent || "your agent";
+  if (listening) {
+    return (
+      <span
+        className="flex-none inline-flex items-center gap-1.5 rounded-full bg-[#4caf78]/12 px-2 py-0.5 text-[11px] font-medium text-[#2e7d54] dark:text-[#5fd699]"
+        title={`${label} is parked in wait_for_feedback — your messages reach it instantly.`}
+      >
+        <span className="size-1.5 animate-pulse rounded-full bg-[#4caf78] motion-reduce:animate-none" />
+        Listening
+      </span>
+    );
+  }
+  const armText = `Keep calling wait_for_feedback on showcase and reply to me with reply_to_user, looping, so I can chat with you from the browser.`;
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(armText);
+          toast(`Copied — paste it to ${label} to start the chat loop.`);
+        } catch {
+          toast("Couldn't copy the instruction");
+        }
+      }}
+      className="flex-none inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-faint transition-colors hover:bg-hover hover:text-muted-foreground"
+      title={`${label} isn't listening. Click to copy an instruction that arms it (it must call wait_for_feedback to receive your messages).`}
+    >
+      <span className="size-1.5 rounded-full bg-faint" />
+      Agent idle
+    </button>
   );
 }
 
