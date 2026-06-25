@@ -180,24 +180,41 @@ function IconAction(props: {
 }
 
 // A scannable status chip leading the card header — the review severity on a
-// finding card ("Bug" / "Nit" / "Question" / "Praise"), or any short label.
-// Tone → a quiet tinted pill that reads in both light and dark.
+// finding card ("Bug" / "Nit" / "Question" / "Praise"), or any short label. A
+// solid tone dot makes it read as an intentional status indicator (Linear-style)
+// rather than a flat pill; the tinted body + hairline ring keep it quiet.
 const BADGE_TONE_CLASS: Record<SurfaceBadge["tone"], string> = {
-  critical: "bg-red-500/12 text-red-700 dark:text-red-300 ring-red-500/25",
-  warning: "bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-amber-500/25",
-  info: "bg-blue-500/12 text-blue-700 dark:text-blue-300 ring-blue-500/25",
-  success: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-500/25",
+  critical: "bg-red-500/10 text-red-700 ring-red-600/20 dark:text-red-300 dark:ring-red-400/25",
+  warning:
+    "bg-amber-500/12 text-amber-800 ring-amber-600/20 dark:text-amber-300 dark:ring-amber-400/25",
+  info: "bg-blue-500/10 text-blue-700 ring-blue-600/20 dark:text-blue-300 dark:ring-blue-400/25",
+  success:
+    "bg-emerald-500/10 text-emerald-700 ring-emerald-600/20 dark:text-emerald-300 dark:ring-emerald-400/25",
   neutral: "bg-muted text-muted-foreground ring-border",
+};
+const BADGE_DOT_CLASS: Record<SurfaceBadge["tone"], string> = {
+  critical: "bg-red-500",
+  warning: "bg-amber-500",
+  info: "bg-blue-500",
+  success: "bg-emerald-500",
+  neutral: "bg-muted-foreground/55",
 };
 
 function SurfaceBadgeChip(props: { badge: SurfaceBadge }) {
+  const tone = props.badge.tone;
   return (
     <span
       className={cx(
-        "flex-none rounded-full px-2 py-[1px] text-[11px] font-semibold tracking-[0.01em] ring-1 ring-inset",
-        BADGE_TONE_CLASS[props.badge.tone] ?? BADGE_TONE_CLASS.neutral,
+        "inline-flex flex-none items-center gap-1.5 rounded-full py-[3px] pr-2 pl-[7px] text-[11px] leading-none font-semibold ring-1 ring-inset",
+        BADGE_TONE_CLASS[tone] ?? BADGE_TONE_CLASS.neutral,
       )}
     >
+      <span
+        className={cx(
+          "size-1.5 flex-none rounded-full",
+          BADGE_DOT_CLASS[tone] ?? BADGE_DOT_CLASS.neutral,
+        )}
+      />
       {props.badge.label}
     </span>
   );

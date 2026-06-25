@@ -71,28 +71,30 @@ Pass `badge: { tone, label }` on `publish_surface` / `update_surface` (label ≤
 
 ## Recipe: visual PR review
 
-This is showcase's flagship workflow — _"the future of code review is multimodal."_ A reviewing agent publishes one **finding card** per issue, each combining the explanation, a picture of the bug, and the fix, so the user grasps it far faster than a text thread.
+This is showcase's flagship workflow — _"the future of code review is multimodal."_ A reviewing agent publishes one **finding card** per issue, each combining the explanation, a picture of the problem, and the fix, so the user grasps it far faster than a text thread. **Be thorough — a shallow review is worse than none.** Read the actual code paths, not just the diff hunks; trace how the change behaves at runtime; and back every claim with a concrete file:line and the real values involved.
 
-**Per finding, publish a surface with:**
+**Each finding card** = a `badge` (severity), a title that names the location (`"Unbounded asset upload — server/app.ts:747"`), and parts in this order:
 
-1. a **badge** for severity (`{tone:"critical", label:"Bug"}`) and a title that names the location (`"Unbounded asset upload — server/app.ts"`);
-2. a **markdown** part — one tight paragraph: what's wrong and why it bites;
-3. when control flow matters, a **mermaid** part diagramming the buggy path (e.g. the request flow that reaches an OOM before the size check);
-4. a **diff** part with the proposed fix (a unified `patch` is the compact form).
+1. a **markdown** part with a structured body — don't hand-wave, use these labelled beats:
+   - **What** — the precise behavior, naming the symbol/function and `file:line`.
+   - **Why it matters** — the concrete impact (who hits it, how bad, under what input). Quantify when you can ("a 2 GB upload allocates 2 GB before the 5 MB check").
+   - **Fix** — what to change and why that's correct.
+2. a **mermaid** part when control/data flow or state matters — diagram the path that produces the bug (the request flow, the state machine, the call graph). Skip it for a pure one-liner.
+3. a **diff** part with the proposed fix (a unified `patch` is the compact form), or a **code** part to point at the offending lines when there's no fix yet.
 
 ```jsonc
 // publish_surface
 {
-  "title": "Bug: unbounded asset upload — server/app.ts",
+  "title": "Bug: unbounded asset upload — server/app.ts:747",
   "badge": { "tone": "critical", "label": "Bug" },
   "parts": [
     {
       "kind": "markdown",
-      "markdown": "The upload handler buffers the **entire body** into memory before the 5 MB check, so a multi-GB upload OOMs before the 413 fires.",
+      "markdown": "**What** — `uploadAsset` (server/app.ts:747) calls `c.req.arrayBuffer()` to buffer the whole body into memory *before* the `MAX_ASSET_BYTES` check on line 759.\n\n**Why it matters** — the size guard never runs for an oversized request: a 2 GB upload allocates 2 GB of heap and can OOM the process before the 413 is ever returned. Any unauthenticated client can trigger it (local boards ship with no token).\n\n**Fix** — reject on the `content-length` header before reading the body; fall back to a streaming cap for chunked uploads.",
     },
     {
       "kind": "mermaid",
-      "mermaid": "flowchart LR\n  Client-->read[read body]\n  read-->size{>5MB?}\n  size--no-->store\n  read-. OOM .->heap[heap exhausted]",
+      "mermaid": "flowchart LR\n  Client-->read[read full body]\n  read-->size{>5MB?}\n  size--no-->store\n  read-. OOM .->heap[heap exhausted]",
     },
     {
       "kind": "diff",
@@ -102,7 +104,15 @@ This is showcase's flagship workflow — _"the future of code review is multimod
 }
 ```
 
-**Lead with a verdict card** (publish it first, `badge:{tone:"warning", label:"Request changes"}` or `{tone:"success", label:"Approve"}`): a short markdown summary — "2 findings · 1 bug · 1 nit" — with a table linking to each. `update_surface` it as findings resolve.
+**Lead with a verdict card** — publish it first with `badge:{tone:"warning", label:"Request changes"}` (or `{tone:"success", label:"Approve"}`). Make it a real summary, not a sentence:
+
+- a one-line verdict + counts ("**3 findings** · 1 bug · 1 perf · 1 nit");
+- a markdown **table** of every finding — severity · what · `file:line` — so the user can scan the whole review at a glance;
+- a short **Coverage** note: what you reviewed and what you deliberately skipped (e.g. "read the upload + auth paths; did not exercise the migration scripts"), so the user can trust the review's depth.
+
+`update_surface` the verdict as findings resolve.
+
+**Calibrate severity honestly:** `critical`→Bug (wrong/unsafe), `warning`→Nit (style/maintainability), `info`→Question (you need context to judge), `success`→Praise (genuinely good — call it out, reviews aren't only negative). Don't inflate; don't pad with trivia.
 
 **Then run the loop** (below): the user reads each card, taps **Approve** or comments. On a change request, **`update_surface` the same card** with the revised diff — and downgrade or clear its badge — so the fix lands in place as a new version, not a new card. (`showcase demo` seeds a live example of this composition.)
 

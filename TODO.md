@@ -209,16 +209,14 @@ workflows compose.
 > and the review-level structure around it. Do these roughly in order; R1 unlocks
 > the rest and reproduces the product screenshot by default.
 
-- **R1 — Finding cards: severity tags + the recipe + a demo.** _The first thing to
-  build._ (a) A generic `Surface.badge` (`{ tone, label }`, e.g.
-  `{tone:"critical", label:"Bug"}` / `warning`→Nit / `info`→Question /
-  `success`→Praise) rendered as a colored chip in the card header — so a review
-  reads as scannable findings, not a pile. (b) The canonical **finding-card
-  recipe** in the agent guide: title encodes severity + file; body is `[prose,
-mermaid control-flow of the bug, fix diff]`; revise the fix as a new version on
-  push-back. (c) A demo finding (the screenshot, reproduced) in `bin/demoData.js`.
-  _Acceptance:_ "review this diff on showcase" yields tagged, multimodal finding
-  cards; the demo reproduces the screenshot. _Effort:_ ~3–4h.
+- [x] **R1 — Finding cards: severity tags + the recipe + a demo (shipped).** A
+      generic `Surface.badge` (`{tone, label}`) renders as a colored chip in the card
+      header (critical→Bug / warning→Nit / info→Question / success→Praise / neutral),
+      validated once and threaded through REST + both MCP transports + the CLI demo.
+      The finding-card recipe (`[badge, prose, mermaid, diff]`, lead with a verdict
+      card, revise in place) lives in `AGENT_HOWTO`, and `bin/demoData.js` seeds a
+      review session reproducing the product screenshot. Store-contract + API + a
+      real-DOM oracle cover it. _Proven live_ reviewing a real santafe branch.
 - **R2 — Review summary / verdict surface.** A lead card per review session —
   "3 findings · 2 bugs, 1 nit · **Request changes**" — that links to each finding
   and rolls up the badges + your Approve/dismiss decisions. Start as a recipe

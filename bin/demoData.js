@@ -166,7 +166,11 @@ const DRILLDOWN = `
 // A review finding card — the flagship "visual PR review" composition: a tone
 // badge ("Bug") + prose naming the problem + a mermaid control-flow of the buggy
 // path + the fix diff, all in one surface. This is the screenshot, reproduced.
-const REVIEW_BUG_PROSE = `The asset upload handler buffers the **entire request body into memory** before checking the 5 MB size cap, so a multi-GB upload can exhaust Node's heap on \`showcase serve\` before the 413 ever fires.`;
+const REVIEW_BUG_PROSE = `**What** — \`uploadAsset\` (server/app.ts:747) calls \`c.req.arrayBuffer()\` to buffer the **entire request body into memory** before the \`MAX_ASSET_BYTES\` check on line 759.
+
+**Why it matters** — the size guard never runs for an oversized request: a 2 GB upload allocates ~2 GB of heap and can OOM \`showcase serve\` before the 413 is ever returned. Local boards ship with no auth token, so any client on the network can trigger it.
+
+**Fix** — reject on the \`content-length\` header before reading the body (below). A streaming cap can follow for chunked uploads that omit the header.`;
 
 const REVIEW_BUG_FLOW = `flowchart LR
   Client([Client]) --> read[read body]
@@ -202,17 +206,34 @@ export const DEMO_SESSIONS = [
           {
             kind: "markdown",
             markdown:
-              "## Review summary\n\n**2 findings** · 1 bug · 1 nit — **request changes**\n\n| # | Severity | Finding |\n|---|----------|---------|\n| 1 | 🔴 Bug | Unbounded asset upload buffers the whole body before the size check |\n| 2 | 🟡 Nit | `mime` parse repeats the split in three handlers |\n\nThe blocker (#1) is below. Tap **Approve** on a card once it's addressed.",
+              "## Review summary\n\n**2 findings** · 1 bug · 1 nit — **request changes**\n\n| # | Severity | Finding | Location |\n|---|----------|---------|----------|\n| 1 | 🔴 Bug | Unbounded asset upload buffers the whole body before the size check | `server/app.ts:747` |\n| 2 | 🟡 Nit | `mime` parse duplicated across three handlers | `server/app.ts:182` |\n\n**Coverage** — read the asset upload + auth paths and the comment long-poll; did not exercise the SQL migration or the e2e suite.\n\nThe blocker (#1) is below. Tap **Approve** on a card once it's addressed.",
           },
         ],
       },
       {
-        title: "Bug: unbounded asset upload — server/app.ts",
+        title: "Bug: unbounded asset upload — server/app.ts:747",
         badge: { tone: "critical", label: "Bug" },
         parts: [
           { kind: "markdown", markdown: REVIEW_BUG_PROSE },
           { kind: "mermaid", mermaid: REVIEW_BUG_FLOW },
           { kind: "diff", patch: REVIEW_BUG_DIFF },
+        ],
+      },
+      {
+        title: "Nit: duplicated content-type parse — server/app.ts:182",
+        badge: { tone: "warning", label: "Nit" },
+        parts: [
+          {
+            kind: "markdown",
+            markdown:
+              "**What** — the `content-type` → mime split is copy-pasted in `uploadAsset`, `publishSurface`, and the snippet handler.\n\n**Why it matters** — three copies drift: a future tweak (charset stripping, casing) has to be made in three places or they diverge. Low severity, but cheap to fix now.\n\n**Fix** — extract a `parseMime(c)` helper and call it from each.",
+          },
+          {
+            kind: "code",
+            language: "typescript",
+            title: "the repeated line",
+            code: "const mime = (c.req.header('content-type') ?? '').split(';')[0].trim().toLowerCase();",
+          },
         ],
       },
     ],
