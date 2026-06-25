@@ -41,6 +41,43 @@ test("a published surface renders its parts as sandboxed frames", async ({ page,
   await expect(card.locator("iframe")).toHaveCount(2);
 });
 
+test("a markdown part renders LaTeX math as MathML, not KaTeX errors", async ({
+  page,
+  request,
+}) => {
+  // Guards the KaTeX integration, which is browser-bundle-sensitive: the plugin's
+  // internally-bundled katex mis-tokenizes control sequences under Vite's interop
+  // (\lambda → \l + ambda, rendered as a red error node), so only a real-browser
+  // check catches a regression. Inline + display math should each emit one <math>.
+  const session = await (
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "math session" } })
+  ).json();
+  const surface = await (
+    await request.post("/api/surfaces", {
+      data: {
+        title: "Math surface",
+        session: session.id,
+        parts: [
+          {
+            kind: "markdown",
+            markdown: "Euler: $e^{i\\pi} + 1 = 0$\n\n$$W = \\frac{1}{\\mu - \\lambda}$$",
+          },
+        ],
+      },
+    })
+  ).json();
+  await page.goto(`/?surface=${surface.id}`);
+  const card = page.locator(`.card[data-id="${surface.id}"]`);
+  await expect(card).toBeVisible();
+
+  // The markdown renders inside its sandboxed iframe; reach in to confirm the
+  // math became browser-native MathML and KaTeX hit no parse errors (a failure
+  // would emit a red mathcolor="#cc0000" node).
+  const frame = card.frameLocator("iframe").first();
+  await expect(frame.locator("math")).toHaveCount(2);
+  await expect(frame.locator("[mathcolor='#cc0000']")).toHaveCount(0);
+});
+
 test("a user comment appears live in the surface thread", async ({ page, request }) => {
   const { surfaceId } = await seedSurface(request);
   await page.goto(`/?surface=${surfaceId}`);

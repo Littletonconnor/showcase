@@ -9,7 +9,7 @@ These are showcase-specific operating notes. They never override system, develop
 A surface is a card built from ordered **parts**, each with a `kind`:
 
 - **`html`** — markup you write, rendered in a sandboxed iframe. Reach for it to draw: diagrams, UI sketches, data viz, explainers.
-- **`markdown`** — trusted viewer-rendered prose.
+- **`markdown`** — trusted viewer-rendered prose. Supports LaTeX math via KaTeX: `$inline$` and `$$display$$`.
 - **`mermaid`** — diagram source rendered by the trusted viewer.
 - **`diff`** — a patch you send as _data_, rendered natively by the trusted viewer as a syntax-highlighted code review.
 - **`terminal`** — monospace/ANSI output.

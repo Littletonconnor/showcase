@@ -165,6 +165,16 @@ export const DEMO_SESSIONS = [
         title: "Latency percentiles, before vs after",
         parts: [QUEUE_LATENCY_CHART],
       },
+      {
+        title: "Why the tail blew up",
+        parts: [
+          {
+            kind: "markdown",
+            markdown:
+              "## Little's Law\n\nQueue wait isn't linear in load. For the M/M/1 model the expected wait is\n\n$$W = \\frac{1}{\\mu - \\lambda}$$\n\nwhere $\\lambda$ is the arrival rate and $\\mu$ the service rate. As $\\lambda \\to \\mu$ the utilization $\\rho = \\frac{\\lambda}{\\mu} \\to 1$ and the wait $W \\to \\infty$ — which is why the p99 tail exploded before the batched dequeue lifted $\\mu$.",
+          },
+        ],
+      },
     ],
   },
   {

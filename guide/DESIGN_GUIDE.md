@@ -18,8 +18,10 @@ a `kind`:
   it for explanations, plans, and tradeoff write-ups — anything you'd otherwise
   hand-format in html. Markdown image syntax works too: `![caption](/a/<id>)`
   embeds an uploaded image (see Uploads below) inline, so one markdown part can
-  interleave prose, tables, code, and pictures. Only raw _HTML_ in the source is
-  escaped, not rendered — reach for an `html` part when you need live markup
+  interleave prose, tables, code, and pictures. LaTeX math renders via KaTeX —
+  `$inline$` and `$$display$$` (e.g. `$e^{i\pi}+1=0$`). Only raw _HTML_ in the
+  source is escaped, not rendered — reach for an `html` part when you need live
+  markup
   (interactivity, vector graphics, custom layout), not just to show a picture.
 - **`mermaid`** — diagram source you hand over as _text_; the viewer renders it
   to an SVG (flowcharts, sequence diagrams, ERDs, gantt, state, …). Reach for it

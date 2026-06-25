@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import MarkdownIt from "markdown-it";
+import mdKatexImport from "@vscode/markdown-it-katex";
+import katex from "katex";
 import type { MarkdownPart as MarkdownPartData } from "./api.ts";
 import { themeById } from "../../server/themes.ts";
 import { SandboxedPart } from "./SandboxedPart.tsx";
@@ -58,6 +60,11 @@ th, td { border: 0.5px solid var(--border); padding: 4px 8px; text-align: left; 
 th { background: var(--hover); }
 img { max-width: 100%; height: auto; border-radius: 6px; }
 hr { border: none; border-top: 0.5px solid var(--border); margin: 1em 0; }
+/* KaTeX math (mathml output). Display math centers and scrolls horizontally on
+   overflow; a small size bump keeps notation legible. The browser's own math
+   font renders the <math>, so don't override math's font-family. */
+.katex-block { overflow-x: auto; overflow-y: hidden; text-align: center; margin: 0.85em 0; }
+math { font-size: 1.08em; }
 `;
 
 // Dual-theme highlighting: shiki emits both themes inline (color +
@@ -72,6 +79,21 @@ const md = new MarkdownIt({
   linkify: true,
   highlight: (code, lang) => highlight(code, lang) ?? "",
 });
+
+// $inline$ and $$display$$ math via KaTeX. CJS/ESM interop: depending on the
+// bundler the callable plugin is the default import or nested one level under
+// it. `output: "mathml"` emits browser-native MathML only — no KaTeX fonts or
+// CSS to ship, so the renderer stays self-contained inside the sandbox iframe.
+// throwOnError:false renders a bad expression as a red error node, never throws.
+const katexPlugin = (
+  typeof mdKatexImport === "function"
+    ? mdKatexImport
+    : (mdKatexImport as { default: unknown }).default
+) as Parameters<MarkdownIt["use"]>[0];
+// Pass our own katex instance: the plugin otherwise falls back to its
+// internally-bundled copy, which Vite's CJS interop hands over in a broken state
+// (control sequences mis-tokenize, e.g. \lambda → \l + ambda).
+md.use(katexPlugin, { katex, throwOnError: false, output: "mathml" });
 
 // Open links in a new tab: the markdown renders inside the viewer document
 // itself, so a bare anchor click would navigate the whole board away.
