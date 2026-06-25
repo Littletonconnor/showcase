@@ -118,6 +118,32 @@ This is showcase's flagship workflow — _"the future of code review is multimod
 
 **Then run the loop** (below): the user reads each card, taps **Approve** or comments. On a change request, **`update_surface` the same card** with the revised diff — and downgrade or clear its badge — so the fix lands in place as a new version, not a new card. (`showcase demo` seeds a live example of this composition.)
 
+## Recipe: animated explainer
+
+showcase's second flagship workflow — **learning & explainers.** When the user shares a screenshot or snippet and says _"explain this on showcase"_ (or asks you to teach a concept), don't dump a wall of prose — build an **animated explainer** they can play through and scrub.
+
+Publish ONE surface that combines:
+
+1. _(when explaining a screenshot)_ an **`image` part** of the thing itself — `upload_asset` the screenshot, then `{kind:"image", assetId}` so the source sits at the top;
+2. an **`html` part with `kits:["animate"]`** — author an `.anim` with `.step` children. Each step is one beat of the explanation; the kit reveals them one at a time, **building up**, and injects play/pause + a scrub bar. Wrap a key phrase in `<span class="cue">…</span>` to highlight it.
+
+```jsonc
+// publish_surface — kits:["animate"] makes the html part a stepped, scrubbable explainer
+{
+  "title": "How the event loop works",
+  "badge": { "tone": "info", "label": "Explainer" },
+  "parts": [
+    {
+      "kind": "html",
+      "kits": ["animate"],
+      "html": "<div class=\"anim\"><div class=\"step\"><h2>The event loop</h2><p class=\"dim\">One thread — so how does async not block? Press play.</p></div><div class=\"step\"><p>The <b>call stack</b> runs your sync code, frame by frame.</p></div><div class=\"step\"><p>A <span class=\"cue\">setTimeout</span> hands its work to a Web API and returns — the stack keeps going.</p></div><div class=\"step\"><p>When the stack is empty, the <b>event loop</b> pulls the callback off the queue and runs it.</p></div></div>",
+    },
+  ],
+}
+```
+
+**Make each step earn its place** — one idea per step, building toward the whole. Lead with the question or the surprise; reveal the mechanism beat by beat. For a UI/diagram, pair the `animate` html with an `image` or `mermaid` part of what you're walking through. (`showcase demo` seeds a live example.)
+
 ## The feedback loop
 
 Treat showcase as a two-way surface. Do not assume you will automatically see comments after publishing; you must either arm a visible watcher or drain feedback at checkpoints.

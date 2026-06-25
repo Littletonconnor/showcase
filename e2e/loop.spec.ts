@@ -174,6 +174,43 @@ test("a review finding card renders its severity badge in the trusted header", a
   await expect(card.locator("iframe")).toHaveCount(3);
 });
 
+test("the animate kit plays a stepped explainer", async ({ page, request }) => {
+  // W2 L1: an html part with kits:["animate"] reveals steps one at a time and
+  // gets play/scrub controls injected — the explainer building block.
+  const session = await (
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "explainer" } })
+  ).json();
+  const surface = await (
+    await request.post("/api/surfaces", {
+      data: {
+        session: session.id,
+        title: "Explainer",
+        parts: [
+          {
+            kind: "html",
+            kits: ["animate"],
+            html: '<div class="anim"><div class="step" id="s0"><p>one</p></div><div class="step" id="s1"><p>two</p></div><div class="step" id="s2"><p>three</p></div></div>',
+          },
+        ],
+      },
+    })
+  ).json();
+  await page.goto(`/?surface=${surface.id}`);
+  const card = page.locator(`.card[data-id="${surface.id}"]`);
+  await expect(card).toBeVisible();
+
+  const frame = card.frameLocator("iframe").first();
+  // The kit injected its controls, and only the first step shows.
+  await expect(frame.locator(".anim-play")).toBeVisible();
+  await expect(frame.locator(".anim-range")).toBeVisible();
+  await expect(frame.locator("#s0")).toBeVisible();
+  await expect(frame.locator("#s2")).toBeHidden();
+
+  // Press play — it builds up to the last step.
+  await frame.locator(".anim-play").click();
+  await expect(frame.locator("#s2")).toBeVisible({ timeout: 10_000 });
+});
+
 test("clicking a diff line opens a line-anchored comment", async ({ page, request }) => {
   // R4: a click on a diff line (inside the sandboxed iframe + its shadow root)
   // rides the bridge out to the trusted card, which opens a line composer; the
