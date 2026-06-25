@@ -33,7 +33,7 @@ If `SHOWCASE_URL` is unset, the surface is at `http://localhost:8229`. If it is 
 
 ## Publishing
 
-Prefer MCP tools if the showcase MCP server is connected: `publish_surface` `{title, parts, sessionTitle?}`, `update_surface` `{id, title?, parts?}`, `wait_for_feedback`, `reply_to_user` `{message, surfaceId?}` (omit `surfaceId` to reply in the session-level chat), `list_surfaces`. (`publish_snippet` / `update_snippet` remain as html-only sugar aliases.) Otherwise use the CLI — session grouping is automatic:
+Prefer MCP tools if the showcase MCP server is connected: `publish_surface` `{title, parts, badge?, sessionTitle?}`, `update_surface` `{id, title?, parts?, badge?}`, `wait_for_feedback`, `reply_to_user` `{message, surfaceId?}` (omit `surfaceId` to reply in the session-level chat), `list_surfaces`. (`publish_snippet` / `update_snippet` remain as html-only sugar aliases.) Otherwise use the CLI — session grouping is automatic:
 
 ```sh
 showcase publish sketch.html --title "Cache layout" --agent your-name --session-title "Cache redesign"
@@ -54,6 +54,57 @@ Rules of thumb:
 - One concept per surface, with a clear title. A series of small surfaces beats one giant page.
 - **Iterate with `showcase update <id>`** (same card, new version) instead of publishing near-duplicates. Versions are kept; the user can flip between them.
 - For html parts, use the built-in kit from the guide (pre-styled form elements, SVG utility classes) before writing CSS; for anything else use the theme CSS variables so surfaces work in dark mode.
+
+## Header badges
+
+A surface can carry a `badge` — a short colored chip in the card header that the user scans first. It's generic, but it's built for **review findings**:
+
+| `tone`     | color | use for    |
+| ---------- | ----- | ---------- |
+| `critical` | red   | `Bug`      |
+| `warning`  | amber | `Nit`      |
+| `info`     | blue  | `Question` |
+| `success`  | green | `Praise`   |
+| `neutral`  | gray  | anything   |
+
+Pass `badge: { tone, label }` on `publish_surface` / `update_surface` (label ≤ 24 chars). On `update_surface`, pass `badge: null` to clear it — e.g. when a fix downgrades a `Bug` to a `Nit`, update the badge in the same call that revises the diff.
+
+## Recipe: visual PR review
+
+This is showcase's flagship workflow — _"the future of code review is multimodal."_ A reviewing agent publishes one **finding card** per issue, each combining the explanation, a picture of the bug, and the fix, so the user grasps it far faster than a text thread.
+
+**Per finding, publish a surface with:**
+
+1. a **badge** for severity (`{tone:"critical", label:"Bug"}`) and a title that names the location (`"Unbounded asset upload — server/app.ts"`);
+2. a **markdown** part — one tight paragraph: what's wrong and why it bites;
+3. when control flow matters, a **mermaid** part diagramming the buggy path (e.g. the request flow that reaches an OOM before the size check);
+4. a **diff** part with the proposed fix (a unified `patch` is the compact form).
+
+```jsonc
+// publish_surface
+{
+  "title": "Bug: unbounded asset upload — server/app.ts",
+  "badge": { "tone": "critical", "label": "Bug" },
+  "parts": [
+    {
+      "kind": "markdown",
+      "markdown": "The upload handler buffers the **entire body** into memory before the 5 MB check, so a multi-GB upload OOMs before the 413 fires.",
+    },
+    {
+      "kind": "mermaid",
+      "mermaid": "flowchart LR\n  Client-->read[read body]\n  read-->size{>5MB?}\n  size--no-->store\n  read-. OOM .->heap[heap exhausted]",
+    },
+    {
+      "kind": "diff",
+      "patch": "@@ -747,6 +747,11 @@\n   const mime = ...\n+  const len = Number(c.req.header('content-length') ?? 0);\n+  if (len > MAX_ASSET_BYTES) return c.json({ error: 'too large' }, 413);\n   const buf = new Uint8Array(await c.req.arrayBuffer());",
+    },
+  ],
+}
+```
+
+**Lead with a verdict card** (publish it first, `badge:{tone:"warning", label:"Request changes"}` or `{tone:"success", label:"Approve"}`): a short markdown summary — "2 findings · 1 bug · 1 nit" — with a table linking to each. `update_surface` it as findings resolve.
+
+**Then run the loop** (below): the user reads each card, taps **Approve** or comments. On a change request, **`update_surface` the same card** with the revised diff — and downgrade or clear its badge — so the fix lands in place as a new version, not a new card. (`showcase demo` seeds a live example of this composition.)
 
 ## The feedback loop
 

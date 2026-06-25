@@ -1,6 +1,24 @@
 import { z } from "zod";
 import { isKnownKit, KIT_IDS } from "./kits.ts";
-import type { SurfacePart } from "./types.ts";
+import { type SurfaceBadge, SURFACE_BADGE_TONES, type SurfacePart } from "./types.ts";
+
+const MAX_BADGE_LABEL = 24;
+const badgeSchema = z.object({
+  tone: z.enum(SURFACE_BADGE_TONES as unknown as [string, ...string[]]),
+  label: z.string().trim().min(1).max(MAX_BADGE_LABEL),
+});
+
+// A surface's header badge from request/tool input, shared by REST and MCP:
+//   undefined → field absent or malformed (leave an existing badge untouched)
+//   null      → explicit `null`, meaning "clear the badge" on update
+//   SurfaceBadge → a validated chip
+// An unknown tone is rejected (→ undefined) rather than coerced, so a typo never
+// paints the wrong color.
+export function coerceSurfaceBadge(raw: unknown): SurfaceBadge | null | undefined {
+  if (raw === null) return null;
+  const parsed = badgeSchema.safeParse(raw);
+  return parsed.success ? (parsed.data as SurfaceBadge) : undefined;
+}
 
 export interface SurfacePartParseResult {
   parts: SurfacePart[];

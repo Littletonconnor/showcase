@@ -216,6 +216,32 @@ export function runStoreContract(name: string, makeStore: () => Store | Promise<
     assert.deepEqual(await store.listSurfaces("missing"), []);
   });
 
+  contract("carries a badge through create, update, and clear", async (store) => {
+    const session = await store.createSession({ agent: "b" });
+    const created = await store.createSurface({
+      sessionId: session.id,
+      parts: [htmlPart("<p>x</p>")],
+      badge: { tone: "critical", label: "Bug" },
+    });
+    assert.deepEqual(created?.badge, { tone: "critical", label: "Bug" });
+
+    // A normal parts/title update preserves the badge and carries the prior one
+    // into history.
+    const revised = await store.updateSurface(created!.id, { parts: [htmlPart("<p>y</p>")] });
+    assert.deepEqual(revised?.badge, { tone: "critical", label: "Bug" });
+    assert.deepEqual(revised?.history[0]?.badge, { tone: "critical", label: "Bug" });
+
+    // Setting a new badge replaces it.
+    const downgraded = await store.updateSurface(created!.id, {
+      badge: { tone: "warning", label: "Nit" },
+    });
+    assert.deepEqual(downgraded?.badge, { tone: "warning", label: "Nit" });
+
+    // `null` clears it.
+    const cleared = await store.updateSurface(created!.id, { badge: null });
+    assert.equal(cleared?.badge, undefined);
+  });
+
   contract("pins and unpins a surface; unknown ids return null", async (store) => {
     const session = await store.createSession({ agent: "p" });
     const surface = await store.createSurface({

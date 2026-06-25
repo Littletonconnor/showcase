@@ -271,6 +271,7 @@ export class JsonFileStore implements Store {
       updatedAt: now,
       version: 1,
       history: [],
+      ...(input.badge ? { badge: input.badge } : {}),
     };
     this.surfaces.set(surface.id, surface);
     this.touch(input.sessionId);
@@ -287,10 +288,15 @@ export class JsonFileStore implements Store {
       title: surface.title,
       parts: clone(surface.parts),
       at: surface.updatedAt,
+      ...(surface.badge ? { badge: surface.badge } : {}),
     });
     if (surface.history.length > HISTORY_LIMIT) surface.history.shift();
     if (patch.title !== undefined) surface.title = patch.title.trim() || surface.title;
     if (patch.parts !== undefined) surface.parts = clone(patch.parts);
+    if (patch.badge !== undefined) {
+      if (patch.badge === null) delete surface.badge;
+      else surface.badge = patch.badge;
+    }
     surface.version += 1;
     surface.updatedAt = new Date().toISOString();
     this.touch(surface.sessionId);

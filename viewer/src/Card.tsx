@@ -13,6 +13,7 @@ import {
   type MarkdownPart as MarkdownPartData,
   type MermaidPart as MermaidPartData,
   type Surface,
+  type SurfaceBadge,
   type TerminalPart as TerminalPartData,
   type TracePart as TracePartData,
   surfaceLink,
@@ -174,6 +175,30 @@ function IconAction(props: {
       </TooltipTrigger>
       <TooltipContent>{props.label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+// A scannable status chip leading the card header — the review severity on a
+// finding card ("Bug" / "Nit" / "Question" / "Praise"), or any short label.
+// Tone → a quiet tinted pill that reads in both light and dark.
+const BADGE_TONE_CLASS: Record<SurfaceBadge["tone"], string> = {
+  critical: "bg-red-500/12 text-red-700 dark:text-red-300 ring-red-500/25",
+  warning: "bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-amber-500/25",
+  info: "bg-blue-500/12 text-blue-700 dark:text-blue-300 ring-blue-500/25",
+  success: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-500/25",
+  neutral: "bg-muted text-muted-foreground ring-border",
+};
+
+function SurfaceBadgeChip(props: { badge: SurfaceBadge }) {
+  return (
+    <span
+      className={cx(
+        "flex-none rounded-full px-2 py-[1px] text-[11px] font-semibold tracking-[0.01em] ring-1 ring-inset",
+        BADGE_TONE_CLASS[props.badge.tone] ?? BADGE_TONE_CLASS.neutral,
+      )}
+    >
+      {props.badge.label}
+    </span>
   );
 }
 
@@ -415,6 +440,7 @@ export function Card(props: { surface: Surface }) {
       ref={cardRef}
     >
       <div className="flex items-center gap-2 px-4 py-3">
+        {props.surface.badge ? <SurfaceBadgeChip badge={props.surface.badge} /> : null}
         <span className="card-title truncate text-[14px] font-semibold tracking-[-0.01em] text-foreground max-[700px]:min-w-0 max-[700px]:flex-[0_1_auto]">
           {props.surface.title}
         </span>

@@ -64,12 +64,12 @@ server.registerTool(
     description: MCP_TOOL_DESCRIPTIONS.publishSurfaceStdio,
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.publishSurface,
   },
-  async ({ title, parts, sessionTitle }) => {
+  async ({ title, parts, badge, sessionTitle }) => {
     const session = await ensureSession(sessionTitle);
     const created = JSON.parse(
       await api("/api/surfaces", {
         method: "POST",
-        body: JSON.stringify({ title, parts, session }),
+        body: JSON.stringify({ title, parts, badge, session }),
       }),
     );
     return text({ ...created, url: `${API}/session/${created.sessionId}/s/${created.id}` });
@@ -82,9 +82,12 @@ server.registerTool(
     description: MCP_TOOL_DESCRIPTIONS.updateSurface,
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.updateSurface,
   },
-  async ({ id, parts, title }) => {
+  async ({ id, parts, title, badge }) => {
     const updated = JSON.parse(
-      await api(`/api/surfaces/${id}`, { method: "PUT", body: JSON.stringify({ parts, title }) }),
+      await api(`/api/surfaces/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ parts, title, badge }),
+      }),
     );
     return text({ ...updated, url: `${API}/session/${updated.sessionId}/s/${updated.id}` });
   },

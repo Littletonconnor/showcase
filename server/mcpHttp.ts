@@ -8,10 +8,11 @@ import {
   htmlPart,
   type Store,
   type Surface,
+  type SurfaceBadge,
   type SurfacePart,
 } from "./types.ts";
 import { HTTP_MCP_TOOLS, MCP_INSTRUCTIONS, MCP_SERVER_INFO } from "./mcpSpec.ts";
-import { coerceSurfaceParts } from "./surfaceParts.ts";
+import { coerceSurfaceBadge, coerceSurfaceParts } from "./surfaceParts.ts";
 
 // Stateless MCP over streamable HTTP: every request is self-contained, which
 // is what a serverless deployment needs. Session continuity is explicit —
@@ -27,11 +28,15 @@ export interface McpDeps {
   publishSurface(input: {
     parts: SurfacePart[];
     title?: string;
+    badge?: SurfaceBadge;
     session?: string;
     sessionTitle?: string;
     agent?: string;
   }): FlowResult<Surface>;
-  reviseSurface(id: string, patch: { parts?: SurfacePart[]; title?: string }): FlowResult<Surface>;
+  reviseSurface(
+    id: string,
+    patch: { parts?: SurfacePart[]; title?: string; badge?: SurfaceBadge | null },
+  ): FlowResult<Surface>;
   createComment(input: {
     text: string;
     surface?: string;
@@ -80,6 +85,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
         const result = await deps.publishSurface({
           parts,
           title: typeof args.title === "string" ? args.title : undefined,
+          badge: coerceSurfaceBadge(args.badge) ?? undefined,
           session: typeof args.session === "string" ? args.session : undefined,
           sessionTitle: typeof args.sessionTitle === "string" ? args.sessionTitle : undefined,
           agent: typeof args.agent === "string" ? args.agent : undefined,
@@ -89,8 +95,9 @@ export function registerMcp(app: Hono, deps: McpDeps) {
       }
       case "update_surface":
       case "update_snippet": {
-        const patch: { parts?: SurfacePart[]; title?: string } = {
+        const patch: { parts?: SurfacePart[]; title?: string; badge?: SurfaceBadge | null } = {
           title: typeof args.title === "string" ? args.title : undefined,
+          ...("badge" in args ? { badge: coerceSurfaceBadge(args.badge) } : {}),
         };
         if (name === "update_snippet") {
           if (typeof args.html === "string")

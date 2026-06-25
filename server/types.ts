@@ -185,10 +185,31 @@ export type SurfacePart =
   | CodePart
   | ChartPart;
 
+// A short, colored chip on a surface's header. Deliberately generic (not
+// PR-specific), but the driver is review **finding cards**: `tone` picks the
+// color, `label` is the word the user scans — "Bug" / "Nit" / "Question" /
+// "Praise". Carried with the versioned content so a finding can change severity
+// across revisions (e.g. an agent downgrades a bug to a nit after a fix).
+export type SurfaceBadgeTone = "critical" | "warning" | "info" | "success" | "neutral";
+
+export interface SurfaceBadge {
+  tone: SurfaceBadgeTone;
+  label: string;
+}
+
+export const SURFACE_BADGE_TONES: readonly SurfaceBadgeTone[] = [
+  "critical",
+  "warning",
+  "info",
+  "success",
+  "neutral",
+];
+
 export interface SurfaceVersion {
   version: number;
   title: string;
   parts: SurfacePart[];
+  badge?: SurfaceBadge;
   at: string;
 }
 
@@ -201,6 +222,9 @@ export interface Surface {
   updatedAt: string;
   version: number;
   history: SurfaceVersion[];
+  // A scannable status chip in the header — review severity ("Bug"/"Nit"/…),
+  // or any short label. Versioned content (see SurfaceBadge).
+  badge?: SurfaceBadge;
   // Pinned to the cross-session Library — a persistent visual knowledge base.
   // Pinning never creates a new version (it's not an edit to the content).
   pinned?: boolean;
@@ -264,11 +288,14 @@ export interface CreateSurfaceInput {
   sessionId: string;
   title?: string;
   parts: SurfacePart[];
+  badge?: SurfaceBadge;
 }
 
 export interface UpdateSurfaceInput {
   title?: string;
   parts?: SurfacePart[];
+  // `null` clears the badge; `undefined` leaves it unchanged.
+  badge?: SurfaceBadge | null;
 }
 
 export interface CreateCommentInput {

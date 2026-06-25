@@ -1024,7 +1024,12 @@ const commands = {
         const snippet = snip.parts
           ? await api("/api/surfaces", {
               method: "POST",
-              body: JSON.stringify({ session: session.id, title: snip.title, parts: snip.parts }),
+              body: JSON.stringify({
+                session: session.id,
+                title: snip.title,
+                parts: snip.parts,
+                badge: snip.badge,
+              }),
             })
           : await api("/api/snippets", {
               method: "POST",

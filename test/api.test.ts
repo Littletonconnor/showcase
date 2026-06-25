@@ -103,6 +103,66 @@ test("publish into unknown session 404s instead of silently creating", async () 
   assert.equal(res.status, 404);
 });
 
+test("a surface badge is validated, echoed, updatable, and clearable", async () => {
+  const app = makeApp();
+  const created = (await (
+    await app.request(
+      "/api/surfaces",
+      json({
+        title: "Bug: unbounded upload",
+        badge: { tone: "critical", label: "Bug" },
+        parts: [{ kind: "markdown", markdown: "the body buffers before the cap" }],
+      }),
+    )
+  ).json()) as any;
+  assert.deepEqual(created.badge, { tone: "critical", label: "Bug" });
+
+  // surfaceMeta (the read path) carries it too.
+  const full = (await (await app.request(`/api/surfaces/${created.id}`)).json()) as any;
+  assert.deepEqual(full.badge, { tone: "critical", label: "Bug" });
+
+  // A bad tone is rejected (→ no badge), never coerced to a wrong color.
+  const badTone = (await (
+    await app.request(
+      "/api/surfaces",
+      json({
+        title: "x",
+        badge: { tone: "purple", label: "?" },
+        parts: [{ kind: "html", html: "<p>x</p>" }],
+      }),
+    )
+  ).json()) as any;
+  assert.equal(badTone.badge, undefined);
+
+  const putJson = (body: unknown) => ({
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  // Update replaces the badge.
+  const downgraded = (await (
+    await app.request(
+      `/api/surfaces/${created.id}`,
+      putJson({ badge: { tone: "warning", label: "Nit" } }),
+    )
+  ).json()) as any;
+  assert.deepEqual(downgraded.badge, { tone: "warning", label: "Nit" });
+
+  // A parts-only update leaves the badge untouched.
+  await app.request(
+    `/api/surfaces/${created.id}`,
+    putJson({ parts: [{ kind: "html", html: "<p>fixed</p>" }] }),
+  );
+  const afterParts = (await (await app.request(`/api/surfaces/${created.id}`)).json()) as any;
+  assert.deepEqual(afterParts.badge, { tone: "warning", label: "Nit" });
+
+  // `null` clears it.
+  await app.request(`/api/surfaces/${created.id}`, putJson({ badge: null }));
+  const cleared = (await (await app.request(`/api/surfaces/${created.id}`)).json()) as any;
+  assert.equal(cleared.badge, undefined);
+});
+
 test("pin/unpin a surface drives the Library collection", async () => {
   const app = makeApp();
   const a = (await (

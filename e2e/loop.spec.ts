@@ -140,6 +140,40 @@ test("an annotation pins a note to a spot and stores the anchor", async ({ page,
   expect(anchored?.anchor?.xPct, "the comment carries the anchor").toBeGreaterThanOrEqual(0);
 });
 
+test("a review finding card renders its severity badge in the trusted header", async ({
+  page,
+  request,
+}) => {
+  // The flagship PR-review composition: a badge + prose + a control-flow diagram
+  // + the fix diff, all in one surface. The badge is trusted-origin chrome (not
+  // agent markup), so its text is a real light-DOM node we can assert on.
+  const session = await (
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "review" } })
+  ).json();
+  const surface = await (
+    await request.post("/api/surfaces", {
+      data: {
+        title: "Bug: unbounded asset upload",
+        session: session.id,
+        badge: { tone: "critical", label: "Bug" },
+        parts: [
+          { kind: "markdown", markdown: "buffers the whole body before the size check" },
+          { kind: "mermaid", mermaid: "flowchart LR\n  A-->B{>5MB?}\n  B--no-->C[store]" },
+          { kind: "diff", patch: "@@ -1 +1 @@\n-a\n+b" },
+        ],
+      },
+    })
+  ).json();
+  await page.goto(`/?surface=${surface.id}`);
+
+  const card = page.locator(`.card[data-id="${surface.id}"]`);
+  await expect(card).toBeVisible();
+  // The severity chip leads the header, with its label as a plain light-DOM node.
+  await expect(card.getByText("Bug", { exact: true })).toBeVisible();
+  // All three parts render in their own sandboxed iframes.
+  await expect(card.locator("iframe")).toHaveCount(3);
+});
+
 test("pinning a surface collects it in the Library across sessions", async ({ page, request }) => {
   const { surfaceId } = await seedSurface(request);
   await page.goto(`/?surface=${surfaceId}`);

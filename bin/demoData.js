@@ -163,9 +163,60 @@ const DRILLDOWN = `
   </button>
 </div>`;
 
+// A review finding card — the flagship "visual PR review" composition: a tone
+// badge ("Bug") + prose naming the problem + a mermaid control-flow of the buggy
+// path + the fix diff, all in one surface. This is the screenshot, reproduced.
+const REVIEW_BUG_PROSE = `The asset upload handler buffers the **entire request body into memory** before checking the 5 MB size cap, so a multi-GB upload can exhaust Node's heap on \`showcase serve\` before the 413 ever fires.`;
+
+const REVIEW_BUG_FLOW = `flowchart LR
+  Client([Client]) --> read[read body]
+  read --> size{>5MB?}
+  size -- yes --> late[413 late]
+  size -- no --> store[store]
+  read -. OOM .-> heap[heap exhausted]`;
+
+const REVIEW_BUG_DIFF = `diff --git a/server/app.ts b/server/app.ts
+--- a/server/app.ts
++++ b/server/app.ts
+@@ -747,6 +747,11 @@ app.post('/api/assets', async (c) => {
+   const mime = (c.req.header('content-type') ?? '').split(';')[0].trim().toLowerCase();
++  // Reject oversize uploads before buffering the body into memory.
++  const len = Number(c.req.header('content-length') ?? 0);
++  if (len > MAX_ASSET_BYTES) {
++    return c.json({ error: \`asset exceeds \${MAX_ASSET_BYTES} bytes\` }, 413);
++  }
+   const buf = new Uint8Array(await c.req.arrayBuffer());
+   let envelope: any = null;`;
+
 // Seeded in order; the viewer sorts sessions by last activity, so the last
 // session here ends up on top.
 export const DEMO_SESSIONS = [
+  {
+    agent: "claude-code",
+    title: "Review: streaming asset uploads",
+    snippets: [
+      {
+        title: "Verdict — 1 blocker, 1 nit",
+        badge: { tone: "warning", label: "Request changes" },
+        parts: [
+          {
+            kind: "markdown",
+            markdown:
+              "## Review summary\n\n**2 findings** · 1 bug · 1 nit — **request changes**\n\n| # | Severity | Finding |\n|---|----------|---------|\n| 1 | 🔴 Bug | Unbounded asset upload buffers the whole body before the size check |\n| 2 | 🟡 Nit | `mime` parse repeats the split in three handlers |\n\nThe blocker (#1) is below. Tap **Approve** on a card once it's addressed.",
+          },
+        ],
+      },
+      {
+        title: "Bug: unbounded asset upload — server/app.ts",
+        badge: { tone: "critical", label: "Bug" },
+        parts: [
+          { kind: "markdown", markdown: REVIEW_BUG_PROSE },
+          { kind: "mermaid", mermaid: REVIEW_BUG_FLOW },
+          { kind: "diff", patch: REVIEW_BUG_DIFF },
+        ],
+      },
+    ],
+  },
   {
     agent: "pi",
     title: "Queue profiling",

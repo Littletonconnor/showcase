@@ -17,9 +17,10 @@ import {
   partsByteLength,
   type Store,
   type Surface,
+  type SurfaceBadge,
   type SurfacePart,
 } from "./types.ts";
-import { validateSurfaceParts } from "./surfaceParts.ts";
+import { coerceSurfaceBadge, validateSurfaceParts } from "./surfaceParts.ts";
 
 const MAX_SURFACE_BYTES = 2 * 1024 * 1024;
 const MAX_WAIT_SECONDS = 300;
@@ -185,6 +186,7 @@ const surfaceMeta = (s: Surface) => ({
   updatedAt: s.updatedAt,
   version: s.version,
   parts: stripParts(s.parts),
+  ...(s.badge ? { badge: s.badge } : {}),
   ...(s.pinned ? { pinned: true } : {}),
 });
 
@@ -214,6 +216,7 @@ const writeResult = (s: Surface) => ({
   updatedAt: s.updatedAt,
   version: s.version,
   kinds: s.parts.map((p) => p.kind),
+  ...(s.badge ? { badge: s.badge } : {}),
 });
 
 export interface CommentWait {
@@ -342,6 +345,7 @@ export function createApp({
   async function publishSurface(input: {
     parts: SurfacePart[];
     title?: string;
+    badge?: SurfaceBadge;
     session?: string;
     sessionTitle?: string;
     agent?: string;
@@ -374,6 +378,7 @@ export function createApp({
       sessionId,
       parts: input.parts,
       title: input.title?.slice(0, MAX_TITLE),
+      badge: input.badge,
     });
     if (!surface) return { error: "session not found", status: 404 };
     bus.broadcast({ type: "surface-created", id: surface.id, sessionId, version: 1 });
@@ -418,7 +423,7 @@ export function createApp({
 
   async function reviseSurface(
     id: string,
-    patch: { parts?: SurfacePart[]; title?: string },
+    patch: { parts?: SurfacePart[]; title?: string; badge?: SurfaceBadge | null },
   ): Promise<
     { surface: Surface; userFeedback?: Feedback[] } | { error: string; status: 400 | 404 | 413 }
   > {
@@ -795,9 +800,11 @@ export function createApp({
   });
 
   async function publish(c: any, body: any, parts: SurfacePart[]) {
+    const badge = coerceSurfaceBadge(body.badge);
     const result = await publishSurface({
       parts,
       title: typeof body.title === "string" ? body.title : undefined,
+      badge: badge ?? undefined,
       session: typeof body.session === "string" ? body.session : undefined,
       sessionTitle: typeof body.sessionTitle === "string" ? body.sessionTitle : undefined,
       agent: typeof body.agent === "string" ? body.agent : undefined,
@@ -831,6 +838,8 @@ export function createApp({
     const result = await reviseSurface(c.req.param("id"), {
       parts,
       title: typeof body.title === "string" ? body.title : undefined,
+      // `null` clears the badge; absent/malformed leaves it unchanged.
+      badge: "badge" in body ? coerceSurfaceBadge(body.badge) : undefined,
     });
     if ("error" in result) return c.json({ error: result.error }, result.status);
     return c.json({

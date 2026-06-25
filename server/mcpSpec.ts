@@ -35,6 +35,11 @@ const d = {
   surfaceId: "Surface id returned by publish_surface",
   replacementTitle: "Replacement title",
   replacementParts: "Replacement parts array",
+  badge:
+    "Optional status chip shown in the card header — ideal for review finding cards. " +
+    '{tone, label}: tone is critical (red, "Bug") | warning (amber, "Nit") | info (blue, ' +
+    '"Question") | success (green, "Praise") | neutral (gray); label is one short word. ' +
+    "On update_surface, pass null to clear it.",
   timeout: "How long to wait, 0-300",
   afterSeq: "explicit cursor override (default: where the agent left off)",
   replyMessage: "Plain-text reply",
@@ -163,6 +168,16 @@ export const MCP_TOOL_DESCRIPTIONS = {
     "Fetch the design contract: surface parts, html fragment rules, theme CSS variables, CDN allowlist, and the interactivity bridge. Call once per session before publishing.",
 } as const;
 
+const MCP_BADGE_JSON_SCHEMA = {
+  type: "object",
+  description: d.badge,
+  properties: {
+    tone: { type: "string", enum: ["critical", "warning", "info", "success", "neutral"] },
+    label: { type: "string" },
+  },
+  required: ["tone", "label"],
+} as const;
+
 export const HTTP_MCP_TOOLS = [
   {
     name: "publish_surface",
@@ -172,6 +187,7 @@ export const HTTP_MCP_TOOLS = [
       properties: {
         title: { type: "string", description: d.title },
         parts: MCP_PARTS_JSON_SCHEMA,
+        badge: MCP_BADGE_JSON_SCHEMA,
         session: { type: "string", description: d.session },
         sessionTitle: { type: "string", description: d.sessionTitle },
         agent: { type: "string", description: d.agent },
@@ -188,6 +204,7 @@ export const HTTP_MCP_TOOLS = [
         id: { type: "string", description: d.surfaceId },
         parts: MCP_PARTS_JSON_SCHEMA,
         title: { type: "string", description: d.replacementTitle },
+        badge: MCP_BADGE_JSON_SCHEMA,
       },
       required: ["id"],
     },
@@ -330,16 +347,36 @@ const mcpPartSchema = z
       "terminal {kind:'terminal',text} (monospace output; ANSI SGR colors rendered)",
   );
 
+const badgeStdioSchemas = {
+  badge: z
+    .object({
+      tone: z.enum(["critical", "warning", "info", "success", "neutral"]),
+      label: z.string(),
+    })
+    .optional()
+    .describe(d.badge),
+  updateBadge: z
+    .object({
+      tone: z.enum(["critical", "warning", "info", "success", "neutral"]),
+      label: z.string(),
+    })
+    .nullable()
+    .optional()
+    .describe(d.badge),
+};
+
 export const STDIO_MCP_INPUT_SCHEMAS = {
   publishSurface: {
     title: z.string().describe(d.title),
     parts: z.array(mcpPartSchema).describe(MCP_PARTS_DESCRIPTION),
+    badge: badgeStdioSchemas.badge,
     sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
   },
   updateSurface: {
     id: z.string().describe(d.surfaceId),
     parts: z.array(mcpPartSchema).optional().describe(d.replacementParts),
     title: z.string().optional().describe(d.replacementTitle),
+    badge: badgeStdioSchemas.updateBadge,
   },
   publishSnippet: {
     title: z.string().describe("Short human-readable title shown above the snippet"),

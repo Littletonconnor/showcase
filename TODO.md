@@ -11,10 +11,20 @@ how to pick up work autonomously. Architecture detail lives in `AGENTS.md`.
 
 A live visual surface for AI: an agent publishes **surfaces** (cards built from
 typed parts — html, markdown, mermaid, diff, terminal, image, json, code, trace)
-and they render in a browser you watch and comment on. Today the agent lives in
-your editor (Cursor / Claude Code) and reaches _out_ to showcase. The roadmap
-(section 6, Pillar B) turns showcase into a **local Claude chat app** where the
-AI runs server-side and surfaces are its inline visual artifacts.
+and they render in a browser you watch and comment on. The agent lives in your
+editor (Cursor / Claude Code) and reaches _out_ to showcase over MCP.
+
+**The product is two flagship workflows** (section 6), not a pile of features:
+
+1. **Visual PR review** (flagship) — _"the future of code review is multimodal."_
+   An agent reviews a diff and publishes **finding cards** that combine prose, a
+   control-flow **mermaid** diagram of the bug, and the **fix diff** in one card;
+   you read, push back, and it revises the fix in place; the review carries a
+   severity-tagged verdict you can share. No GitHub thread renders like that.
+2. **Learning & explainers** — share a screenshot/snippet with your agent and get
+   back an **animated, interactive** explainer you can scrub and ask questions of.
+
+Everything else in the roadmap is _supporting capability_ in service of those two.
 
 **Stack:** runtime-agnostic Hono server (`server/`) + a React 19 / zustand /
 Tailwind v4 / shadcn viewer (`viewer/`, Vite → one self-contained
@@ -125,10 +135,19 @@ The agent receives it when it next touches showcase:
 
 ## 6. Roadmap
 
-Each pillar is scoped enough to execute solo: **problem → approach → acceptance
-→ effort (AI time)**. Pillars are independent; do them in any order. Effort is a
-rough first-cut estimate, not a commitment. The order below is roughly by
-leverage — **A and B are where the product actually wins.**
+The roadmap is organized by **workflow**, not by capability. The two flagship
+workflows (§1) come first and set priority; the **supporting capabilities** below
+them are tagged with the workflow they serve. Each item is scoped to execute
+solo: **problem → approach → acceptance → effort (AI time)**. Effort is a rough
+first-cut, not a commitment.
+
+**Why workflows, not features:** the rendering primitives for a great review card
+already exist — the multimodal card in the product screenshot is just a
+`[prose, mermaid, diff]` surface, and the diff renderer already does file
+headers, line numbers, syntax highlighting, and unchanged-line folding. What's
+missing is the _workflow_ that makes an agent produce those cards by default, and
+the review-level structure (severity, verdict, line comments, share-back) that
+turns a pile of cards into a review. That's Workflow 1.
 
 ### Shipped (the foundation — don't redo it, build on it)
 
@@ -151,170 +170,130 @@ stable base everything below assumes.
   lucide icon set, a subtle motion pass, Sonner toasts, one type/spacing scale,
   and a dark-mode pass.
 
-### Pillar A ⭐ — Richer surfaces (the main priority)
+### Shipped capabilities (foundation for both workflows)
 
-The output side is the least-developed, highest-upside part of the product: html
-parts and kits make surfaces _interactive explainers_, not static pictures — and
-that's the thing no terminal can do. **Build here first.**
+These are done — build _on_ them, don't redo them. They're the primitives the two
+workflows compose.
 
-The richest explainer primitives ship self-contained (no CDN) — the project
-bundles its libraries rather than relying on jsdelivr/unpkg.
+- [x] **Charts** — native `chart` part (Recharts), themed SVG, `showcase chart`.
+- [x] **Math** — markdown renders `$inline$`/`$$display$$` via KaTeX → MathML,
+      self-contained, crisp in Chromium + WebKit.
+- [x] **Drill-down loop** — a surface's `sendPrompt()` renders as a **"Suggested
+      by this surface"** chip with a one-tap **Send to agent** relay (can't
+      impersonate the user). Closes output → tap → revise.
+- [x] **Kit gallery / guide pass** — copy-paste markup for the `issues` / `slides`
+      kits + the drill-down pattern documented.
+- [x] **Editor-agent chat (was Pillar B — complete).** In-browser chat talks to the
+      user's running Claude Code / Cursor over the MCP bridge (no hosted SDK).
+      Presence/responding state, session-level chat, sidebar presence dots, the
+      arm flow, and no-SDK auto-start (`showcase chat` + MCP `instructions`) all
+      shipped and proven live. The one inherent limit — showcase can't _push_ a
+      turn into an idle editor (MCP is pull-based) — is surfaced honestly in the UI.
+- [x] **Anchored annotations** — a 📍 toggle drops a pin at a clicked spot and
+      stores the comment with a resolution-independent `anchor` (`{xPct, yPct}`)
+      that rides through to the agent. _(Point anchor; line/element anchor is R4.)_
+- [x] **Structured feedback** — one-tap **Approve** (👍) posts a recognizable
+      `author:"user"` signal; the composer is "request a change."
+- [x] **Pinned Library** — a bookmark pins any surface into a cross-session
+      **Library** (`Surface.pinned`, `PUT /api/surfaces/:id/pin`, `GET /api/library`).
+- [x] **Hardened oracle** — `render-smoke.spec.ts` (every part kind renders at a
+      real size) + an opt-in real-Chrome Playwright lane.
 
-- [x] **Charts (shipped).** A native first-class `chart` part (Recharts) — bar /
-      line / area / pie, rendered as themed SVG in the trusted viewer (data, not
-      markup, so no sandbox), accent-led palette, re-themes with the board.
-      `showcase chart <spec.json>` + guide + demo.
-- [x] **Math (shipped).** Markdown parts render `$inline$` / `$$display$$` via
-      KaTeX with `output: "mathml"` — browser-native, no fonts/CSS shipped, fully
-      self-contained. Verified crisp in Chromium + WebKit. (Integrated into
-      markdown rather than a standalone kit — math rides with prose.)
-- [x] **Drill-down loop (shipped).** A surface's `sendPrompt()` button now renders
-      as a **"Suggested by this surface"** chip with a one-tap **Send to agent**
-      relay (re-posts as a real user message → reaches the agent, keeping the
-      trust boundary: surface markup still can't impersonate the user). Documented
-      in the design guide with a copy-paste example; demo card included. Closes the
-      output → tap → revise loop.
-- [x] **Kit gallery / guide pass (shipped).** Added copy-paste markup examples
-      for the `issues` and `slides` kits, and documented the `sendPrompt`
-      drill-down pattern (above) — so agents reach for rich, interactive html
-      parts instead of plain markdown.
-- **Canvas view (bigger bet, opt-in).** An optional spatial board — arrange a
-  session's surfaces freely (tldraw-style) instead of the vertical stream, for
-  "map a whole system" layouts. Behind a flag; the stream stays the default.
-  _Effort:_ large; only worth it if the system-explainer use case proves out.
+---
 
-### Pillar B ⭐ — Chat with your editor agent (NOT a hosted SDK)
+### Workflow 1 ⭐⭐ — Visual PR review (FLAGSHIP — build here first)
 
-**Decided direction (corrected):** the in-browser chat talks to the user's
-already-running **Claude Code / Cursor** session over the existing MCP bridge —
-it is NOT a server-hosted `@anthropic-ai/sdk` / Agent SDK runtime. The whole
-point of the MCP server is to reach the editor agent. (See the memory note and
-§7.) The bridge is already two-way: `wait_for_feedback` carries browser comments
-→ agent; `reply_to_user` carries agent → browser (SSE).
+> _An agent reviews a diff and publishes multimodal **finding cards**; you read,
+> push back, and it revises the fix in place; the review carries a severity-tagged
+> verdict you can share._ The rendering already works — this builds the workflow
+> and the review-level structure around it. Do these roughly in order; R1 unlocks
+> the rest and reproduces the product screenshot by default.
 
-**The load-bearing constraint:** it's **pull-based**. showcase cannot inject a
-turn into Claude Code — the agent only receives a message while parked in
-`wait_for_feedback` (or on its next tool call). When it's parked it's real-time;
-otherwise messages queue until it checks. The UI must surface this honestly.
+- **R1 — Finding cards: severity tags + the recipe + a demo.** _The first thing to
+  build._ (a) A generic `Surface.badge` (`{ tone, label }`, e.g.
+  `{tone:"critical", label:"Bug"}` / `warning`→Nit / `info`→Question /
+  `success`→Praise) rendered as a colored chip in the card header — so a review
+  reads as scannable findings, not a pile. (b) The canonical **finding-card
+  recipe** in the agent guide: title encodes severity + file; body is `[prose,
+mermaid control-flow of the bug, fix diff]`; revise the fix as a new version on
+  push-back. (c) A demo finding (the screenshot, reproduced) in `bin/demoData.js`.
+  _Acceptance:_ "review this diff on showcase" yields tagged, multimodal finding
+  cards; the demo reproduces the screenshot. _Effort:_ ~3–4h.
+- **R2 — Review summary / verdict surface.** A lead card per review session —
+  "3 findings · 2 bugs, 1 nit · **Request changes**" — that links to each finding
+  and rolls up the badges + your Approve/dismiss decisions. Start as a recipe
+  (agent publishes/updates it); upgrade to an auto-rollup later. _Acceptance:_
+  a session opens with a verdict card that reflects its findings. _Effort:_ ~2–3h.
+- **R3 — `showcase review` ingestion.** One command turns a PR/diff into a review
+  session: read `gh pr diff <n>` / `git diff <range>`, create a session titled
+  after the PR, and seed a verdict placeholder — so the agent starts from a
+  scaffold instead of hand-building. _Acceptance:_ `showcase review 123` opens a
+  ready review session. _Effort:_ ~2–3h.
+- **R4 — Line-anchored diff comments.** Comment on a specific diff line, not a
+  pixel. Extends the anchor model with a line/element variant for `diff`/`code`
+  parts (the diff iframe reports the clicked line over the postMessage bridge,
+  like `sendPrompt`). The differentiating primitive — and the hardest. _Acceptance:_
+  click line 752 of a diff, leave a note, the agent's feedback carries the line.
+  _Effort:_ ~4–6h (bridge into the sandboxed diff frame).
+- **R5 — Post the review back to GitHub (round-trip).** Turn a review session into
+  a `gh pr review` with line comments + verdict — "share the results." Optional,
+  highest effort, biggest payoff for the reviewer identity. _Effort:_ ~3–5h.
 
-- [x] **Agent presence + responding state (shipped).** Server tracks active
-      `wait_for_feedback` waiters per session (abort-aware) and broadcasts an
-      `agent-presence` event; the sessions API seeds `listening` and `/api/events`
-      sends it on connect. Viewer shows a live green **"Listening"** chip (or a
-      clickable **"Agent idle"** that copies an arm-your-agent instruction) and a
-      **"responding…"** typing indicator that clears on reply or a 90s timeout.
-      Guide updated with the wait→reply→wait loop. Proven live end-to-end.
-- [x] **Session-level chat (shipped).** `createComment` now accepts a surfaceless
-      comment (`session` id → `surfaceId` null); a **"Chat with your agent"** panel
-      at the bottom of the stream posts and shows these, with the same listening +
-      responding indicators. `reply_to_user` takes an optional `surfaceId` (both
-      MCP transports) — omit it to reply session-level. Proven live end-to-end.
-- [x] **Sidebar presence dots (shipped).** A small pulsing green dot on each
-      session row's meta line when that session's agent is parked listening (live
-      via the same `agent-presence` SSE) — reachable agents at a glance.
-- [x] **Tighten the arm flow (shipped).** Agent-guide phrasing strengthened
-      (surface vs session-level comments, the wait→reply→wait loop), and CLI
-      parity: `showcase comment --session <id>` posts a session-level reply.
-- [x] **Auto-start the chat loop, no SDK (shipped).** Two no-SDK levers so the
-      user doesn't paste an arm instruction every session: (1) the MCP server's
-      `instructions` now prime the chat-loop behavior, so any connected Claude
-      Code / Cursor learns wait→reply→wait automatically on connect (universal,
-      server-side); (2) `showcase chat` launches Claude Code already armed with an
-      opening prompt that enters the loop (`--print` emits the prompt for Cursor /
-      paste). One command to start; the presence indicator shows the loop is alive.
+### Workflow 2 ⭐ — Learning & explainers
 
-**Pillar B is complete** (presence/responding, sidebar dots, drill-down relay,
-session-level chat, arm flow, no-SDK auto-start). The only thing showcase still
-cannot do is _push_ a turn into an idle editor — inherent to MCP; surfaced
-honestly in the UI, and reduced to one command / one trigger.
+> _Share a screenshot/snippet with your agent; get back an animated, interactive
+> explainer you can scrub and question._ Leans on html parts + the kit system.
 
-### Pillar C — Sharpen the loop (the differentiator)
+- **L1 — Animation kit.** An opt-in `animate` kit (`server/kits.ts`) for html
+  parts: self-contained CSS/JS scaffolds for step-through reveals, highlight
+  passes, and transitions, with play / pause / scrub controls. Self-contained (no
+  CDN). _Acceptance:_ an html part with `kits:["animate"]` plays a stepped
+  explainer. _Effort:_ ~3–4h.
+- **L2 — Screenshot → explainer recipe + demo.** The loop: paste a screenshot to
+  your editor agent → "explain/animate this on showcase" → it publishes an
+  animated html surface (image part for the source + an `animate` explainer).
+  Mostly a guide recipe + a demo on top of L1. _Effort:_ ~1–2h.
+- **L3 — Reading/learning mode.** A focused, one-explainer-at-a-time view (full
+  width, distraction-free) for working through a Library of explainers. _(Moved
+  from the old Pillar D.)_ _Effort:_ ~2h.
 
-The reason showcase isn't just a prettier markdown viewer is the
-publish → render → **comment** → revise loop. The redesign made the chrome
-beautiful; this makes the _comment_ half as rich as the _publish_ half — the
-things no editor-side rendering can do because the surface is live and in front
-of you. Pairs naturally with Pillar A (rich html parts are what you annotate).
+### Supporting capabilities (pick up when a workflow needs them)
 
-- [x] **Anchored annotations (shipped).** A 📍 annotate toggle on each card arms a
-      trusted-origin click-capture overlay; clicking a spot drops a pin and opens
-      a small note composer, and the comment is stored with an `anchor`
-      (`{xPct, yPct}`, 0..1 of the card — resolution-independent, works for every
-      part kind, no per-iframe bridge). Pins render over the parts; the anchor
-      rides through to the agent's `userFeedback` so it knows _which spot_ the
-      user means. Oracle + server tests guard it. (v1 is a point anchor; an
-      element-level selector anchor is a later refinement.)
-- **Visual version diff.** Surfaces already version (`v1`, `v2 ⌄`); add a
-  "compare" next to the version `Select` that shows what changed between two
-  versions of a part — side-by-side or overlay. _Acceptance:_ pick `v2` vs `v1`
-  on a diff/markdown/code part and see the delta. _Effort:_ ~2–3h for text-y
-  parts; html parts are a later screenshot-diff problem.
-- [x] **Structured feedback (shipped).** A one-tap **Approve** (👍) in the card
-      footer (both before the first comment and under the composer) posts a
-      recognizable author:"user" signal — the fast path for "yes, this is right"
-      during iteration, vs typing it. "Request a change" is the composer. Works on
-      any card; oracle-guarded. (Reject left out — a free-text comment covers it.)
-- **Close the nudge gap.** Today a comment doesn't reach the editor agent until it
-  next touches showcase (§4). This mostly dissolves once Pillar B's server agent
-  is actively listening; until then, surface an unread badge / desktop
-  notification when the agent has feedback it hasn't seen, so you know to nudge.
+Not flagship work; each is tagged with the workflow it serves. Don't build these
+for their own sake.
+
+- **Visual version diff** _(serves W1)_ — a "compare" next to the version `Select`
+  showing what changed between two versions of a part. Pairs with R1's
+  revise-the-fix-in-place loop. _Effort:_ ~2–3h for text-y parts.
+- **Close the nudge gap** _(serves both)_ — an unread badge / desktop notification
+  when the agent has feedback it hasn't seen, so you know to nudge an idle editor.
   _Effort:_ ~1–2h.
-
-### Pillar D — Personal knowledge base
-
-- [x] **Persistent / pinned surfaces — the Library (shipped).** A bookmark in
-      every surface footer pins it; pinned surfaces collect in a session-independent
-      **Library** (a sidebar nav row above the session groups). `Surface.pinned` +
-      `Store.setPinned`, `PUT /api/surfaces/:id/pin`, `GET /api/library` (pinned,
-      newest-first). The Library reuses the stream — surfaces load with their threads
-      across sessions; unpinning drops a card out live. Store-contract + API + a
-      real-DOM oracle test (pin → appears in Library → unpin → gone) cover it.
-- **Reading/learning mode** — focused, one-explainer-at-a-time view. _Effort:_ ~2h.
-
-### Pillar E — Share & present (lower priority)
-
-Showing other people — worthwhile, but after the product itself is richer.
-
-- **Static export** — `showcase export <session>` → one self-contained read-only
-  `.html` to send anyone. The viewer is already single-file; bake a session
-  snapshot in via the `host.ts` seam, disable the live/comment bits.
-  _Acceptance:_ the file opens offline and renders the session. _Effort:_ ~1–2h.
-- **Present mode** — full-bleed, arrow-key deck nav over a session's cards (builds
-  on the `slides` kit). _Effort:_ ~1–2h.
-- **Live share** — re-add a Cloudflare Workers deploy, or a `cloudflared` tunnel,
-  so others watch live / it works on a phone. _Effort:_ Workers ~2–3h; tunnel ~20m.
-  Note: the SqlStore was removed, so a Workers path means re-introducing a
-  Durable-Object store behind the `Store` interface (the contract test still
-  exists to hold it honest).
-
-### Pillar F — Foundation & confidence
-
-The polish backlog that used to live here is **shipped** (see Shipped, above).
-What's left is a thin safety net — pick these up only when something below them
-needs it, not for their own sake.
-
-- [x] **Harden the oracle — render checks + real-Chrome lane (shipped).** Added
-      `e2e/render-smoke.spec.ts`: seeds one of every part kind and asserts each
-      renders at a real size, so a part that collapses to an empty strip can't
-      merge green. Plus an opt-in `chrome` Playwright project
-      (`npm run test:e2e:chrome`, channel:chrome) that runs the smoke on the real
-      Chrome — bundled Chromium hid the mermaid bug; this lane catches it
-      (verified: removing the fix makes the lane fail). (WebKit + mobile viewport
-      still open if wanted.)
-- **Store durability** — `JsonFileStore` is fine for one user today, but before
-  the chat app (Pillar B) holds real history, confirm atomic/crash-safe writes
-  (write-temp-then-rename) so a crash mid-write can't corrupt a board. _Effort:_ ~1h.
+- **Static export** _(serves W1 R5 + sharing)_ — `showcase export <session>` → one
+  self-contained read-only `.html` of a review/explainer to send anyone. Bakes a
+  snapshot via the `host.ts` seam, live/comment bits disabled. _Effort:_ ~1–2h.
+- **Present mode** _(serves W2)_ — full-bleed, arrow-key deck nav over a session's
+  cards (builds on the `slides` kit). _Effort:_ ~1–2h.
+- **Canvas view** _(serves W2)_ — opt-in spatial board (tldraw-style) for
+  "map a whole system" layouts; the stream stays default. _Effort:_ large; only if
+  the system-explainer use case proves out.
+- **Store durability** _(foundation)_ — atomic/crash-safe `JsonFileStore` writes
+  (write-temp-then-rename) before it holds real review history. _Effort:_ ~1h.
+- **Live share** _(sharing, lower priority)_ — re-add a Workers deploy or
+  `cloudflared` tunnel so others watch live. Workers means re-introducing a
+  Durable-Object store behind `Store` (the contract test still holds it honest).
 
 ---
 
 ## 7. Open decisions (flag to the user before building the affected pillar)
 
-- **~~Pillar B engine~~ (DECIDED):** no SDK. Pillar B chats with the user's
-  running editor agent over the existing MCP bridge — not a hosted
-  `@anthropic-ai/sdk` / Agent SDK runtime. No API key, no injection surface. The
-  remaining Pillar B work is UX on top of that bridge (see Pillar B).
-- **Auth/sharing for Pillar E live share:** the one-board/one-user stance means
-  shared views should default to read-only.
+- **~~Editor-agent engine~~ (DECIDED):** no SDK. The in-browser chat reaches the
+  user's running editor agent over the existing MCP bridge — not a hosted
+  `@anthropic-ai/sdk` / Agent SDK runtime. No API key, no injection surface.
+  (Shipped — see "Editor-agent chat" under Shipped capabilities.)
+- **GitHub round-trip auth (W1 R5):** posting a review back needs `gh` auth /
+  a token; confirm the auth path and that it stays opt-in before building R5.
+- **Auth/sharing for live share:** the one-board/one-user stance means shared
+  views default to read-only.
 
 ---
 
@@ -322,8 +301,8 @@ needs it, not for their own sake.
 
 1. Read sections 1–5 of this file and `AGENTS.md`.
 2. `git branch --show-current` — if not on a task branch, branch from `main`.
-3. Pick a pillar/item; if it's Pillar B or another "open decision" item, confirm
-   the decision in §7 first.
+3. Default to **Workflow 1** (visual PR review), top-down (R1 first). If the item
+   is an "open decision" in §7 (e.g. W1 R5 GitHub round-trip), confirm it first.
 4. Build in small commits; after each, run the §5 verify suite. For UI, screenshot
    and look.
 5. Keep the oracle green; if you change behavior it covers, update the oracle in
