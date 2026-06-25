@@ -101,7 +101,13 @@ export function SandboxedPart(props: { body: string; css: string; class?: string
   }, [doc]);
 
   return (
+    // key={doc} forces a brand-new iframe (a guaranteed fresh parse) whenever the
+    // document changes. Some Chrome builds don't re-parse an existing iframe when
+    // its srcdoc attribute is updated, so a part that renders async (mermaid:
+    // empty first, then the SVG) gets stuck on the initial empty document and the
+    // surface shows an empty strip. Remounting on doc change sidesteps that.
     <iframe
+      key={doc}
       ref={frameRef}
       className={props.class ?? "partframe"}
       sandbox="allow-scripts"
