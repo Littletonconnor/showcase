@@ -157,13 +157,18 @@ The output side is the least-developed, highest-upside part of the product: html
 parts and kits make surfaces _interactive explainers_, not static pictures — and
 that's the thing no terminal can do. **Build here first.**
 
-Kits are the cheap extension point: a registry entry in `server/kits.ts` + a
-guide bullet, no new part kind. The html-part CSP already allowlists
-jsdelivr/cdnjs/unpkg, so CDN libs work today.
+The richest explainer primitives ship self-contained (no CDN) — the project
+bundles its libraries rather than relying on jsdelivr/unpkg.
 
-- **KaTeX kit** (math) and a **chart kit** (Vega-Lite / Chart.js) — the two most
-  obviously-missing explainer primitives. _Effort:_ ~30–45m each.
-- **Drill-down loop** — html parts can already call `sendPrompt()`; make
+- [x] **Charts (shipped).** A native first-class `chart` part (Recharts) — bar /
+      line / area / pie, rendered as themed SVG in the trusted viewer (data, not
+      markup, so no sandbox), accent-led palette, re-themes with the board.
+      `showcase chart <spec.json>` + guide + demo.
+- [x] **Math (shipped).** Markdown parts render `$inline$` / `$$display$$` via
+      KaTeX with `output: "mathml"` — browser-native, no fonts/CSS shipped, fully
+      self-contained. Verified crisp in Chromium + WebKit. (Integrated into
+      markdown rather than a standalone kit — math rides with prose.)
+- [ ] **Drill-down loop** — html parts can already call `sendPrompt()`; make
   "explain this deeper" buttons idiomatic so an interactive explainer asks the
   agent to go further in place. This is the kit work that closes the loop:
   output → tap → agent revises. _Effort:_ ~1–2h + a guide pattern the agent can
@@ -176,37 +181,38 @@ jsdelivr/cdnjs/unpkg, so CDN libs work today.
   "map a whole system" layouts. Behind a flag; the stream stays the default.
   _Effort:_ large; only worth it if the system-explainer use case proves out.
 
-### Pillar B ⭐ — In-browser chat (turn showcase into a local Claude app)
+### Pillar B ⭐ — Chat with your editor agent (NOT a hosted SDK)
 
-The flagship direction. A polished, claude.ai-style chat in the viewer where the
-AI runs **server-side** and emits surfaces as inline artifacts.
+**Decided direction (corrected):** the in-browser chat talks to the user's
+already-running **Claude Code / Cursor** session over the existing MCP bridge —
+it is NOT a server-hosted `@anthropic-ai/sdk` / Agent SDK runtime. The whole
+point of the MCP server is to reach the editor agent. (See the memory note and
+§7.) The bridge is already two-way: `wait_for_feedback` carries browser comments
+→ agent; `reply_to_user` carries agent → browser (SSE).
 
-- **Problem:** today you can only _watch_ an editor agent. You want to _talk_ to
-  an AI in the browser — create chats, see history, delete them — with a
-  beautifully designed interface, and have surfaces be its visual output.
-- **Approach (server-hosted agent):**
-  - Server runs the agent loop with `@anthropic-ai/sdk` (model `claude-opus-4-8`,
-    adaptive thinking, `client.messages.stream`), OR the **Claude Agent SDK**
-    (`@anthropic-ai/claude-agent-sdk` — Claude Code's engine, with bash/file/MCP
-    tools) for a real "local Claude Code in the browser." Decide which — see §7.
-  - Reuse the data model: a **chat = a session** (sidebar create/delete/history
-    already exists), turns stored as messages, **`publish_surface` is a tool the
-    agent calls** so cards render inline as the AI's artifacts.
-  - Stream tokens to the browser over the existing SSE channel (`/api/events`)
-    or a new `/api/chat` SSE; the composer posts a user turn.
-  - Tools to expose: `publish_surface`/`update_surface` (always), then optionally
-    web search/fetch (research) and bash/edit (local work — heed the security
-    notes in the `claude-api` tool-use docs; sandbox/allowlist).
-  - **The injection caveat is real:** this does NOT drive your Cursor/Claude Code
-    _app_ session — it's its own local Claude. (A separate, lesser "bridge to the
-    editor agent via the comment loop" is possible but constrained; not this.)
-- **Acceptance:** type a message in the browser → streamed Claude response →
-  agent publishes a surface that renders inline in the thread → you reply and it
-  revises. Chats persist, list in the sidebar, delete cleanly. Oracle still green.
-- **Effort:** large — break into (1) server chat loop + streaming, (2) chat UI
-  (message list, streaming composer), (3) tools wiring, (4) polish. ~a few
-  focused sessions; do behind a flag so the existing publish/watch flow keeps
-  working.
+**The load-bearing constraint:** it's **pull-based**. showcase cannot inject a
+turn into Claude Code — the agent only receives a message while parked in
+`wait_for_feedback` (or on its next tool call). When it's parked it's real-time;
+otherwise messages queue until it checks. The UI must surface this honestly.
+
+- [x] **Agent presence + responding state (shipped).** Server tracks active
+      `wait_for_feedback` waiters per session (abort-aware) and broadcasts an
+      `agent-presence` event; the sessions API seeds `listening` and `/api/events`
+      sends it on connect. Viewer shows a live green **"Listening"** chip (or a
+      clickable **"Agent idle"** that copies an arm-your-agent instruction) and a
+      **"responding…"** typing indicator that clears on reply or a 90s timeout.
+      Guide updated with the wait→reply→wait loop. Proven live end-to-end.
+- [ ] **Session-level chat.** Today every comment needs a `surfaceId`
+      (`createComment` 400s without one), so chat is per-card. Add a session-level
+      message path + a session chat panel so you can talk to the agent generally,
+      not only under a surface. (Server: allow a surfaceless comment; viewer: a
+      session thread.)
+- [ ] **Sidebar presence dots.** `listening` already rides each session row —
+      surface it as a small dot on the sidebar rows so you can see at a glance
+      which agents are reachable.
+- [ ] **Tighten the arm flow.** The "Agent idle" copy-helper is the v1; consider
+      a one-command `showcase chat` that parks a wait→reply loop, and richer
+      agent-guide phrasing so editor agents naturally hold a conversation.
 
 ### Pillar C — Sharpen the loop (the differentiator)
 
@@ -280,15 +286,10 @@ needs it, not for their own sake.
 
 ## 7. Open decisions (flag to the user before building the affected pillar)
 
-- **Pillar B engine:** plain `@anthropic-ai/sdk` agent loop (full control, build
-  the tool surface ourselves) vs the **Claude Agent SDK** (Claude Code's engine,
-  bash/file/MCP/subagents out of the box). The Agent SDK is the strongest fit for
-  a "local Claude Code in the browser"; the plain SDK is leaner for an
-  explainer-focused assistant. Confirm which.
-- **Pillar B tool surface:** explainer-only (publish_surface + web tools) vs
-  full coding agent (also bash/edit). Affects the security posture.
-- **API key handling:** read `ANTHROPIC_API_KEY` from env; confirm where it lives
-  (`.env`, shell). Never commit it.
+- **~~Pillar B engine~~ (DECIDED):** no SDK. Pillar B chats with the user's
+  running editor agent over the existing MCP bridge — not a hosted
+  `@anthropic-ai/sdk` / Agent SDK runtime. No API key, no injection surface. The
+  remaining Pillar B work is UX on top of that bridge (see Pillar B).
 - **Auth/sharing for Pillar E live share:** the one-board/one-user stance means
   shared views should default to read-only.
 
