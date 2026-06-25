@@ -110,7 +110,7 @@ This is showcase's flagship workflow — _"the future of code review is multimod
 - a markdown **table** of every finding — severity · what · `file:line` — so the user can scan the whole review at a glance;
 - a short **Coverage** note: what you reviewed and what you deliberately skipped (e.g. "read the upload + auth paths; did not exercise the migration scripts"), so the user can trust the review's depth.
 
-`update_surface` the verdict as findings resolve.
+`update_surface` the verdict as findings resolve. (The session header **automatically** rolls every finding-card badge into a live count summary — "3 findings · 1 Bug · 1 Nit" — and each chip jumps to that finding, so the verdict bar stays accurate on its own. Your verdict card adds the verdict word, the table, and the coverage note on top of that glance.)
 
 **Calibrate severity honestly:** `critical`→Bug (wrong/unsafe), `warning`→Nit (style/maintainability), `info`→Question (you need context to judge), `success`→Praise (genuinely good — call it out, reviews aren't only negative). Don't inflate; don't pad with trivia.
 

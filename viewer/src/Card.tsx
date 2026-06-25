@@ -183,7 +183,7 @@ function IconAction(props: {
 // finding card ("Bug" / "Nit" / "Question" / "Praise"), or any short label. A
 // solid tone dot makes it read as an intentional status indicator (Linear-style)
 // rather than a flat pill; the tinted body + hairline ring keep it quiet.
-const BADGE_TONE_CLASS: Record<SurfaceBadge["tone"], string> = {
+export const BADGE_TONE_CLASS: Record<SurfaceBadge["tone"], string> = {
   critical: "bg-red-500/10 text-red-700 ring-red-600/20 dark:text-red-300 dark:ring-red-400/25",
   warning:
     "bg-amber-500/12 text-amber-800 ring-amber-600/20 dark:text-amber-300 dark:ring-amber-400/25",
@@ -192,13 +192,22 @@ const BADGE_TONE_CLASS: Record<SurfaceBadge["tone"], string> = {
     "bg-emerald-500/10 text-emerald-700 ring-emerald-600/20 dark:text-emerald-300 dark:ring-emerald-400/25",
   neutral: "bg-muted text-muted-foreground ring-border",
 };
-const BADGE_DOT_CLASS: Record<SurfaceBadge["tone"], string> = {
+export const BADGE_DOT_CLASS: Record<SurfaceBadge["tone"], string> = {
   critical: "bg-red-500",
   warning: "bg-amber-500",
   info: "bg-blue-500",
   success: "bg-emerald-500",
   neutral: "bg-muted-foreground/55",
 };
+
+// Severity order for rollups/sorting — worst first.
+export const BADGE_TONE_ORDER: SurfaceBadge["tone"][] = [
+  "critical",
+  "warning",
+  "info",
+  "success",
+  "neutral",
+];
 
 function SurfaceBadgeChip(props: { badge: SurfaceBadge }) {
   const tone = props.badge.tone;

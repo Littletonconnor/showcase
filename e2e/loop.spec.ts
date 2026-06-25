@@ -174,6 +174,35 @@ test("a review finding card renders its severity badge in the trusted header", a
   await expect(card.locator("iframe")).toHaveCount(3);
 });
 
+test("a review session rolls its finding badges into a header summary", async ({
+  page,
+  request,
+}) => {
+  // The session-header verdict bar derives live from the finding cards' badges,
+  // so a review reads as one artifact. Each chip jumps to that finding.
+  const session = await (
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "review rollup" } })
+  ).json();
+  const finding = async (label: string, tone: string) =>
+    request.post("/api/surfaces", {
+      data: {
+        session: session.id,
+        title: `${label} finding`,
+        badge: { tone, label },
+        parts: [{ kind: "markdown", markdown: `a ${label}` }],
+      },
+    });
+  await finding("Bug", "critical");
+  await finding("Nit", "warning");
+  const second = await (await finding("Bug", "critical")).json();
+
+  await page.goto(`/?surface=${second.id}`);
+  const header = page.locator("#sessionView > div").first();
+  // Worst-severity first: "2 Bug" then "1 Nit", as trusted-origin button chips.
+  await expect(header.getByRole("button", { name: "2 Bug" })).toBeVisible();
+  await expect(header.getByRole("button", { name: "1 Nit" })).toBeVisible();
+});
+
 test("pinning a surface collects it in the Library across sessions", async ({ page, request }) => {
   const { surfaceId } = await seedSurface(request);
   await page.goto(`/?surface=${surfaceId}`);

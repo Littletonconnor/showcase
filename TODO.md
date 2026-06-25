@@ -217,11 +217,13 @@ workflows compose.
       card, revise in place) lives in `AGENT_HOWTO`, and `bin/demoData.js` seeds a
       review session reproducing the product screenshot. Store-contract + API + a
       real-DOM oracle cover it. _Proven live_ reviewing a real santafe branch.
-- **R2 — Review summary / verdict surface.** A lead card per review session —
-  "3 findings · 2 bugs, 1 nit · **Request changes**" — that links to each finding
-  and rolls up the badges + your Approve/dismiss decisions. Start as a recipe
-  (agent publishes/updates it); upgrade to an auto-rollup later. _Acceptance:_
-  a session opens with a verdict card that reflects its findings. _Effort:_ ~2–3h.
+- [x] **R2 — Review summary / verdict surface (shipped).** The session header now
+      carries a **live verdict bar** derived from the finding-card badges — scannable
+      per-label chips ("1 Bug · 1 Request changes · 1 Nit"), worst-severity first,
+      each jumping to its finding. It's automatic (no agent authoring) and stays
+      accurate as findings are added/resolved; the agent's verdict card adds the
+      verdict word + table + coverage on top. Oracle-guarded. _(Follow-up: roll the
+      user's Approve/dismiss decisions into the bar too — currently badge-only.)_
 - **R3 — `showcase review` ingestion.** One command turns a PR/diff into a review
   session: read `gh pr diff <n>` / `git diff <range>`, create a session titled
   after the PR, and seed a verdict placeholder — so the agent starts from a

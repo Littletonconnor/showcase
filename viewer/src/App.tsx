@@ -28,6 +28,8 @@ import {
   sessionLabel,
   sessionLink,
   type SessionRow,
+  type Surface,
+  type SurfaceBadge,
 } from "./api.ts";
 import {
   DropdownMenu,
@@ -37,7 +39,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { routeGet, routeSubscribe, root } from "./host.ts";
-import { Card, cardEls, frameForSource, Thread } from "./Card.tsx";
+import {
+  BADGE_DOT_CLASS,
+  BADGE_TONE_CLASS,
+  BADGE_TONE_ORDER,
+  Card,
+  cardEls,
+  frameForSource,
+  Thread,
+} from "./Card.tsx";
 import { cx } from "./cx.ts";
 import {
   Sidebar,
@@ -806,6 +816,54 @@ function SessionItem(props: { session: SessionRow }) {
   );
 }
 
+// A live verdict for a review session: rolls up the finding-card badges into
+// scannable count chips ("2 Bug · 1 Nit"), worst-severity first, so the review
+// reads as one artifact instead of a scattered pile. Derived from the cards the
+// agent already publishes — no extra authoring — and each chip jumps to the
+// first finding of that label. Renders nothing for a session with no badges.
+function ReviewSummary(props: { surfaces: Surface[] }) {
+  const byLabel = new Map<string, { tone: SurfaceBadge["tone"]; count: number; firstId: string }>();
+  for (const s of props.surfaces) {
+    if (!s.badge) continue;
+    const existing = byLabel.get(s.badge.label);
+    if (existing) existing.count += 1;
+    else byLabel.set(s.badge.label, { tone: s.badge.tone, count: 1, firstId: s.id });
+  }
+  if (byLabel.size === 0) return null;
+  const groups = [...byLabel.entries()].sort(
+    (a, b) => BADGE_TONE_ORDER.indexOf(a[1].tone) - BADGE_TONE_ORDER.indexOf(b[1].tone),
+  );
+  const jumpTo = (id: string) =>
+    cardEls.get(id)?.card.scrollIntoView({ behavior: "smooth", block: "start" });
+  // No "N findings" total — it would double-count the agent's own verdict card.
+  // The per-label chips are each an exact count and the verdict chip (e.g.
+  // "Request changes") surfaces the verdict on its own.
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-0.5">
+      {groups.map(([label, g]) => (
+        <button
+          key={label}
+          type="button"
+          title={`Jump to ${label}`}
+          onClick={() => jumpTo(g.firstId)}
+          className={cx(
+            "inline-flex items-center gap-1.5 rounded-full py-[3px] pr-2 pl-[7px] text-[11px] leading-none font-semibold ring-1 ring-inset transition-opacity hover:opacity-80",
+            BADGE_TONE_CLASS[g.tone] ?? BADGE_TONE_CLASS.neutral,
+          )}
+        >
+          <span
+            className={cx(
+              "size-1.5 rounded-full",
+              BADGE_DOT_CLASS[g.tone] ?? BADGE_DOT_CLASS.neutral,
+            )}
+          />
+          {g.count} {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function SessionView() {
   const sessions = useBoard((s) => s.sessions);
   const selected = useBoard((s) => s.selected);
@@ -851,6 +909,7 @@ function SessionView() {
                     }`
                   : ""}
               </span>
+              <ReviewSummary surfaces={surfaces} />
             </>
           )}
         </div>
