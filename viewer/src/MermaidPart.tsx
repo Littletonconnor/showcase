@@ -27,13 +27,13 @@ function showcaseTheme() {
   const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
 
   const text = v("--text", "#1a1915");
-  const muted = v("--muted", "#5f5e56");
-  const border = v("--border-2", "rgba(20,20,10,0.25)");
-  const panel = v("--panel", "#f3f2ec");
+  const muted = v("--muted", "#6b6a62");
+  const border = v("--border-2", "#d6d2c4");
+  const panel = v("--panel", "#f0eee6");
   const surface = v("--surface", "#ffffff");
-  const bg = v("--bg", "#faf9f5");
-  const accent = v("--accent", "#185fa5");
-  const accentBg = v("--accent-bg", "#e6f1fb");
+  const bg = v("--bg", "#f7f6f1");
+  const accent = v("--accent", "#bd5b3c");
+  const accentBg = v("--accent-bg", "#f6e7df");
   // The viewer has no font token — its system stack lives on `body` — so match
   // the diagram font to whatever the rest of the viewer is actually rendering.
   const font = getComputedStyle(document.body).fontFamily || "ui-sans-serif, system-ui, sans-serif";
@@ -76,6 +76,14 @@ function showcaseTheme() {
     themeCSS: `
       .node rect, .node polygon, rect.actor, .labelBox { rx: 8px; ry: 8px; }
       .node rect, rect.actor { stroke-width: 1px; }
+      /* Lift nodes off the card with a soft shadow so the diagram reads as
+         designed rather than flat (no-op in dark, where the border carries it). */
+      .node rect, .node polygon, .node circle, rect.actor, .labelBox {
+        filter: drop-shadow(0 1px 1.5px rgba(20, 18, 10, 0.07));
+      }
+      /* Subgraph containers: rounder + a warm hairline, so they frame without
+         competing with the nodes. */
+      .cluster rect { rx: 10px; ry: 10px; }
       .edgePath .path, .flowchart-link, .actor-line,
       .messageLine0, .messageLine1 { stroke-width: 1px; }
 

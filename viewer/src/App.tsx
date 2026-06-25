@@ -352,9 +352,9 @@ export default function App() {
                 {visibleGroups.map((group, gi) => (
                   <SidebarGroup
                     key={group.label}
-                    className={cx("py-0", gi === 0 ? "pt-1" : "pt-4")}
+                    className={cx("py-0", gi === 0 ? "pt-1" : "pt-3.5")}
                   >
-                    <SidebarGroupLabel className="mb-0.5 h-5 px-2 text-[10px] font-semibold tracking-[0.07em] text-faint/90 uppercase">
+                    <SidebarGroupLabel className="mb-1 h-5 px-2 text-[10px] font-medium tracking-[0.09em] text-faint/70 uppercase">
                       {group.label}
                     </SidebarGroupLabel>
                     <SidebarMenu className="gap-0.5">
@@ -706,7 +706,7 @@ function SessionItem(props: { session: SessionRow }) {
         aria-current={isSel ? "true" : undefined}
         onClick={open}
         className={cx(
-          "h-auto items-start gap-2 rounded-lg py-1.5 pr-7 transition-colors duration-150 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:py-2",
+          "h-auto items-start gap-2 rounded-lg py-1 pr-7 transition-colors duration-150 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:py-2",
           // One quiet selection signal, claude.ai-style: a soft accent-subtle
           // tint with the title in accent — no competing white lift or left
           // rail. Hover is a calm gray wash. The agent mark stays neutral.
@@ -716,25 +716,33 @@ function SessionItem(props: { session: SessionRow }) {
         )}
       >
         {/* The agent mark anchors the row at the icon-rail width too. */}
-        <span className="mt-[3px] flex-none text-muted-foreground group-data-[collapsible=icon]:mt-0">
+        <span className="mt-0.5 flex-none text-muted-foreground group-data-[collapsible=icon]:mt-0">
           <AgentMark agent={props.session.agent} />
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-px group-data-[collapsible=icon]:hidden">
-          <span
-            className={cx(
-              "truncate text-[13px] leading-snug",
-              isSel
-                ? "font-medium text-brand"
-                : isVacant
-                  ? "font-normal text-muted-foreground"
-                  : "font-medium text-foreground",
-            )}
-          >
-            {label}
+          {/* Title line: name truncates, surface count rides quietly at the far
+              right as a bare tabular number (no parens) — scannable, not noisy. */}
+          <span className="flex min-w-0 items-baseline gap-1.5">
+            <span
+              className={cx(
+                "min-w-0 flex-1 truncate text-[13px] leading-snug",
+                isSel
+                  ? "font-medium text-brand"
+                  : isVacant
+                    ? "font-normal text-muted-foreground"
+                    : "font-medium text-foreground",
+              )}
+            >
+              {label}
+            </span>
             {props.session.surfaceCount > 0 ? (
-              <span className={cx("font-normal", isSel ? "text-brand/65" : "text-faint")}>
-                {" "}
-                ({props.session.surfaceCount})
+              <span
+                className={cx(
+                  "flex-none text-[11px] leading-snug tabular-nums group-hover/menu-item:opacity-0",
+                  isSel ? "text-brand/55" : "text-faint/70",
+                )}
+              >
+                {props.session.surfaceCount}
               </span>
             ) : null}
           </span>
