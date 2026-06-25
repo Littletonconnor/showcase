@@ -31,7 +31,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cx } from "./cx.ts";
 import { DiffPart } from "./DiffPart.tsx";
-import { ArrowUp, ExternalLink, Link2, MessageSquare, Trash2 } from "lucide-react";
+import { ArrowUp, Check, ExternalLink, Link2, MessageSquare, Sparkles, Trash2 } from "lucide-react";
 import { ImagePart } from "./ImagePart.tsx";
 import { JsonPart } from "./JsonPart.tsx";
 import { MarkdownPart } from "./MarkdownPart.tsx";
@@ -501,7 +501,67 @@ function TypingIndicator(props: { hasMessages: boolean }) {
   );
 }
 
+// A prompt proposed by a surface's own UI (a sendPrompt() button — the
+// drill-down loop). It is stamped author:"surface", never "user", so it can't
+// reach the agent on its own (untrusted markup must not impersonate the user).
+// This renders it as an explicit suggestion the user relays with one tap, which
+// re-posts it as a genuine user message — closing the loop while keeping the
+// trust boundary.
+function SurfaceSuggestion(props: { comment: ViewComment; startsRun: boolean }) {
+  const [sent, setSent] = useState(false);
+  const relay = async () => {
+    const sid = props.comment.surfaceId;
+    if (!sid || sent) return;
+    setSent(true);
+    await sendComment(
+      { surface: sid, text: props.comment.text, author: "user" },
+      sid,
+      props.comment.text,
+    );
+  };
+  return (
+    <div
+      className={cx(
+        "cmt flex flex-col items-start",
+        props.startsRun ? "mt-3 first:mt-0" : "mt-0.5",
+        "animate-in fade-in-0 slide-in-from-bottom-1 duration-150 motion-reduce:animate-none",
+      )}
+      data-cid={props.comment.id}
+    >
+      <div className="max-w-[88%] rounded-2xl border border-dashed border-border bg-background px-3 py-2">
+        <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-faint">
+          <Sparkles className="size-3" />
+          Suggested by this surface
+        </div>
+        <div className="text-[13px] leading-snug break-words whitespace-pre-wrap text-foreground">
+          {props.comment.text}
+        </div>
+        {!isReadonly() ? (
+          <button
+            type="button"
+            disabled={sent}
+            onClick={relay}
+            className="mt-2 inline-flex items-center gap-1 rounded-full bg-brand px-2.5 py-1 text-[12px] font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+          >
+            {sent ? (
+              <>
+                <Check className="size-3" /> Sent
+              </>
+            ) : (
+              <>
+                <ArrowUp className="size-3" /> Send to agent
+              </>
+            )}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function CommentRow(props: { comment: ViewComment; startsRun: boolean }) {
+  if (props.comment.author === "surface")
+    return <SurfaceSuggestion comment={props.comment} startsRun={props.startsRun} />;
   const isUser = props.comment.author === "user";
   // `cmt` + `user` are oracle hooks (the e2e suite asserts `.thread .cmt.user`).
   // Sender is conveyed by alignment + colour — no label. The comment text is

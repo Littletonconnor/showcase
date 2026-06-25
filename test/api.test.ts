@@ -1612,9 +1612,9 @@ test("an aborted wait_for_feedback stops counting toward presence", async () => 
     await app.request("/api/sessions", json({ agent: "claude-code" }))
   ).json()) as any;
   const ctrl = new AbortController();
-  const waiting = app
-    .request(`/api/comments?session=${session.id}&author=user&wait=30`, { signal: ctrl.signal })
-    .catch(() => null);
+  const waiting = Promise.resolve(
+    app.request(`/api/comments?session=${session.id}&author=user&wait=30`, { signal: ctrl.signal }),
+  ).catch(() => null);
   await new Promise((r) => setTimeout(r, 60));
   assert.equal(
     ((await (await app.request("/api/sessions")).json()) as any[]).find((s) => s.id === session.id)

@@ -168,11 +168,12 @@ bundles its libraries rather than relying on jsdelivr/unpkg.
       KaTeX with `output: "mathml"` — browser-native, no fonts/CSS shipped, fully
       self-contained. Verified crisp in Chromium + WebKit. (Integrated into
       markdown rather than a standalone kit — math rides with prose.)
-- [ ] **Drill-down loop** — html parts can already call `sendPrompt()`; make
-  "explain this deeper" buttons idiomatic so an interactive explainer asks the
-  agent to go further in place. This is the kit work that closes the loop:
-  output → tap → agent revises. _Effort:_ ~1–2h + a guide pattern the agent can
-  copy.
+- [x] **Drill-down loop (shipped).** A surface's `sendPrompt()` button now renders
+      as a **"Suggested by this surface"** chip with a one-tap **Send to agent**
+      relay (re-posts as a real user message → reaches the agent, keeping the
+      trust boundary: surface markup still can't impersonate the user). Documented
+      in the design guide with a copy-paste example; demo card included. Closes the
+      output → tap → revise loop.
 - **A small kit gallery / guide pass** — document the kit pattern + the
   `sendPrompt`/`openLink` bridge in `guide/` with copy-paste examples, so the
   agent reaches for rich html parts instead of plain markdown. _Effort:_ ~1–2h.

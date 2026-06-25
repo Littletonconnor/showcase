@@ -327,7 +327,22 @@ Two globals are injected into every html part:
 - `sendPrompt(text)` — posts `text` to this surface's thread as a `surface`
   message (not a user comment): the user sees it, but it does NOT reach you
   through the feedback loop on its own, and it can never impersonate the user.
-  Use it for "explore X" affordances the user can then relay to you deliberately.
+  In the viewer it renders as a **"Suggested by this surface"** chip with a
+  **Send to agent** button — one tap relays it as a genuine user message that
+  reaches you. This is the **drill-down loop**: give an explainer buttons that
+  propose deeper follow-ups, and the user advances the conversation in place
+  without retyping. Example:
+
+  ```html
+  <button onclick="sendPrompt('Walk me through how retries handle a partial batch failure.')">
+    Explain partial-failure handling
+  </button>
+  ```
+
+  Make the proposed text a complete, specific question (it's what the user sends
+  verbatim). Reach for it whenever a surface has an obvious "go deeper here" next
+  step.
+
 - `openLink(url)` — asks the user to confirm opening an external link.
   Plain `<a href>` clicks are routed through this automatically.
 

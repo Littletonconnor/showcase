@@ -150,6 +150,19 @@ const QUEUE_LATENCY_CHART = {
   caption: "Queue wait by percentile — before vs after batched dequeue",
 };
 
+// A drill-down html part: a button calls sendPrompt() to propose a deeper
+// follow-up. It surfaces as a "Suggested by this surface" chip the user relays
+// to the agent with one tap — the output → tap → revise loop.
+const DRILLDOWN = `
+<div style="font-family: var(--font-sans); color: var(--color-text-primary);">
+  <p style="margin: 0 0 4px; line-height: 1.6;">The batched dequeue pulls up to <strong>50 jobs</strong> per poll instead of one, so a burst drains in a few round-trips instead of hundreds.</p>
+  <p style="margin: 0 0 14px; color: var(--color-text-secondary); font-size: 13px;">Want to go deeper? Tap below — it proposes a follow-up you can send to the agent.</p>
+  <button type="button" onclick="sendPrompt('Walk me through how the batched dequeue handles a partial failure partway through a batch — which jobs get retried?')"
+    style="font: 500 13px var(--font-sans); display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-primary); cursor: pointer;">
+    &#8627; Explain partial-failure handling
+  </button>
+</div>`;
+
 // Seeded in order; the viewer sorts sessions by last activity, so the last
 // session here ends up on top.
 export const DEMO_SESSIONS = [
@@ -174,6 +187,10 @@ export const DEMO_SESSIONS = [
               "## Little's Law\n\nQueue wait isn't linear in load. For the M/M/1 model the expected wait is\n\n$$W = \\frac{1}{\\mu - \\lambda}$$\n\nwhere $\\lambda$ is the arrival rate and $\\mu$ the service rate. As $\\lambda \\to \\mu$ the utilization $\\rho = \\frac{\\lambda}{\\mu} \\to 1$ and the wait $W \\to \\infty$ — which is why the p99 tail exploded before the batched dequeue lifted $\\mu$.",
           },
         ],
+      },
+      {
+        title: "Drill down: batched dequeue",
+        parts: [{ kind: "html", html: DRILLDOWN }],
       },
     ],
   },
