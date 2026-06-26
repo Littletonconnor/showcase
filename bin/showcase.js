@@ -91,6 +91,9 @@ usage:
   showcase update <id> <file|->           revise a surface (new version, same card)
       --title <t>       replace title
       --kit <id>        opt the html part into a kit (repeatable)
+  showcase delete <id>                    delete a surface (the card + all its
+                                          versions) — for cleaning up while
+                                          iterating; prefer update to revise
   showcase wait [options]                 block until the user comments (long-poll)
       --session <id>    session to watch (default: auto)
       --timeout <sec>   max seconds to wait (default 120)
@@ -977,6 +980,13 @@ const commands = {
         body: JSON.stringify({ parts: [part], title: flags.title }),
       }),
     );
+  },
+
+  async delete() {
+    const { positionals } = parse({ allowPositionals: true });
+    const id = positionals[0];
+    if (!id) fail("usage: showcase delete <id>");
+    out(await api(`/api/surfaces/${id}`, { method: "DELETE" }));
   },
 
   async wait() {

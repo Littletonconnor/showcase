@@ -1310,6 +1310,21 @@ export function createApp({
     return { surface, userFeedback: await collectFeedback(surface.sessionId) };
   }
 
+  // Delete a whole surface (the card and all its versions). The shared flow
+  // behind DELETE /api/surfaces/:id and the delete_surface MCP tool, so the
+  // store removal and the surface-deleted broadcast happen in exactly one place.
+  // Lets an agent clean up a stale or superseded card while iterating; prefer
+  // reviseSurface to revise in place.
+  async function deleteSurface(
+    id: string,
+  ): Promise<{ surface: Surface } | { error: string; status: 404 }> {
+    const surface = await store.getSurface(id);
+    if (!surface) return { error: "surface not found", status: 404 };
+    await store.removeSurface(surface.id);
+    bus.broadcast({ type: "surface-deleted", id: surface.id, sessionId: surface.sessionId });
+    return { surface };
+  }
+
   async function createComment(input: {
     text: string;
     surface?: string;
@@ -1864,10 +1879,8 @@ export function createApp({
   app.put("/api/snippets/:id", revise); // legacy alias
 
   const remove = async (c: any) => {
-    const surface = await store.getSurface(c.req.param("id"));
-    if (!surface) return c.json({ error: "surface not found" }, 404);
-    await store.removeSurface(surface.id);
-    bus.broadcast({ type: "surface-deleted", id: surface.id, sessionId: surface.sessionId });
+    const result = await deleteSurface(c.req.param("id"));
+    if ("error" in result) return c.json({ error: result.error }, result.status);
     return c.json({ ok: true });
   };
   app.delete("/api/surfaces/:id", remove);
@@ -2158,6 +2171,7 @@ export function createApp({
     publishFinding,
     publishReview,
     reviseSurface,
+    deleteSurface,
     createComment,
     waitForComments,
     uploadAsset,

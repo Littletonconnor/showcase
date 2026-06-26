@@ -216,6 +216,18 @@ server.registerTool(
 );
 
 server.registerTool(
+  "delete_surface",
+  {
+    description: MCP_TOOL_DESCRIPTIONS.deleteSurface,
+    inputSchema: STDIO_MCP_INPUT_SCHEMAS.deleteSurface,
+  },
+  async ({ id }) => {
+    await api(`/api/surfaces/${id}`, { method: "DELETE" });
+    return text({ ok: true, id });
+  },
+);
+
+server.registerTool(
   "wait_for_feedback",
   {
     description: MCP_TOOL_DESCRIPTIONS.waitForFeedback,

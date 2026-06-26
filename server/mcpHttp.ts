@@ -77,6 +77,7 @@ export interface McpDeps {
     id: string,
     patch: { parts?: SurfacePart[]; title?: string; badge?: SurfaceBadge | null },
   ): FlowResult<Surface>;
+  deleteSurface(id: string): Promise<{ surface: Surface } | { error: string; status: number }>;
   createComment(input: {
     text: string;
     surface?: string;
@@ -188,6 +189,15 @@ export function registerMcp(app: Hono, deps: McpDeps) {
         const result = await deps.reviseSurface(String(args.id ?? ""), patch);
         if ("error" in result) throw new Error(result.error);
         return surfaceResult(result, origin);
+      }
+      case "delete_surface": {
+        const result = await deps.deleteSurface(String(args.id ?? ""));
+        if ("error" in result) throw new Error(result.error);
+        return JSON.stringify(
+          { ok: true, id: result.surface.id, sessionId: result.surface.sessionId },
+          null,
+          2,
+        );
       }
       case "wait_for_feedback": {
         const result = await deps.waitForComments({

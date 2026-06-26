@@ -252,27 +252,33 @@ Migrated from the original PR-review design doc (now removed — its design is
 shipped: R1–R4 plus the opinionated overview, risk treemap, confidence×coverage
 quadrant, edge-status change map, live burndown, and keyboard traversal). These
 are the next depth investments to make the review _best-in-class_ — worth working
-through deliberately, one at a time, **starting with the charting kit (the
-unlock)**. They stay opt-in per PR so the overview never clutters; getting each
-one to feel right matters more than shipping them fast.
+through deliberately, one at a time. They stay opt-in per PR so the overview
+never clutters; getting each one to feel right matters more than shipping fast.
 
-- **Sandboxed D3 charting kit** _(the unlock)_ — the `chart` part is React-rendered
-  and capped at bar/line/area/pie/treemap/scatter. A sandbox-iframe charting kit
-  (server inlines the data + a vetted D3 / Observable-Plot bundle, served through
-  `renderHtmlPage`) buys any chart D3 can draw and gates the depth visuals below.
-  Data still flows as structured fields the server inlines — never agent-authored
-  script. _Effort:_ large.
-- **Chart-cell → navigate bridge** — make a chart cell clickable → jump to that
-  file's hunks / finding → comment in place (extend the existing diff-line
-  `postMessage` bridge). Without it the review charts are pictures, not the
+**Substrate decision (post-security-audit):** build these on the existing
+**Recharts `chart` part** — trusted React → SVG from structured data, the
+audited-safe path — and small hand-rolled trusted-SVG parts for the few shapes
+Recharts lacks (matrix, arc, minimap). **No sandboxed D3 kit**: Recharts is
+already in the app, D3 would add ~250KB + a brand-new sandboxed-iframe attack
+surface for zero benefit, and treemap/scatter were already added this way.
+
+- **Opt-in depth visuals** — each extends the trusted chart path:
+  - **churn×complexity hotspot bubble** — Recharts scatter + a size (Z) axis.
+  - **coupling-delta bar** — Recharts stacked bar (already possible).
+  - **file minimap / heat-strip** — small custom-SVG React part.
+  - **adjacency / co-change matrix** — custom-SVG rect grid.
+  - **layered arc diagram** — custom-SVG `<path>` arcs.
+  - **overview blast radius** — mermaid (already have).
+  Swap in per PR (a big refactor wants the matrix; a one-file fix wants the
+  minimap) — never all at once.
+- **Chart-cell → navigate bridge** — make a chart cell/point clickable → jump to
+  that file's hunks / finding → comment in place. The chart parts render in the
+  trusted viewer, so this is a direct React click handler (no postMessage), not
+  the diff-iframe bridge. Without it the review charts are pictures, not the
   review's index. _Effort:_ ~2–3h.
 - **In-file moved-code detection** — `@pierre/diffs` detects file-level renames but
   not in-file block moves; label "moved, unchanged" instead of delete+add. Spike
   the renderer first. _Effort:_ unknown (renderer-gated).
-- **Opt-in depth visuals** _(need the charting kit)_ — file minimap / heat-strip,
-  churn×complexity hotspot bubble, layered arc diagram, adjacency / co-change
-  matrix, coupling-delta bar, overview-scale blast radius. Swap in per PR (a big
-  refactor wants the matrix; a one-file fix wants the minimap) — never all at once.
 - **Tour surface** — an optional `slides` / `animate` walkthrough for a complex
   PR's narrative ("added the column → backfilled → flipped the read path").
   Deferred polish; the overview is the win. _Effort:_ ~2–3h.
@@ -316,9 +322,6 @@ for their own sake.
       chrome. Best for reviews (verified); interactive explainers (animate/slides)
       reveal all steps stacked but a tall part can clip — share those as HTML.
       Verified end-to-end in a browser and as a PDF (offline, no network).
-- **Visual version diff** _(serves W1)_ — a "compare" next to the version `Select`
-  showing what changed between two versions of a part. Pairs with R1's
-  revise-the-fix-in-place loop. _Effort:_ ~2–3h for text-y parts.
 
 ---
 

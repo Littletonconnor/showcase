@@ -227,6 +227,8 @@ export const MCP_TOOL_DESCRIPTIONS = {
   publishSnippet:
     "Publish an HTML snippet — sugar for a surface with one html part. Send a body fragment only. Returns the id, view URL, and sessionId. Pass sessionTitle on first publish. Prefer publish_surface when you want a diff or multiple parts.",
   updateSnippet: "Revise an html snippet in place — sugar for update_surface with one html part.",
+  deleteSurface:
+    "Delete a surface you published — removes the card and ALL its versions from the board permanently. Use it to clean up while iterating: a stale, duplicate, or superseded card. Prefer update_surface to revise a card in place; reach for this only when the card should disappear entirely. Irreversible. Returns the deleted id and its sessionId.",
   waitForFeedback:
     "Block until the user comments on this session in their browser (or the timeout passes). Returns new comments since the agent last received feedback on any channel (delivered as one batch — the wait coalesces messages the user queues). Use timeoutSeconds 0 for a non-blocking check. The returned comments are the user talking to you in the tab: answer them — and ask any follow-up questions — with reply_to_user, never in the terminal, then wait again.",
   replyToUser:
@@ -473,6 +475,17 @@ export const HTTP_MCP_TOOLS = [
         html: { type: "string", description: "Replacement HTML body fragment" },
         kits: { type: "array", items: { type: "string" }, description: d.partKits },
         title: { type: "string", description: d.replacementTitle },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "delete_surface",
+    description: MCP_TOOL_DESCRIPTIONS.deleteSurface,
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: d.surfaceId },
       },
       required: ["id"],
     },
@@ -730,6 +743,9 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
     html: z.string().optional().describe("Replacement HTML body fragment"),
     kits: z.array(z.string()).optional().describe(d.partKits),
     title: z.string().optional().describe(d.replacementTitle),
+  },
+  deleteSurface: {
+    id: z.string().describe(d.surfaceId),
   },
   waitForFeedback: {
     timeoutSeconds: z

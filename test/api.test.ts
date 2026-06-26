@@ -1796,6 +1796,61 @@ test("mcp endpoint: initialize, tools/list, publish round trip", async () => {
   assert.ok(fb.lastSeq > 0);
 });
 
+test("DELETE /api/surfaces/:id removes the surface", async () => {
+  const app = makeApp();
+  const created = (await (
+    await app.request("/api/snippets", json({ html: "<p>bye</p>", title: "Doomed" }))
+  ).json()) as any;
+
+  const del = await app.request(`/api/surfaces/${created.id}`, { method: "DELETE" });
+  assert.equal(del.status, 200);
+  assert.deepEqual(await del.json(), { ok: true });
+
+  // The card is gone; a follow-up read 404s.
+  assert.equal((await app.request(`/api/surfaces/${created.id}`)).status, 404);
+
+  // Deleting a missing surface is a clean 404, not a crash.
+  const missing = await app.request(`/api/surfaces/${created.id}`, { method: "DELETE" });
+  assert.equal(missing.status, 404);
+});
+
+test("delete_surface MCP tool removes a card the agent published", async () => {
+  const app = makeApp();
+  const list = (await (await app.request("/mcp", mcpCall(1, "tools/list"))).json()) as any;
+  assert.ok(list.result.tools.map((t: any) => t.name).includes("delete_surface"));
+
+  const published = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(2, "tools/call", {
+        name: "publish_snippet",
+        arguments: { title: "Scratch", html: "<p>draft</p>" },
+      }),
+    )
+  ).json()) as any;
+  const { id, sessionId } = JSON.parse(published.result.content[0].text);
+
+  const deleted = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(3, "tools/call", { name: "delete_surface", arguments: { id } }),
+    )
+  ).json()) as any;
+  assert.equal(deleted.result.isError, undefined);
+  assert.deepEqual(JSON.parse(deleted.result.content[0].text), { ok: true, id, sessionId });
+  assert.equal((await app.request(`/api/surfaces/${id}`)).status, 404);
+
+  // A bad id surfaces as a tool error, not a silent success.
+  const bad = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(4, "tools/call", { name: "delete_surface", arguments: { id: "nope" } }),
+    )
+  ).json()) as any;
+  assert.equal(bad.result.isError, true);
+  assert.match(bad.result.content[0].text, /not found/);
+});
+
 test("mcp publish_snippet honors sessionTitle on first publish only", async () => {
   const app = makeApp();
   const published = (await (
