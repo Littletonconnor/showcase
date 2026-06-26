@@ -105,3 +105,33 @@ test("exportFilename slugifies the title, falling back to the id", () => {
   assert.equal(exportFilename("", "abc123"), "showcase-abc123.html");
   assert.equal(exportFilename(null, "xyz"), "showcase-xyz.html");
 });
+
+test("export redacts the agent/model identity from the session and its comments", async () => {
+  const store = freshStore();
+  const session = await store.createSession({ agent: "claude-code", title: "Review" });
+  const surface = await store.createSurface({
+    sessionId: session.id,
+    title: "f",
+    parts: [{ kind: "markdown", markdown: "x" }],
+  });
+  await store.createComment({
+    sessionId: session.id,
+    surfaceId: surface!.id,
+    author: "claude-code",
+    text: "agent reply",
+  });
+  await store.createComment({
+    sessionId: session.id,
+    surfaceId: surface!.id,
+    author: "user",
+    text: "user note",
+  });
+
+  const bundle = await buildExportBundle(store, session.id);
+  // The model/tool name is gone from the session header…
+  assert.equal((bundle!.sessions[0] as { agent: string }).agent, "agent");
+  // …and from the agent's own comments, while the user's stay "user".
+  assert.deepEqual(bundle!.comments.map((c) => c.author).sort(), ["agent", "user"]);
+  // …and nowhere in the serialized bundle a recipient could inspect.
+  assert.ok(!JSON.stringify(bundle).includes("claude-code"));
+});

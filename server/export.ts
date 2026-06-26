@@ -18,6 +18,15 @@ import { collectAssetIds, type Comment, type Store, type Surface } from "./types
 const FINDING_LABELS = new Set(["Bug", "Nit", "Question", "Praise"]);
 const isResolutionText = (t: string) => t.startsWith("✓ Approved") || t.startsWith("⊘ Dismissed");
 
+// A shared export shouldn't reveal which model/tool produced it. The agent's
+// identity lives in `session.agent` (rendered in the header + sidebar + agent
+// mark) and as the `author` on its own comments — so we genericize both, in the
+// bundle itself, so it leaks from neither the UI nor the raw HTML source. The
+// `user`/`surface` authors are preserved so the viewer still tells them apart.
+const REDACTED_AGENT = "agent";
+const redactAuthor = (author: string) =>
+  author === "user" || author === "surface" ? author : REDACTED_AGENT;
+
 // The inlined payload the viewer reads in place of the network. Shapes mirror the
 // `/api/*` responses the viewer expects (see viewer/src/api.ts interception).
 export interface ExportBundle {
@@ -71,9 +80,17 @@ export async function buildExportBundle(
 
   return {
     sessionId,
-    sessions: [{ ...session, surfaceCount: surfaces.length, openFindings, listening: false }],
+    sessions: [
+      {
+        ...session,
+        agent: REDACTED_AGENT,
+        surfaceCount: surfaces.length,
+        openFindings,
+        listening: false,
+      },
+    ],
     surfaces,
-    comments,
+    comments: comments.map((c) => ({ ...c, author: redactAuthor(c.author) })),
     assets,
   };
 }
