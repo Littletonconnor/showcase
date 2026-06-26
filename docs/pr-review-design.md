@@ -445,3 +445,229 @@ so it rightly sits last and behind a spike).
    or accept line-level and reinvest the saved time in the manifest/IA. I'd
    timebox a spike on `@pierre/diffs` capabilities before committing.
 ```
+
+---
+
+## 8. The visualization system — charts as the review's _index_
+
+_Enriches P1/P2 (the overview) and P3 (blast radius). This is the design for the
+charts at the **top** of the review and the primitive we need to build them._
+
+Two principles govern everything in this section:
+
+1. **Encode the reviewer's _decisions_, not the code's _statistics_.** Every PR
+   tool charts line counts. A 2000-line lockfile bump and a 30-line auth change
+   are the same bar. That describes the diff; it doesn't help the review. A
+   review tool charts the three decisions a reviewer actually makes — _where to
+   look, what to trust, when I'm done_ — so the picture itself routes attention.
+2. **The chart is the _navigation_, not decoration.** In this product the loop is
+   publish → render → **comment**. So a chart cell is not a data point — it's a
+   click target into a diff hunk or finding. Design every visual as the review's
+   table of contents, not a picture of it (see §8.5 for the bridge this needs).
+
+The whole system is **agent-authored** (§7 decision 1): the agent supplies the
+risk / coupling / coverage / complexity values, the server renders them the same
+way every time. The open question is never "is our formula right" — it's "did the
+agent judge well," which is the right place to put the uncertainty.
+
+The visuals below are organized by the three reviewer questions. **Discipline
+(P1 applies to the overview itself):** ship _one_ canonical visual per question —
+not a gallery. The recommended default set is marked `⭐`.
+
+### 8.1 "Where do I spend my attention?" — the risk family
+
+**Risk-weighted treemap** `⭐` — _the flagship._ Today's churn bar ranks files but
+wastes its second dimension. A treemap carries the review's two variables at once:
+
+- **area = churn** (how much changed)
+- **color = sensitivity** (auth / money / migration → hot red; generated /
+  lockfile / snapshot → cold gray)
+- **nesting = directory** (structure comes for free)
+
+The eye is _pulled_ to the big red rectangle — attention routing as a visual
+reflex. The lockfile is one big gray block you skip; the auth change is a small
+blazing-red one you can't miss. This single object **replaces the alphabetical
+file list _and_ the churn bar**, and doubles as the clickable file manifest (P2).
+If we build one new visual, it's this. _Needs the charting kit (§8.5)._
+
+**File minimap / heat-strip** — a thin vertical strip beside each diff: position =
+line number, intensity = change density, with finding markers pinned at their
+lines (the VS Code minimap idea, applied to review). It says _within_ a 600-line
+file where the three dangerous clusters are without scrolling — the best
+single-file attention router there is. _Needs the charting kit + per-line risk
+data from the diff._
+
+**Hotspot bubble — churn × complexity** — the classic code-quality plot,
+repurposed: x = churn, y = complexity (or sensitivity), **bubble size = blast
+radius**. The top-right quadrant is where bugs statistically concentrate; one
+glance says "these two files do too much, too riskily, with too much reach."
+_Needs scatter/bubble support (charting kit)._
+
+### 8.2 "How is this wired?" — the structure family
+
+The existing change map (`buildChangeMap`, `server/app.ts:523`) is the base. A
+good structure view switches representation by **graph density** — node-link for
+sparse, matrices for dense — rather than forcing one shape on every PR.
+
+**Interaction map (edge-status)** `⭐` _(extends `buildChangeMap`, cheapest win)._
+The map already colors **nodes** by status (new / modified / touched / removed).
+The missing half — the actual "how code interacts" signal — is **edge status**:
+
+- **new edge** (green) — a dependency the PR _introduces_ (`wsUpgrade` now calls
+  `revocationList`). New coupling is the thing to scrutinize.
+- **removed edge** (red, dashed) — a call the PR _severs_. A dropped edge can
+  quietly delete an auth / validation hop — the most dangerous _invisible_ change.
+- **existing edge** (gray) — context, unchanged.
+
+Fully inside the current primitive: `buildChangeMap` already emits a mermaid
+flowchart; add an optional `status` to each edge and emit one `linkStyle <i> …`
+line per edge (mermaid styles edges by index), reusing the `CHANGE_STATUS`
+palette so nodes and edges share one legend:
+
+```
+flowchart LR
+  n0(["authMiddleware"]):::touched
+  n1["validateToken"]:::modified
+  n2[("revocationList")]:::new
+  n0 -->|calls| n1
+  n1 -->|"now checks"| n2
+  linkStyle 0 stroke:#9aa0a6;
+  linkStyle 1 stroke:#2f9e44,stroke-width:1.5px;
+  classDef touched stroke:#9aa0a6,color:#9aa0a6;
+  classDef modified stroke:#d9870a,color:#d9870a,stroke-width:1.5px;
+  classDef new stroke:#2f9e44,color:#2f9e44,stroke-width:1.5px;
+```
+
+Agent supplies `edges:[{from,to,label,status}]`; the server renders. Highest-value
+structure visual, cheapest to ship. _Buildable today (mermaid)._
+
+**Coupling-delta bar** — the map shows _where_ coupling changed; this shows _how
+much_, per module. Plot edges **added** vs **removed** as a stacked bar — the
+exact shape `buildChurnChart` (`server/app.ts:574`) already produces, with edge
+counts instead of line counts. A module that gains four inbound edges in one PR is
+a coupling hotspot even when its own churn is tiny.
+
+```
+data: [
+  { module: "auth/token.ts",     added: 3, removed: 1 },
+  { module: "billing/charge.ts", added: 2, removed: 0 },
+  { module: "api/routes.ts",     added: 1, removed: 0 },
+]
+chartType: "bar", x: "module", y: ["added","removed"], stacked: true,
+colors: ["#2f9e44","#e03131"], yLabel: "edges"
+```
+
+Zero new primitives; rides on the same edge data the interaction map collects.
+_Buildable today._
+
+**Layered arc diagram** — nodes on a horizontal axis _ordered by architectural
+layer_ (ui → service → data), call edges as arcs above. The payoff: an arc that
+**jumps two layers visually pops** — that's a layering violation, the exact "this
+PR coupled things that shouldn't be coupled" smell that a flowchart hides.
+New/severed edges in the same green/red. Far more legible than node-link for
+spotting _bad_ structure. _Needs the charting kit._
+
+**Adjacency / co-change matrix** — when the graph gets dense, node-link turns to
+spaghetti; a matrix never does (zero edge crossings). Rows/cols = modules, cell =
+call or co-change strength, new coupling highlighted. The right tool for a big
+refactor where the flowchart is unreadable. _Needs the charting kit (or an
+html-kit grid)._
+
+**Overview-scale blast radius** _(promotes the per-finding graph, P3)._ Draw
+**one** impact graph centered on the single most sensitive changed symbol: one hop
+of **callers** (who breaks if this is wrong) plus the **tests** that cover it — or,
+loudly, that don't. The codebase-tier signal made the first thing the reviewer
+sees. Same mermaid primitive as the interaction map; bound it to ≤ ~7 nodes or the
+map becomes the territory. _Buildable today._
+
+### 8.3 "Can I trust it, and am I done?" — the confidence + closure family
+
+**Confidence × coverage quadrant** `⭐` — _the most LLM-native chart we can build._
+Plot every finding (or file): x = agent confidence, y = verification coverage. The
+**bottom-right quadrant — high confidence, low coverage — is the danger zone**:
+the agent was _sure_ about code it _didn't verify_, which is the single most
+dangerous LLM output there is (§ P3, §7 decision 2). A quadrant makes it a place
+the eye lands, not a sentence skimmed. Nothing in the PR-review market visualizes
+this — it's a genuine differentiator, and the data (`confidence` + `coverage`) is
+already required on every finding. _Needs scatter support (charting kit)._
+
+**Review burndown** `⭐` — _buildable today, ship it first as proof._ A cumulative
+`line`/`area` of open findings falling toward zero as the reviewer resolves them.
+It gives the review a visible **terminal state** — the "done" payoff the current
+strike-through lacks (corroborated independently by the UX redesign's review-
+cockpit move). No new primitive: it's a `line` chart over the existing
+resolve/dismiss events, and it makes the point that **charts are review _state_,
+not just PR statistics.** _Buildable today._
+
+### 8.4 The default set (what we actually ship)
+
+Per the discipline rule, the overview carries **four** visuals, one per job — not
+the whole catalog:
+
+| Question            | Canonical visual                    | Primitive          |
+| ------------------- | ----------------------------------- | ------------------ |
+| Where do I look?    | Risk-weighted treemap (= manifest)  | charting kit       |
+| How is it wired?    | Interaction map (edge-status)       | mermaid (today)    |
+| Can I trust it?     | Confidence × coverage quadrant      | charting kit       |
+| Am I done?          | Review burndown                     | `chart` line (today) |
+
+The rest (minimap, hotspot bubble, arc diagram, matrix, coupling-delta,
+overview blast radius) are **opt-in depth** — earned per PR, not always on. A big
+refactor swaps the interaction map for the matrix; a single-file fix drops
+everything but the minimap.
+
+### 8.5 What we need to get there (the enabling work)
+
+Four gaps stand between this design and shipping it:
+
+1. **The primitive ceiling → a sandboxed charting kit (the real unlock).** The
+   `chart` part supports only `bar | line | area | pie` (`server/types.ts:163`).
+   Treemap, scatter/bubble, heatmap, arc, matrix fit none of them. Two paths:
+   (a) extend `chartType` case-by-case — safe (stays in the React text-node render
+   path) but slow; or (b) **a charting kit rendered in the sandbox** — the server
+   composes a self-contained HTML doc (data inlined + a vetted D3 / Observable-Plot
+   bundle) and serves it through the existing opaque-origin iframe
+   (`renderHtmlPage` at `/s/:id`). This respects the invariant (agent-authored
+   HTML _must_ be sandboxed — CLAUDE.md) and buys us _any chart D3 can draw_
+   instead of four. **This is the highest-leverage investment in the section** —
+   it unlocks the treemap, quadrant, minimap, arc, and matrix in one move. The
+   data still flows as structured fields the server inlines, never as
+   agent-authored script.
+2. **The data (agent-authored).** Per-file `sensitivity` + `complexity`, coupling
+   `edges:[{from,to,status}]`, and per-finding `confidence` + `coverage` (already
+   required). Small additive schema work on `ReviewInput` / `FindingInput` — no
+   new analysis, the agent declares and the server renders (§7 decision 1).
+3. **The interaction bridge (what makes them best-in-class).** A chart cell must be
+   clickable → jump to that file's hunks / finding → comment in place. The viewer
+   already runs a delegated bridge for diff-line-click → composer; extend the same
+   `postMessage` channel to carry `chart-cell → navigate`. Without this they're
+   pretty pictures; with it they're the review's index. Keep the trusted-origin
+   DOM hooks the oracle asserts on intact.
+4. **Discipline (a non-code requirement).** Resist shipping all of §8. The default
+   set (§8.4) is four visuals; everything else is opt-in. The overview is itself
+   subject to attention-routing — a cluttered overview fails the same way an
+   alphabetical diff does.
+
+### 8.6 Sequencing
+
+- **Now, no new primitive (proves the thesis):** edge-status **interaction map**
+  (§8.2) and the **review burndown** (§8.3). Both fold into **Step B** /
+  **Step C** of §4 — additive fields on existing emitters. The burndown ships the
+  idea that charts encode review state; the interaction map ships "how it's wired."
+- **The unlock (one focused build):** the **sandboxed charting kit** (§8.5 #1) +
+  the **navigation bridge** (#3). This is a new sub-step in Phase 2, beside the
+  diff work (Step D), since both touch the renderer.
+- **On the kit:** **risk-weighted treemap** (replaces the manifest + churn bar)
+  and **confidence × coverage quadrant**. These are the two that make a reviewer
+  say "best in class." Then minimap / arc / matrix as opt-in depth.
+
+### 8.7 Validation & honesty
+
+Per §6, the risk / blast-radius / coupling family is **design judgment, not
+deep-research-corroborated** — the same caveat that gates the risk band gates
+these visuals. Two mitigations, both already baked in: the data is
+**agent-authored** (so the question is "did the agent judge well," not "is our
+graph/scoring algorithm correct"), and the **buildable-today** pair (interaction
+map + burndown) lets us validate the whole "charts route attention" thesis in real
+reviews _before_ investing in the charting kit. Treat the treemap and quadrant as
+the bets to confirm once the cheap pair has proven the direction.
