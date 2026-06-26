@@ -17,6 +17,7 @@ import {
   type AssetKind,
   type Comment,
   htmlPart,
+  isAssetKind,
   type Store,
   type Surface,
   type SurfaceBadge,
@@ -30,8 +31,8 @@ import {
 } from "./mcpSpec.ts";
 import { coerceSurfaceBadge, coerceSurfaceParts } from "./surfaceParts.ts";
 
-// Stateless MCP over streamable HTTP: every request is self-contained, which
-// is what a serverless deployment needs. Session continuity is explicit —
+// Stateless MCP over streamable HTTP: every request is self-contained, so no
+// per-connection server state is held. Session continuity is explicit —
 // publish_surface returns a sessionId the agent passes back on later calls.
 
 type FlowResult<T> = Promise<
@@ -93,11 +94,6 @@ export interface McpDeps {
   guide: string;
 }
 
-// Coerce loosely-typed tool args into validated SurfacePart[]. Unknown kinds
-// and empty parts are dropped rather than rejected, so a slightly-off call
-// still publishes what it can.
-export const coerceParts = coerceSurfaceParts;
-
 export function registerMcp(app: Hono, deps: McpDeps) {
   const surfaceResult = (result: { surface: Surface; userFeedback?: Feedback[] }, origin: string) =>
     JSON.stringify(
@@ -118,8 +114,8 @@ export function registerMcp(app: Hono, deps: McpDeps) {
       case "publish_snippet": {
         const parts =
           name === "publish_snippet"
-            ? coerceParts([htmlPart(String(args.html ?? ""), args.kits)])
-            : coerceParts(args.parts);
+            ? coerceSurfaceParts([htmlPart(String(args.html ?? ""), args.kits)])
+            : coerceSurfaceParts(args.parts);
         if (parts.length === 0) throw new Error("a surface needs at least one part");
         const result = await deps.publishSurface({
           parts,
@@ -185,9 +181,9 @@ export function registerMcp(app: Hono, deps: McpDeps) {
         };
         if (name === "update_snippet") {
           if (typeof args.html === "string")
-            patch.parts = coerceParts([htmlPart(args.html, args.kits)]);
+            patch.parts = coerceSurfaceParts([htmlPart(args.html, args.kits)]);
         } else if (args.parts !== undefined) {
-          patch.parts = coerceParts(args.parts);
+          patch.parts = coerceSurfaceParts(args.parts);
         }
         const result = await deps.reviseSurface(String(args.id ?? ""), patch);
         if ("error" in result) throw new Error(result.error);
@@ -242,8 +238,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
           2,
         );
       }
-      case "list_surfaces":
-      case "list_snippets": {
+      case "list_surfaces": {
         const surfaces = await deps.store.listSurfaces(
           typeof args.session === "string" ? args.session : undefined,
         );
@@ -268,10 +263,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
           data: decodeBase64(args.data),
           contentType: typeof args.contentType === "string" ? args.contentType : "",
           filename: typeof args.filename === "string" ? args.filename : undefined,
-          kind:
-            args.kind === "image" || args.kind === "trace" || args.kind === "file"
-              ? args.kind
-              : undefined,
+          kind: isAssetKind(args.kind) ? args.kind : undefined,
           session: typeof args.session === "string" ? args.session : undefined,
         });
         if ("error" in result) throw new Error(result.error);

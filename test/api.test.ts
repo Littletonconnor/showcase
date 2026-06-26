@@ -668,61 +668,6 @@ test("a surface badge is validated, echoed, updatable, and clearable", async () 
   assert.equal(cleared.badge, undefined);
 });
 
-test("pin/unpin a surface drives the Library collection", async () => {
-  const app = makeApp();
-  const a = (await (
-    await app.request(
-      "/api/surfaces",
-      json({ title: "Keep", parts: [{ kind: "html", html: "<p>a</p>" }] }),
-    )
-  ).json()) as any;
-  const b = (await (
-    await app.request(
-      "/api/surfaces",
-      json({ title: "Skip", parts: [{ kind: "html", html: "<p>b</p>" }] }),
-    )
-  ).json()) as any;
-
-  // Nothing pinned yet.
-  assert.deepEqual((await (await app.request("/api/library")).json()) as any, []);
-
-  const pinRes = await app.request(`/api/surfaces/${a.id}/pin`, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ pinned: true }),
-  });
-  assert.equal(pinRes.status, 200);
-  assert.equal(((await pinRes.json()) as any).pinned, true);
-
-  let library = (await (await app.request("/api/library")).json()) as any[];
-  assert.deepEqual(
-    library.map((s) => s.id),
-    [a.id],
-  );
-  assert.equal(library[0].pinned, true);
-  assert.equal(library[0].title, "Keep");
-
-  // Unpinning drops it back out of the Library.
-  await app.request(`/api/surfaces/${a.id}/pin`, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ pinned: false }),
-  });
-  assert.deepEqual((await (await app.request("/api/library")).json()) as any, []);
-
-  // Pinning an unknown surface 404s.
-  assert.equal(
-    (
-      await app.request(`/api/surfaces/${b.id}-nope/pin`, {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ pinned: true }),
-      })
-    ).status,
-    404,
-  );
-});
-
 test("publishes a combined html+diff surface; /s renders the html part only", async () => {
   const app = makeApp();
   const res = await app.request(

@@ -14,6 +14,7 @@ import {
   type Comment,
   type CommentAnchor,
   htmlPart,
+  isAssetKind,
   MAX_ASSET_BYTES,
   partsByteLength,
   type Store,
@@ -93,9 +94,6 @@ function inferAssetKind(contentType: string): AssetKind {
   return contentType.startsWith("image/") ? "image" : "file";
 }
 
-const isAssetKind = (v: unknown): v is AssetKind => v === "image" || v === "trace" || v === "file";
-
-// base64 -> bytes, runtime-agnostic (atob is a global in Node and Workers).
 // Docs and onboarding snippets are written against the local default; serve
 // them with the real origin so a deployed instance shows copy-pasteable URLs.
 const LOCAL_ORIGIN = "http://localhost:8229";
@@ -120,18 +118,18 @@ export interface AppOptions {
   // connected browsers see it on reconnect and refresh. Never set in production
   // (the route is unregistered and the snippet is not injected).
   dev?: boolean;
-  // When set (cloud deployments), this hook authorizes requests before any
-  // app route runs. Return true to allow, false to use the default 401, or a
-  // Response for custom denials. This is intentionally lower-level than
-  // authToken so hosts can validate edge-signed assertions without teaching
-  // showcase about their session/token systems.
+  // Extension seam for embedders fronting showcase with their own auth (e.g. a
+  // reverse proxy). When set, this hook authorizes requests before any app
+  // route runs. Return true to allow, false for the default 401, or a Response
+  // for custom denials. Lower-level than authToken so a host can validate its
+  // own signed assertions without teaching showcase its session/token system.
   authenticate?: AuthenticateHook;
-  // When set (self-hosted Worker deployments), every route except /guide,
-  // /setup, and /agent-howto requires it: Authorization bearer, ?key= query,
-  // or the cookie it sets. Preserved for backwards compatibility.
+  // When set, every route except /guide, /setup, and /agent-howto requires it:
+  // Authorization bearer, ?key= query, or the cookie it sets. `index.ts` wires
+  // this from SHOWCASE_TOKEN; the local default ships unset.
   authToken?: string;
-  // Public path prefix for deployments mounted below an origin root, e.g.
-  // /u/:account in a hosted multi-tenant wrapper. The core still receives
+  // Public path prefix for an embedder mounting showcase below an origin root,
+  // e.g. /u/:account behind a multi-tenant wrapper. The core still receives
   // stripped routes like /api/sessions and /s/:id?part=0; this prefix is only
   // used when the server/viewer generate browser-visible URLs.
   basePath?: BasePathHook;
@@ -206,7 +204,6 @@ const surfaceMeta = (s: Surface) => ({
   version: s.version,
   parts: stripParts(s.parts),
   ...(s.badge ? { badge: s.badge } : {}),
-  ...(s.pinned ? { pinned: true } : {}),
 });
 
 function isPublicReadAllowed(path: string, mode: PublicReadMode): boolean {
@@ -266,8 +263,6 @@ const feedbackView = (c: Comment): Feedback => ({
   ...(c.anchor ? { anchor: c.anchor } : {}),
 });
 
-// Validate a comment anchor from request input: a point as 0..1 fractions of the
-// card. Out-of-range values clamp; anything malformed yields undefined.
 const LINE_TYPES = new Set(["context", "addition", "deletion"]);
 
 // A comment anchor from request input → a validated point OR line anchor (see
@@ -1816,33 +1811,6 @@ export function createApp({
   };
   app.put("/api/surfaces/:id", revise);
   app.put("/api/snippets/:id", revise); // legacy alias
-
-  // Pin/unpin a surface to the cross-session Library. Doesn't bump the version
-  // (it's not a content edit); broadcasts surface-updated so an open Library
-  // view refreshes.
-  app.put("/api/surfaces/:id/pin", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
-    const pinned = body?.pinned !== false; // default to pinning
-    const surface = await store.setPinned(c.req.param("id"), pinned);
-    if (!surface) return c.json({ error: "surface not found" }, 404);
-    bus.broadcast({
-      type: "surface-updated",
-      id: surface.id,
-      sessionId: surface.sessionId,
-      version: surface.version,
-    });
-    return c.json(surface);
-  });
-
-  // The Library: every pinned surface across sessions, newest first (metas).
-  app.get("/api/library", async (c) => {
-    if (isUnauthenticatedSessionRead(c)) return c.json({ error: "unauthorized" }, 401);
-    const all = await store.listSurfaces();
-    const pinned = all
-      .filter((s) => s.pinned)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    return c.json(pinned.map(surfaceMeta));
-  });
 
   const remove = async (c: any) => {
     const surface = await store.getSurface(c.req.param("id"));

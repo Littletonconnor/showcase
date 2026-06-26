@@ -242,27 +242,6 @@ export function runStoreContract(name: string, makeStore: () => Store | Promise<
     assert.equal(cleared?.badge, undefined);
   });
 
-  contract("pins and unpins a surface; unknown ids return null", async (store) => {
-    const session = await store.createSession({ agent: "p" });
-    const surface = await store.createSurface({
-      sessionId: session.id,
-      parts: [htmlPart("<p>pin</p>")],
-    });
-    assert.ok(surface);
-    assert.equal(surface.pinned, undefined);
-
-    const pinned = await store.setPinned(surface.id, true);
-    assert.equal(pinned?.pinned, true);
-    assert.equal((await store.getSurface(surface.id))?.pinned, true);
-
-    const unpinned = await store.setPinned(surface.id, false);
-    // Unpinning clears the flag rather than persisting `false`.
-    assert.equal(unpinned?.pinned, undefined);
-    assert.equal((await store.getSurface(surface.id))?.pinned, undefined);
-
-    assert.equal(await store.setPinned("missing", true), null);
-  });
-
   contract("updates bump the version and archive the previous one", async (store) => {
     const session = await store.createSession({ agent: "pi" });
     const surface = await store.createSurface({

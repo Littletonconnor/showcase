@@ -1,6 +1,6 @@
-// base64 -> bytes, runtime-agnostic (atob is a global in Node and Workers).
-// atob throws on malformed input; rethrow as a clean error so callers turn it
-// into a 400 instead of letting a raw DOMException surface as a 500.
+// base64 -> bytes via the `atob` platform global (no `node:` import, per the
+// runtime-agnostic invariant). atob throws on malformed input; rethrow as a
+// clean error so callers turn it into a 400 instead of a raw DOMException 500.
 export function decodeBase64(b64: string): Uint8Array {
   let bin: string;
   try {

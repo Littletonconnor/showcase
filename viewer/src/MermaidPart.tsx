@@ -6,7 +6,6 @@ import { useActiveTheme, useResolvedMode } from "./theme.ts";
 // Wrapper styles shipped into the sandbox iframe. Mermaid bakes theme colors
 // into the SVG itself (read from the trusted viewer's vars at render time), so
 // the iframe only needs to center and constrain it.
-// Wrapper styles shipped into the sandbox iframe — center and constrain the SVG.
 const MERMAID_CSS = `
 body { margin: 0; padding: 14px 16px; background: transparent; text-align: center; }
 svg { max-width: 100%; height: auto; }
