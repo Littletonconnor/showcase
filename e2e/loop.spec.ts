@@ -474,3 +474,45 @@ test("publish_review renders the opinionated overview in a sandboxed review-kit 
   await overview.locator(".manifest-row.sensitive .rev").check();
   await expect(overview.locator(".review-progress")).toContainText("1 / 3 reviewed");
 });
+
+test("an edge-status changeMap renders as a real mermaid SVG, not a parse error", async ({
+  page,
+  request,
+}) => {
+  // Guards a browser-only regression: §8.2 emits `linkStyle` lines for edge
+  // status, and mermaid's flowchart grammar rejects a lone `stroke:#color` —
+  // so an `existing` edge must carry a stroke-width too. A string assertion
+  // can't see this; only rendering the diagram in a real browser does.
+  const review = await (
+    await request.post("/api/reviews", {
+      data: {
+        verdict: "comment",
+        changeMap: {
+          nodes: [
+            { id: "a", label: "authMiddleware", status: "touched" },
+            { id: "b", label: "validateToken", status: "modified" },
+            { id: "c", label: "revocationList", status: "new" },
+          ],
+          edges: [
+            { from: "a", to: "b", label: "calls", status: "existing" },
+            { from: "b", to: "c", label: "now checks", status: "new" },
+            { from: "a", to: "c", label: "dropped", status: "removed" },
+          ],
+        },
+        findings: [],
+      },
+    })
+  ).json();
+
+  await page.goto(`/?surface=${review.verdict}`);
+  const card = page.locator(`.card[data-id="${review.verdict}"]`);
+  await expect(card).toBeVisible();
+
+  // The change map is the verdict card's mermaid part. It must produce an SVG
+  // with edge paths and show no mermaid parse error.
+  const map = card.frameLocator("iframe").last();
+  await expect(map.locator("svg .edgePaths path, svg path.flowchart-link").first()).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(map.getByText(/Parse error|Couldn't render/)).toHaveCount(0);
+});

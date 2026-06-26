@@ -606,10 +606,15 @@ export interface ChangeMapInput {
 // `removed` edge is a call it severs (a dropped auth/validation hop is the most
 // dangerous invisible change), `existing` is unchanged context. Shares the
 // node-status palette so one legend covers both. mermaid styles edges by index.
+// NB: every entry needs ≥2 comma-separated properties — mermaid's flowchart
+// grammar rejects a lone `linkStyle N stroke:#color;` (it parses the color then
+// expects more and throws a parse error), so `existing` carries an explicit
+// stroke-width rather than `stroke:#9aa0a6` alone. Verified in a real browser
+// (the viewer's mermaid) — a string-only assertion wouldn't catch the failure.
 const EDGE_STATUS: Record<string, string> = {
   new: "stroke:#2f9e44,stroke-width:1.5px",
   removed: "stroke:#e03131,stroke-width:1.5px,stroke-dasharray:4 3",
-  existing: "stroke:#9aa0a6",
+  existing: "stroke:#9aa0a6,stroke-width:1px",
 };
 
 function buildChangeMap(map: ChangeMapInput): SurfacePart | undefined {

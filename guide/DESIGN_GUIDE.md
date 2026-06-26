@@ -289,6 +289,15 @@ theme tokens, so kit output re-themes with the board.
   step, the slider scrubs. Wrap a phrase in `.cue` to highlight it. This is the
   **explainer** kit — walk the reader through a concept; pair it with an `image`
   part of the thing you're explaining.
+- **`review`** — the PR-review **overview** vocabulary: a `.risk` band over four
+  `.signal` sub-bars (size / surface / sensitivity / tests), a `.budget` line,
+  and a priority-ranked `.manifest` whose rows carry a priority `.pri` dot
+  (`.sensitive`/`.logic`/`.mechanical`), a two-tone churn `.spark`, a note, and a
+  reviewed checkbox. `.finding-head` styles severity + confidence + verified
+  chips. The kit JS runs a live reviewed-checkbox burn-down and collapses the
+  mechanical bucket. **You normally don't hand-author this** — `publish_review`
+  composes it from `intent`/`risk`/`budget`/`manifest`; reach for the raw classes
+  only to build a custom review surface.
 
 Copy-paste starting points — `issues` (a PR + CI tree), `slides` (a deck), and
 `animate` (a stepped explainer):

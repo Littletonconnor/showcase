@@ -344,7 +344,8 @@ test("publish_review color-codes changeMap edge status with linkStyle lines (§8
   const verdict = (await (await app.request(`/api/surfaces/${review.verdict}`)).json()) as any;
   const src = verdict.parts.find((p: any) => p.kind === "mermaid").mermaid as string;
   // One linkStyle per edge, indexed in emission order, reusing the status palette.
-  assert.match(src, /linkStyle 0 stroke:#9aa0a6;/); // existing → gray
+  // Each entry carries ≥2 properties — a lone `stroke:#color` fails mermaid's parser.
+  assert.match(src, /linkStyle 0 stroke:#9aa0a6,stroke-width:1px;/); // existing → gray
   assert.match(src, /linkStyle 1 stroke:#2f9e44,stroke-width:1\.5px;/); // new → green
   assert.match(src, /linkStyle 2 stroke:#e03131,stroke-width:1\.5px,stroke-dasharray:4 3;/); // removed → red dashed
 });

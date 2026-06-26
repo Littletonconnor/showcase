@@ -18,11 +18,14 @@ usage:
   showcase review <branch> [options]      scaffold a review session from a diff
       --base <branch>   base to diff against (default: origin/HEAD or main)
       --title <t>       session title (default: "Review: <branch>")
-      prints the session id + URL + a ready-to-paste prompt for your agent.
+      prints the session id + URL + a churn-seeded manifest + risk + a
+      ready-to-paste prompt for your agent (which refines them).
       Reads a review profile (your standing conventions + skills to load) from
       $SHOWCASE_REVIEW_PROFILE or ~/.showcase/review.md and folds it in.
   showcase finding [options]              publish one structured review finding
       --title <t>       the finding (required)    --problem <text>  what's wrong (required)
+      --confidence <c>  high|medium|low (required) --coverage <text> what you did/didn't check (required)
+      --verified        you ran/reproduced it     --scope changed-lines|whole-file|codebase
       --severity <s>    bug|nit|question|praise|note   --file <f> --line <n>
       --before <file|-> --after <file|->  suggested fix as a before→after diff (preferred)
       --fix <text>      why the change is better   --patch <file|->  raw diff (fallback)
@@ -539,6 +542,64 @@ function gitDefaultBase() {
 }
 
 const FILE_STATUS = { A: "added", M: "modified", D: "deleted", R: "renamed", C: "copied" };
+
+// Path heuristics for the review manifest's default priority. The agent owns the
+// real call (§7 decision 1) — these only seed a starting point printed in the
+// prompt so the agent refines rather than invents. SENSITIVE: paths where a bug
+// is expensive (auth, data model, money, migrations, deploy/CI config).
+// MECHANICAL: generated/vendored noise that needs a glance, not real eyes.
+const SENSITIVE_RE =
+  /(^|\/)(auth|login|session|token|secret|password|credential|crypto|cipher|jwt|oauth|permission|acl|payment|billing|charge|money|invoice|migrat|schema)|\.(sql)$|(^|\/)(\.github|Dockerfile|docker-compose|Makefile)|\.(ya?ml|tf)$/i;
+const MECHANICAL_RE =
+  /(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|composer\.lock|Cargo\.lock|go\.sum)$|(^|\/)(dist|build|vendor|node_modules|__snapshots__|generated)\/|\.(min\.(js|css)|map|snap|lock)$|\.(svg|png|jpe?g|gif|ico|woff2?)$/i;
+const TEST_RE = /(^|\/)(test|tests|spec|__tests__|e2e)\/|\.(test|spec)\.[cm]?[jt]sx?$/i;
+
+function classifyPriority(file) {
+  if (MECHANICAL_RE.test(file)) return "mechanical";
+  if (SENSITIVE_RE.test(file)) return "sensitive";
+  return "logic";
+}
+
+// A 0–3 weight from a count, log-scaled so churn doesn't peg everything at 3.
+const weight = (n, scale) => Math.max(0, Math.min(3, Math.round(Math.log2(n / scale + 1))));
+
+// Seed a priority-ranked manifest from the diff's churn — one row per file, with
+// a default priority (path heuristic) and a one-line "why it matters" note.
+function manifestFromChurn(churn) {
+  return churn.map((c) => {
+    const priority = classifyPriority(c.file);
+    const note =
+      priority === "sensitive"
+        ? "sensitive path — read carefully"
+        : priority === "mechanical"
+          ? "generated / vendored — glance only"
+          : `${c.added + c.removed} lines changed`;
+    return { file: c.file, added: c.added, removed: c.removed, priority, note };
+  });
+}
+
+// Seed a composite risk from the diff (§ P1). size = total churn; surfaceArea =
+// files touched; sensitivity = how much sensitive code moved; testDelta = did
+// tests move with the logic (untouched logic = riskier, so a HIGH weight means
+// "logic changed, tests didn't"). Each 0–3; the band is the rounded average.
+function riskFromChurn(churn, manifest) {
+  const totalChurn = churn.reduce((s, c) => s + c.added + c.removed, 0);
+  const nonMechanical = manifest.filter((m) => m.priority !== "mechanical");
+  const sensitiveChurn = manifest
+    .filter((m) => m.priority === "sensitive")
+    .reduce((s, m) => s + m.added + m.removed, 0);
+  const logicFiles = manifest.filter((m) => m.priority === "logic");
+  const testFiles = churn.filter((c) => TEST_RE.test(c.file));
+  const size = weight(totalChurn, 40);
+  const surfaceArea = weight(nonMechanical.length, 2);
+  const sensitivity = sensitiveChurn > 0 ? weight(sensitiveChurn, 10) || 1 : 0;
+  // Logic changed but no tests moved → the dangerous gap → weight up.
+  const testDelta =
+    logicFiles.length > 0 && testFiles.length === 0 ? 3 : testFiles.length > 0 ? 1 : 0;
+  const avg = (size + surfaceArea + sensitivity * 1.5 + testDelta) / 4.5;
+  const band = avg >= 2 ? "high" : avg >= 1 ? "elevated" : "low";
+  return { size, surfaceArea, sensitivity, testDelta, band };
+}
 
 const commands = {
   async serve() {
@@ -1111,6 +1172,11 @@ const commands = {
           .filter((c) => c.file)
       : [];
 
+    // Seed the overview heuristics from the diff — a priority-ranked manifest +
+    // composite risk the agent refines (it owns the real call, §7 decision 1).
+    const manifest = manifestFromChurn(churn);
+    const risk = riskFromChurn(churn, manifest);
+
     const rows = names.split("\n").map((line) => {
       const [status, ...pathParts] = line.split("\t");
       const label = FILE_STATUS[status[0]] ?? status;
@@ -1157,7 +1223,9 @@ const commands = {
       profile && `Apply your review profile first (load any skills it names):\n${profile}`,
       `Review the branch ${branch} against ${base}, then publish it to showcase with ONE call to the publish_review tool (session ${surface.sessionId}). Call get_design_guide first.`,
       `Break the PR into its CRITICAL PIECES — the entity, the wiring, the test coverage — not file-by-file. Read the actual code paths, not just the diff hunks.`,
-      `Call publish_review ONCE: pass verdict (request_changes|approve|comment), a one-paragraph summary, a coverage note, a \`changeMap\`, and a findings[] array. The \`changeMap\` ({nodes, edges}) is the headline visual — the changed pieces and how they interact: one node per changed file/symbol tagged status (new|modified|touched|removed) and kind, and an edge for every interaction between them ({from, to, label}). Build it from your reading of the diff. Each finding: severity, title, file/line, the problem, and for any fix a \`suggestion:{before,after}\` — the CURRENT code and your PROPOSED code, which showcase renders as a diff that always shows the change. Put WHY the change is better in \`fix\`. Use \`patch\` only to show the PR's actual change in context. showcase turns it into a verdict card + one card per finding.`,
+      `Call publish_review ONCE. LEAD the overview with: \`intent\` (1–2 sentences on what the PR is trying to do), \`risk\` ({size, surfaceArea, sensitivity, testDelta} each 0–3 + a \`band\` low|elevated|high), a \`budget\` line ("~N min · H files need real eyes · C mechanical"), and a \`manifest\` ([{file, added, removed, priority, note}] — priority sensitive|logic|mechanical). A churn-seeded manifest + risk are in this command's JSON output as a STARTING POINT — refine them from your actual read; you have the semantic context a path regex doesn't.`,
+      `Also pass a \`changeMap\` ({nodes, edges}) — the headline visual of the changed pieces and how they interact: one node per changed file/symbol tagged status (new|modified|touched|removed) + kind, and an edge for every interaction ({from, to, label, status?}). Mark each edge's \`status\`: new coupling the PR introduces (green), a call it severs (removed, red), or unchanged context (existing, gray).`,
+      `Then a findings[] array. EACH finding REQUIRES \`confidence\` (high|medium|low) and \`coverage\` (what you DID and did NOT check) — the honesty signal; a finding missing either is rejected. Optionally \`verified\` (you ran/reproduced it), \`scope\` (changed-lines|whole-file|codebase), and a \`blastRadius\` ({nodes, edges}) call-graph. For any fix pass \`suggestion:{before,after}\` (the CURRENT and PROPOSED code — rendered as a diff that always shows the change) and put WHY in \`fix\`; use \`patch\` only to show the PR's actual change in context.`,
       `Do NOT write the review as a single markdown surface — that wall of text is the failure mode publish_review replaces. (publish_review automatically turns this session's "In review" placeholder card into the verdict — just call it with session ${surface.sessionId}.)`,
     ]
       .filter(Boolean)
@@ -1170,6 +1238,8 @@ const commands = {
       range,
       files: names.split("\n").length,
       churn,
+      manifest,
+      risk,
       profile: profile ? profilePath : null,
       prompt,
     });
