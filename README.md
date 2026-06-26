@@ -24,8 +24,8 @@ Two flagship workflows:
 ### 🔍 Visual PR review
 
 _"The future of code review is multimodal."_ Run `showcase review <branch>` and
-your agent breaks the PR into critical pieces, publishing one **finding card** per
-piece via the `review_finding` tool — each a severity **badge** (Bug / Nit /
+your agent reviews it and publishes one **finding card** per issue via the
+`review_finding` tool — each a severity **badge** (Bug / Nit /
 Question / Praise), a plain-English explanation, the **diff inline**, and an
 optional **mermaid diagram** of the relevant flow. You read, push back in the
 thread, approve or dismiss to burn down a live verdict bar, and the agent revises
