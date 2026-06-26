@@ -33,8 +33,13 @@ a `kind`:
   `class A,B accent`) and edges with `accentLine` (pair with `linkStyle`);
   sequence diagrams style actors globally only.
 - **`diff`** — a patch you hand over as _data_; the trusted viewer renders it
-  natively as a syntax-highlighted code review (split or unified). Reach for it
-  to show a changeset or review code, not to draw.
+  natively as a syntax-highlighted code review (split or unified) with
+  **word-level** intra-line highlighting. A multi-file diff leads with a
+  **manifest header** (each file's change type — added / modified / deleted /
+  moved / renamed — and churn), and **generated/vendored files** (lockfiles,
+  `dist/`, `vendor/`, snapshots) collapse out of the rendered diff behind a
+  toggle so the reviewer reads what matters first. Reach for it to show a
+  changeset or review code, not to draw.
 - **`image`** — an uploaded image, referenced by `assetId` (see Uploads below),
   rendered natively by the viewer. Reach for it to show a screenshot or a
   generated picture.
@@ -63,15 +68,24 @@ a `kind`:
   markdown part with one fenced block, and the kind shows up as `code` in the
   card metadata.
 - **`chart`** — row-oriented numeric data the viewer renders as a native SVG
-  chart (Recharts). `chartType` is `bar`, `line`, `area`, or `pie`. `data` is an
-  array of objects (one per row); `x` names the category field (the x axis, or
-  the slice label for pie); `y` names the numeric series — a single field, or an
-  array of fields to plot several series (set `stacked: true` to stack bars or
-  areas). Optional `xLabel`/`yLabel` annotate the axes and `caption` sits below.
-  Colors come from the live theme, so charts re-theme with the board; the first
-  series uses the board accent. Pass `colors` (an array of CSS colors, one per
-  series or per pie slice) to override — e.g. `["#2f9e44", "#e03131"]` for
-  green-added / red-removed churn. Like image/json it is data, not markup — sent
+  chart (Recharts). `chartType` is `bar`, `line`, `area`, `pie`, `treemap`, or
+  `scatter`. `data` is an array of objects (one per row); `x` names the category
+  field (the x axis, or the slice label for pie); `y` names the numeric series —
+  a single field, or an array of fields to plot several series (set
+  `stacked: true` to stack bars or areas). Optional `xLabel`/`yLabel` annotate
+  the axes and `caption` sits below. Colors come from the live theme, so charts
+  re-theme with the board; the first series uses the board accent. Pass `colors`
+  (an array of CSS colors, one per series or per pie slice) to override — e.g.
+  `["#2f9e44", "#e03131"]` for green-added / red-removed churn. The two
+  review-oriented forms carry a second visual dimension via a per-row `tone`
+  field (a fixed palette, no color string to sanitize): a **`treemap`** sizes
+  each cell by its `y` value and tints it by `tone`
+  (`sensitive`→red / `logic`→amber / `mechanical`→gray) — a risk-weighted file
+  map where the eye is pulled to the big hot rectangle; a **`scatter`** plots
+  `x` vs `y` as a quadrant (`tone: "danger"` reddens a point) — the
+  confidence × coverage view whose bottom-right is the danger zone.
+  `publish_review` composes both automatically from the manifest and findings.
+  Like image/json it is data, not markup — sent
   as values, rendered with escaped text nodes, so no sandbox is needed. Reach for
   it for metrics, distributions, and before/after comparisons.
 
@@ -296,8 +310,14 @@ theme tokens, so kit output re-themes with the board.
   reviewed checkbox. `.finding-head` styles severity + confidence + verified
   chips. The kit JS runs a live reviewed-checkbox burn-down and collapses the
   mechanical bucket. **You normally don't hand-author this** — `publish_review`
-  composes it from `intent`/`risk`/`budget`/`manifest`; reach for the raw classes
-  only to build a custom review surface.
+  composes it from `intent` / `risk` / `budget` / `manifest` (plus
+  per-finding `confidence` / `coverage` / `verified` / `scope` / `blastRadius`
+  and an edge-status `changeMap`); see **AGENT_HOWTO** for the full field set.
+  From that same structure the verdict card also gets the **risk-weighted
+  treemap** (from the manifest) and the **confidence × coverage quadrant** (from
+  the findings), and the session header draws a live **burn-down sparkline** as
+  findings resolve — all automatic. Reach for the raw classes only to build a
+  custom review surface.
 
 Copy-paste starting points — `issues` (a PR + CI tree), `slides` (a deck), and
 `animate` (a stepped explainer):

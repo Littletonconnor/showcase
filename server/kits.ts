@@ -244,6 +244,24 @@ const REVIEW_JS = `
       bucket.hidden=open;
     });
   }
+  // The keyboard layer's 'x' (mark next file reviewed) lives in the trusted
+  // viewer, but the manifest checkboxes live here in the sandbox — so the host
+  // posts a 'review-cmd' in and we check the next unreviewed box, paint the
+  // counter, and post the new progress back for a host toast. Hot (visible) rows
+  // come first in DOM order; if the next one is in the collapsed mechanical
+  // bucket we reveal it so the tick is visible.
+  window.addEventListener('message',function(e){
+    var d=e.data;if(!d||!d.__showcase||d.type!=='review-cmd'||d.cmd!=='mark-next')return;
+    var next=null;
+    for(var i=0;i<rows.length;i++){var b=rows[i].querySelector('.rev');if(b&&!b.checked){next=rows[i];break;}}
+    if(!next)return;
+    if(bucket&&toggle&&bucket.contains(next)&&bucket.hidden){toggle.setAttribute('aria-expanded','true');bucket.hidden=false;}
+    var nb=next.querySelector('.rev');nb.checked=true;next.classList.add('reviewed');paint();
+    if(next.scrollIntoView)next.scrollIntoView({block:'nearest'});
+    var f=next.querySelector('.file');
+    var done=rows.map(function(r){return r.querySelector('.rev');}).filter(function(x){return x&&x.checked;}).length;
+    parent.postMessage({__showcase:true,type:'review-reviewed',file:f?f.textContent:'',done:done,total:rows.length},'*');
+  });
   paint();
 })();
 `;

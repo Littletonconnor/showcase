@@ -293,6 +293,37 @@ export const DEMO_SESSIONS = [
             markdown:
               "## Review summary\n\n**2 findings** · 1 bug · 1 nit — **request changes**\n\n| # | Severity | Finding | Location |\n|---|----------|---------|----------|\n| 1 | 🔴 Bug | Unbounded asset upload buffers the whole body before the size check | `server/app.ts:747` |\n| 2 | 🟡 Nit | `mime` parse duplicated across three handlers | `server/app.ts:182` |\n\n**Coverage** — read the asset upload + auth paths and the comment long-poll; did not exercise the SQL migration or the e2e suite.\n\nThe blocker (#1) is below. Tap **Approve** on a card once it's addressed.",
           },
+          // Where to look: the risk-weighted treemap (area = churn, color =
+          // sensitivity). The lockfile is one big gray block you skip; the small
+          // app.ts rectangle is hot red — attention routing as a visual reflex.
+          {
+            kind: "chart",
+            chartType: "treemap",
+            x: "name",
+            y: "size",
+            data: [
+              { name: "app.ts", size: 30, tone: "sensitive" },
+              { name: "assets.test.ts", size: 18, tone: "logic" },
+              { name: "package-lock.json", size: 300, tone: "mechanical" },
+            ],
+            caption: "Risk-weighted — area = churn, color = sensitivity (red) → mechanical (gray)",
+          },
+          // Can I trust it: the confidence × coverage quadrant. The bug sits in
+          // the bottom-right danger zone — high confidence, low coverage.
+          {
+            kind: "chart",
+            chartType: "scatter",
+            x: "conf",
+            y: "cov",
+            xLabel: "confidence",
+            yLabel: "coverage",
+            data: [
+              { conf: 3, cov: 1, label: "Unbounded asset upload", tone: "danger" },
+              { conf: 2, cov: 2, label: "Duplicated content-type parse", tone: "normal" },
+            ],
+            caption:
+              "Confidence × coverage — bottom-right (sure but unverified) is the danger zone",
+          },
           { kind: "mermaid", mermaid: REVIEW_CHANGEMAP },
         ],
       },
