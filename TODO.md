@@ -142,12 +142,12 @@ solo: **problem → approach → acceptance → effort (AI time)**. Effort is a 
 first-cut, not a commitment.
 
 **Why workflows, not features:** the rendering primitives for a great review card
-already exist — the multimodal card in the product screenshot is just a
+were never the hard part — the multimodal card in the product screenshot is just a
 `[prose, mermaid, diff]` surface, and the diff renderer already does file
-headers, line numbers, syntax highlighting, and unchanged-line folding. What's
-missing is the _workflow_ that makes an agent produce those cards by default, and
-the review-level structure (severity, verdict, line comments, share-back) that
-turns a pile of cards into a review. That's Workflow 1.
+headers, line numbers, syntax highlighting, and unchanged-line folding. The work
+was the _workflow_ that makes an agent produce those cards by default, plus the
+review-level structure (severity, verdict, line comments, share-back) that turns a
+pile of cards into a review — that's Workflow 1, now shipped (R1–R4).
 
 ### Shipped (the foundation — don't redo it, build on it)
 
@@ -246,12 +246,15 @@ _(A GitHub round-trip — `gh pr review` with line comments — was considered a
 **dropped**: showcase is its own surface, not a GitHub front-end. Sharing a
 review with others is the static-export path under Supporting capabilities.)_
 
-#### Review depth (deferred — earned per PR, not always-on)
+#### Review depth — fancier review visualizations (a track to develop)
 
 Migrated from the original PR-review design doc (now removed — its design is
 shipped: R1–R4 plus the opinionated overview, risk treemap, confidence×coverage
-quadrant, edge-status change map, live burndown, and keyboard traversal). What's
-left is _depth_ to add when a specific review needs it — don't build speculatively.
+quadrant, edge-status change map, live burndown, and keyboard traversal). These
+are the next depth investments to make the review _best-in-class_ — worth working
+through deliberately, one at a time, **starting with the charting kit (the
+unlock)**. They stay opt-in per PR so the overview never clutters; getting each
+one to feel right matters more than shipping them fast.
 
 - **Sandboxed D3 charting kit** _(the unlock)_ — the `chart` part is React-rendered
   and capped at bar/line/area/pie/treemap/scatter. A sandbox-iframe charting kit
@@ -277,49 +280,37 @@ left is _depth_ to add when a specific review needs it — don't build speculati
 _Explicitly **not** doing:_ large-diff row virtualization — the per-file SSR diff
 render is adequate; revisit only if one huge file's hunk count bites.
 
-### Workflow 2 ⭐ — Learning & explainers
+### Workflow 2 ⭐ — Learning & explainers (shipped)
 
 > _Share a screenshot/snippet with your agent; get back an animated, interactive
 > explainer you can scrub and question._ Leans on html parts + the kit system.
+> **All three pieces shipped — build on them, don't redo them.**
 
-- **L1 — Animation kit.** An opt-in `animate` kit (`server/kits.ts`) for html
-  parts: self-contained CSS/JS scaffolds for step-through reveals, highlight
-  passes, and transitions, with play / pause / scrub controls. Self-contained (no
-  CDN). _Acceptance:_ an html part with `kits:["animate"]` plays a stepped
-  explainer. _Effort:_ ~3–4h.
-- **L2 — Screenshot → explainer recipe + demo.** The loop: paste a screenshot to
-  your editor agent → "explain/animate this on showcase" → it publishes an
-  animated html surface (image part for the source + an `animate` explainer).
-  Mostly a guide recipe + a demo on top of L1. _Effort:_ ~1–2h.
-- **L3 — Reading/learning mode.** A focused, one-explainer-at-a-time view (full
-  width, distraction-free) for working through a Library of explainers. _(Moved
-  from the old Pillar D.)_ _Effort:_ ~2h.
+- [x] **L1 — Animation kit (shipped).** The opt-in `animate` kit (`server/kits.ts`)
+      reveals `.anim > .step` children cumulatively and injects play/pause + a scrub
+      bar + counter (Space toggles, arrows step, `<span class="cue">` highlights a
+      phrase); self-contained, reduced-motion aware, themed. Covered by
+      `test/kits.test.ts`.
+- [x] **L2 — Screenshot → explainer recipe + demo (shipped).** PLAYBOOK's "animated
+      explainer" recipe + the DESIGN_GUIDE kit docs teach the screenshot →
+      `kits:["animate"]` loop (image part for the source + an `animate` explainer),
+      and `bin/demoData.js` seeds a live explainer (the hashmap walk-through).
+- [x] **L3 — Reading/learning mode (shipped).** `ReadingView` gives a focused,
+      one-explainer-at-a-time view (full-width, distraction-free), gated by
+      `readingId` and scoped to explainers.
 
 ### Supporting capabilities (pick up when a workflow needs them)
 
 Not flagship work; each is tagged with the workflow it serves. Don't build these
 for their own sake.
 
-- **Visual version diff** _(serves W1)_ — a "compare" next to the version `Select`
-  showing what changed between two versions of a part. Pairs with R1's
-  revise-the-fix-in-place loop. _Effort:_ ~2–3h for text-y parts.
-- **Close the nudge gap** _(serves both)_ — an unread badge / desktop notification
-  when the agent has feedback it hasn't seen, so you know to nudge an idle editor.
-  _Effort:_ ~1–2h.
 - **Static export** _(sharing)_ — `showcase export <session>` → one self-contained
   read-only `.html` of a review/explainer to send anyone. Bakes a snapshot via
   the `host.ts` seam, live/comment bits disabled. This is how you share a review,
   not a GitHub round-trip. _Effort:_ ~1–2h.
-- **Present mode** _(serves W2)_ — full-bleed, arrow-key deck nav over a session's
-  cards (builds on the `slides` kit). _Effort:_ ~1–2h.
-- **Canvas view** _(serves W2)_ — opt-in spatial board (tldraw-style) for
-  "map a whole system" layouts; the stream stays default. _Effort:_ large; only if
-  the system-explainer use case proves out.
-- **Store durability** _(foundation)_ — atomic/crash-safe `JsonFileStore` writes
-  (write-temp-then-rename) before it holds real review history. _Effort:_ ~1h.
-- **Live share** _(sharing, lower priority)_ — re-add a Workers deploy or
-  `cloudflared` tunnel so others watch live. Workers means re-introducing a
-  Durable-Object store behind `Store` (the contract test still holds it honest).
+- **Visual version diff** _(serves W1)_ — a "compare" next to the version `Select`
+  showing what changed between two versions of a part. Pairs with R1's
+  revise-the-fix-in-place loop. _Effort:_ ~2–3h for text-y parts.
 
 ---
 
@@ -331,8 +322,8 @@ for their own sake.
   (Shipped — see "Editor-agent chat" under Shipped capabilities.)
 - **No GitHub round-trip (DECIDED):** showcase is its own surface, not a GitHub
   front-end. Sharing a review means static export, not posting back to a PR.
-- **Auth/sharing for live share:** the one-board/one-user stance means shared
-  views default to read-only.
+- **Sharing is read-only:** the one-board/one-user stance means shared output
+  (static export) is a read-only snapshot — no live/comment bits.
 
 ---
 
@@ -340,8 +331,11 @@ for their own sake.
 
 1. Read sections 1–5 of this file and `AGENTS.md`.
 2. `git branch --show-current` — if not on a task branch, branch from `main`.
-3. Workflow 1 (visual PR review) is shipped (R1–R4); Workflow 2 (learning &
-   explainers) is next. If an item is an "open decision" in §7, confirm it first.
+3. Both flagship workflows are shipped — Workflow 1 (visual PR review, R1–R4) and
+   Workflow 2 (learning & explainers, L1–L3). Remaining work is two **Supporting
+   capabilities** (static export, visual version diff) plus the **review-depth /
+   fancier-visualizations** track (start with the charting kit). If an item is an
+   "open decision" in §7, confirm it first.
 4. Build in small commits; after each, run the §5 verify suite. For UI, screenshot
    and look.
 5. Keep the oracle green; if you change behavior it covers, update the oracle in
