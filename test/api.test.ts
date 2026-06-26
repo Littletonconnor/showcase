@@ -1608,6 +1608,30 @@ test("public read session mode protects and scopes event streams", async () => {
   assert.ok(!text.includes(other.id));
 });
 
+test("comment-created events carry the author so the viewer can flag agent activity", async () => {
+  const app = makeApp("secret");
+  const s = (await (
+    await app.request("/api/snippets", authedJson({ html: "<p>x</p>" }))
+  ).json()) as any;
+
+  const ac = new AbortController();
+  const stream = await app.request("/api/events", {
+    headers: { authorization: "Bearer secret" },
+    signal: ac.signal,
+  });
+  assert.equal(stream.status, 200);
+
+  await app.request(
+    "/api/comments",
+    authedJson({ surface: s.id, text: "looks good", author: "claude" }),
+  );
+
+  const text = await readSseUntil(stream, "comment-created", () => ac.abort());
+  const line = text.split("\n").find((l) => l.includes("comment-created"))!;
+  const payload = JSON.parse(line.replace(/^data:\s*/, ""));
+  assert.equal(payload.author, "claude");
+});
+
 test("public read viewer config marks unauthenticated full-mode visitors readonly", async () => {
   const app = makeApp("secret", { publicRead: "full" });
 

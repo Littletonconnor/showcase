@@ -66,6 +66,13 @@ interface BoardState {
   // Reading mode: the surface id being read in the focused, one-at-a-time
   // overlay (null = off). Prev/next page through the current `surfaces` list.
   readingId: string | null;
+  // Live "agent is working" signal per session, derived from activity events (a
+  // surface published/updated, or an agent reply). `working` is set true on each
+  // event and flipped false by a decay timer after a few seconds of silence;
+  // `label` + `at` feed the header's activity ticker ("✶ published … · just now").
+  // This is distinct from `listening` (presence): listening means the agent is
+  // PARKED waiting on you, working means it is actively producing output.
+  activity: Record<string, { label: string; at: number; working: boolean }>;
 }
 
 export const useBoard = create<BoardState>(() => ({
@@ -85,7 +92,45 @@ export const useBoard = create<BoardState>(() => ({
   prefersDark: false,
   responding: {},
   readingId: null,
+  activity: {},
 }));
+
+// --- Agent activity ("working") ---
+
+// How long after the last activity event a session keeps reading as "working".
+// Agents publish in bursts (a surface, then a reply, then the next surface), so
+// a few seconds of grace keeps the indicator steady through the gaps instead of
+// flickering off between every event.
+const WORKING_TTL_MS = 6000;
+const workingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+// Record a piece of agent activity on a session: flip it to "working", stamp the
+// latest action for the ticker, and (re)arm the decay timer that clears the flag
+// once the agent goes quiet.
+function markActivity(sessionId: string, label: string) {
+  set((s) => ({
+    activity: { ...s.activity, [sessionId]: { label, at: Date.now(), working: true } },
+  }));
+  const prev = workingTimers.get(sessionId);
+  if (prev) clearTimeout(prev);
+  workingTimers.set(
+    sessionId,
+    setTimeout(() => {
+      workingTimers.delete(sessionId);
+      set((s) => {
+        const cur = s.activity[sessionId];
+        if (!cur?.working) return s;
+        return { activity: { ...s.activity, [sessionId]: { ...cur, working: false } } };
+      });
+    }, WORKING_TTL_MS),
+  );
+}
+
+export const useSessionWorking = (sessionId: string | null) =>
+  useBoard((s) => (sessionId ? !!s.activity[sessionId]?.working : false));
+
+export const useSessionActivity = (sessionId: string | null) =>
+  useBoard((s) => (sessionId ? (s.activity[sessionId] ?? null) : null));
 
 // Reading mode: open the focused one-at-a-time reader on a surface, page through
 // the current stream with prev/next, and close it. Stepping clamps to the list.
@@ -532,6 +577,8 @@ interface FeedEvent {
   sessionId?: string;
   surfaceId?: string | null;
   listening?: boolean;
+  version?: number;
+  author?: string;
 }
 
 export function connect() {
@@ -561,6 +608,17 @@ export function connect() {
     } else if (e.type === "surface-created" || e.type === "surface-updated") {
       if (away && e.sessionId) markUnread(e.sessionId);
       if (e.id && e.sessionId === selectedNow()) await upsertSurface(e.id);
+      if (e.sessionId) {
+        // Title is known once the surface is in the store (selected session);
+        // away sessions fall back to a generic label.
+        const title = get().surfaces.find((s) => s.id === e.id)?.title;
+        const quoted = title ? `“${title}”` : "a surface";
+        const label =
+          e.type === "surface-updated" && (e.version ?? 1) > 1
+            ? `published v${e.version} of ${quoted}`
+            : `published ${quoted}`;
+        markActivity(e.sessionId, label);
+      }
       await refreshSessionsQuiet();
     } else if (e.type === "surface-deleted") {
       set((state) => {
@@ -572,6 +630,8 @@ export function connect() {
       });
       await refreshSessionsQuiet();
     } else if (e.type === "comment-created") {
+      // An agent reply is work; the user's own comment is not.
+      if (e.author && e.author !== "user" && e.sessionId) markActivity(e.sessionId, "replied");
       if (away && e.sessionId) markUnread(e.sessionId);
       if (e.sessionId === selectedNow()) {
         const query = e.surfaceId ? `surface=${e.surfaceId}` : `session=${e.sessionId}`;

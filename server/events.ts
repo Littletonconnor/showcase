@@ -8,6 +8,9 @@ export type FeedEvent =
       sessionId: string;
       surfaceId: string | null;
       seq: number;
+      // Who authored it — lets the viewer treat an agent reply as "agent is
+      // working" activity while ignoring the user's own comments.
+      author: string;
     }
   // Emitted when a session gains its first / loses its last agent waiter (an
   // author=user wait_for_feedback long-poll). Drives the viewer's live

@@ -82,7 +82,9 @@ import {
   toast,
   updateNoticeFrom,
   useBoard,
+  useSessionActivity,
   useSessionListening,
+  useSessionWorking,
 } from "./state.ts";
 
 // The shadcn SidebarProvider persists its open/collapsed state to a
@@ -514,6 +516,7 @@ function SessionItem(props: { session: SessionRow }) {
   const { setOpenMobile } = useSidebar();
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const working = useSessionWorking(props.session.id);
   const label = sessionLabel(props.session);
   const isSel = props.session.id === selected;
   const isUnread = unread.has(props.session.id);
@@ -628,14 +631,20 @@ function SessionItem(props: { session: SessionRow }) {
               isSel ? "text-brand/60" : isVacant ? "text-faint/70" : "text-faint/90",
             )}
           >
-            {props.session.listening ? (
+            {/* A working session shows a green pulse + "working…" — the live
+                "this one is busy" signal; otherwise the listening dot (parked,
+                waiting on you) if present. Working takes the slot since it's the
+                more dynamic state. */}
+            {working || props.session.listening ? (
               <span
                 className="inline-block size-1.5 flex-none animate-pulse rounded-full bg-[#4caf78] motion-reduce:animate-none"
-                title="Agent is listening"
+                title={working ? "Agent is working" : "Agent is listening"}
               />
             ) : null}
             <span className="min-w-0 flex-1 truncate">
-              {props.session.agent} · {relTime(props.session.lastActiveAt)}
+              {working
+                ? `${props.session.agent} · working…`
+                : `${props.session.agent} · ${relTime(props.session.lastActiveAt)}`}
             </span>
             {/* Open review findings — the resume signal. Hidden on hover so it
                 never collides with the ⋯ action, like the surface count. */}
@@ -716,6 +725,7 @@ function SessionView(props: { onConnect?: () => void }) {
             ) : null}
             <SessionTitle current={current} />
             <span className="flex-1" />
+            <WorkingPill sessionId={selected} />
             {current && !isReadonly() ? (
               <AgentPresence agent={current.agent} onConnect={props.onConnect} />
             ) : null}
@@ -729,6 +739,7 @@ function SessionView(props: { onConnect?: () => void }) {
                 }`
               : ""}
           </span>
+          <ActivityTicker sessionId={selected} />
           <ReviewSummary surfaces={surfaces} />
         </div>
       </div>
@@ -859,6 +870,48 @@ function AgentPresence(props: { agent: string; onConnect?: () => void }) {
       Auto-replies off
       <Plug className="size-3 opacity-70" />
     </button>
+  );
+}
+
+// Live "agent is working" pill for the session header — the signal that the
+// agent is actively producing output (surfaces, replies), as opposed to
+// AgentPresence which says whether it's connected/parked waiting on you. Driven
+// by activity events and decays a few seconds after the agent goes quiet, so it
+// reads as motion while work lands and quietly disappears when it stops.
+function WorkingPill(props: { sessionId: string | null }) {
+  const working = useSessionWorking(props.sessionId);
+  if (!working) return null;
+  return (
+    <span
+      className="flex-none inline-flex items-center gap-1.5 rounded-full bg-[#4caf78]/12 px-2 py-0.5 text-[11px] font-medium text-[#2e7d54] dark:text-[#5fd699]"
+      title="Your agent is actively publishing to this session right now."
+    >
+      <span className="size-1.5 animate-pulse rounded-full bg-[#4caf78] motion-reduce:animate-none" />
+      Working…
+    </span>
+  );
+}
+
+// One-line feed of the agent's latest action, sitting just under the session
+// meta line. Re-keyed on each new label so it re-animates (a soft slide) as work
+// lands — the running sense of "things are getting done". Holds the last action
+// after the agent goes quiet rather than vanishing, so you can see what just
+// happened; the leading dot dims once it's no longer working.
+function ActivityTicker(props: { sessionId: string | null }) {
+  const working = useSessionWorking(props.sessionId);
+  const activity = useSessionActivity(props.sessionId);
+  if (!activity) return null;
+  return (
+    <div
+      key={activity.at}
+      className="flex animate-in items-center gap-1.5 pl-0.5 text-[12px] text-faint fade-in-0 slide-in-from-left-1 duration-300 motion-reduce:animate-none"
+    >
+      <Sparkles className={cx("size-3 flex-none", working ? "text-[#4caf78]" : "text-faint/70")} />
+      <span className="min-w-0 truncate">
+        <span className={working ? "text-muted-foreground" : undefined}>{activity.label}</span>
+        <span className="text-faint/80"> · {relTime(new Date(activity.at).toISOString())}</span>
+      </span>
+    </div>
   );
 }
 
