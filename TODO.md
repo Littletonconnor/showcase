@@ -214,7 +214,7 @@ workflows compose.
       header (critical→Bug / warning→Nit / info→Question / success→Praise / neutral),
       validated once and threaded through REST + both MCP transports + the CLI demo.
       The finding-card recipe (`[badge, prose, mermaid, diff]`, lead with a verdict
-      card, revise in place) lives in `AGENT_HOWTO`, and `bin/demoData.js` seeds a
+      card, revise in place) lives in `PLAYBOOK`, and `bin/demoData.js` seeds a
       review session reproducing the product screenshot. Store-contract + API + a
       real-DOM oracle cover it. _Proven live_ reviewing a real santafe branch.
 - [x] **R2 — Review summary / verdict surface (shipped).** The session header now

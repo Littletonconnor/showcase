@@ -110,7 +110,7 @@ export interface AppOptions {
   viewerHtml: string;
   guideMarkdown: string;
   setupText: string;
-  agentHowtoText?: string;
+  playbookText?: string;
   // Dev-only live reload. When true, the served viewer HTML gets a tiny
   // reconnecting EventSource snippet and a GET /api/livereload endpoint that
   // streams this process's boot id. `npm run dev` rebuilds viewer/dist and
@@ -124,7 +124,7 @@ export interface AppOptions {
   // for custom denials. Lower-level than authToken so a host can validate its
   // own signed assertions without teaching showcase its session/token system.
   authenticate?: AuthenticateHook;
-  // When set, every route except /guide, /setup, and /agent-howto requires it:
+  // When set, every route except /guide, /setup, and /playbook requires it:
   // Authorization bearer, ?key= query, or the cookie it sets. `index.ts` wires
   // this from SHOWCASE_TOKEN; the local default ships unset.
   authToken?: string;
@@ -984,7 +984,7 @@ export function createApp({
   viewerHtml,
   guideMarkdown,
   setupText,
-  agentHowtoText = setupText,
+  playbookText = setupText,
   dev = false,
   authenticate,
   authToken,
@@ -1469,7 +1469,8 @@ export function createApp({
     }
 
     if (!authToken) return next();
-    if (path === "/guide" || path === "/setup" || path === "/agent-howto") return next();
+    if (path === "/guide" || path === "/setup" || path === "/playbook" || path === "/agent-howto")
+      return next();
 
     const key = c.req.query("key");
     if (key === authToken) {
@@ -1570,7 +1571,9 @@ export function createApp({
   });
   app.get("/guide", (c) => c.text(withOrigin(guideMarkdown, c)));
   app.get("/setup", (c) => c.text(withOrigin(setupText, c)));
-  app.get("/agent-howto", (c) => c.text(withOrigin(agentHowtoText, c)));
+  app.get("/playbook", (c) => c.text(withOrigin(playbookText, c)));
+  // Back-compat alias: older installed skill bootstraps fetch /agent-howto.
+  app.get("/agent-howto", (c) => c.text(withOrigin(playbookText, c)));
 
   if (dev) {
     // Hold the SSE open and re-emit this process's boot id. A restart (node

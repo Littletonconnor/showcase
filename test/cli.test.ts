@@ -44,7 +44,7 @@ function serveApp() {
     viewerHtml: "<html>viewer</html>",
     guideMarkdown: "# guide",
     setupText: "# setup",
-    agentHowtoText: "# agent how-to",
+    playbookText: "# playbook",
   });
   return new Promise<{ url: string; close: () => Promise<void> }>((resolve) => {
     const server = serve({ fetch: app.fetch, port: 0 }, (info) => {
@@ -383,7 +383,9 @@ test("review scaffolds a session from a branch diff", async () => {
     assert.ok(out.session, "prints a session id");
     assert.equal(out.files, 2, "counts the two changed files");
     assert.match(out.url, /\/session\//);
-    assert.match(out.prompt, /Review the branch feature against main/);
+    // The analysis is delegated to the code-review skill, not done by showcase.
+    assert.match(out.prompt, /code-review` skill on branch feature against main/);
+    assert.match(out.prompt, /showcase does NOT define how to review/);
 
     // The churn-seeded overview heuristics: a manifest row per file (both plain
     // logic here) + a composite risk the agent refines.
