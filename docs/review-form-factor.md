@@ -177,10 +177,30 @@ In the agent age, the human's leverage isn't re-verifying the code — it's
   the ledger fills and the call may _flip_ in front of you. You spent one tap; the
   agent spent the effort. This turns the honesty ledger from passive disclosure
   into the _primary interaction surface_.
-- **Challenge** — push back with a reason (free text / line-anchored comment). The
-  agent must **defend or concede** and revise the decision. _(Exact mechanics still
-  open — see below.)_
-- **Override** — decide against the recommendation; your call wins.
+- **Challenge** — the _dialogue_ verb, for when the agent is confident and you
+  think it's **wrong** (its conclusion, not a declared gap). The loop:
+  1. You write the objection — free text, optionally **anchored to a line** in the
+     right pane. _e.g. "This `✅ behavior-preserving` is wrong — it drops the catch
+     on line 88."_
+  2. It dispatches as a scoped task: _"The reviewer challenges decision #N with
+     `<objection>`. Defend your conclusion against this specific point, or concede
+     and revise."_ — a **forced binary**, no hand-waving.
+  3. The agent answers, threaded under the decision: **defends** (a rebuttal with
+     evidence; the decision stands, objection + rebuttal recorded) or **concedes**
+     (the decision **revises in place** — the call flips, assertion + evidence
+     update, burndown reflects it).
+  4. You then Accept / Override the possibly-updated decision.
+
+  It's showcase's existing comment→agent→revise loop, framed as an adversarial
+  exchange scoped to one decision with a forced defend-or-concede outcome — and the
+  back-and-forth is recorded, which makes the shared export show not just the
+  verdict but the _argument_ behind it.
+
+- **Override** — decide against the recommendation; your call wins. No dialogue.
+
+The clean spectrum: **Accept** (agree) · **Prove it** (close a gap) · **Challenge**
+(argue) · **Override** (overrule). Challenge is the only verb that engages the
+agent in a defense.
 
 The reviewer flies the queue: accept the clear ones, _prove-it_ the
 scary-but-unverified ones (and watch them resolve), challenge the wrong ones,
@@ -248,15 +268,17 @@ a rewrite.
 
 ## Open questions (revisit before / during build)
 
-1. **How does Challenge work mechanically?** Prove-it is scoped and settled;
-   Challenge (free-form push-back → agent defends or concedes) needs a concrete
-   loop. How does the defense show up, and how does the decision update?
-2. **Decision granularity** — what rises to a "decision" vs. folds into the cold/
+1. **Decision granularity** — what rises to a "decision" vs. folds into the cold/
    skip set? The whole thing hinges on the agent's triage being honest.
-3. **Trusting the skip set** — if the agent buries a real change in "cold," the
+2. **Trusting the skip set** — if the agent buries a real change in "cold," the
    form factor _helps_ the bug. Deferred until real use shows whether it happens;
    may need a cheap independent check on what's marked cold.
-4. **Brief enforcement** — how strict is "no identifiers"? Reject outright, or warn?
+3. **Brief enforcement** — how strict is "no identifiers"? Reject outright, or warn?
+
+_(Resolved during design: the unit is a **decision**; the masthead is replaced by
+the plain-English **Brief**; the lede is automatically decision #1; **Prove it** is
+scoped to a declared gap; **Challenge** is the defend-or-concede dialogue loop
+above.)_
 
 ---
 
