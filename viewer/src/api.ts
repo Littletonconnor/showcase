@@ -47,6 +47,9 @@ export type PublicReadMode = "session" | "full";
 export interface SessionRow extends Session {
   surfaceCount: number;
   listening?: boolean;
+  // Unresolved review findings in this session (severity-badged cards the user
+  // hasn't Approved/Dismissed) — the sidebar's "where did I leave off" count.
+  openFindings?: number;
 }
 
 // GET /api/version — upgradeCommand and notes are set only when an update

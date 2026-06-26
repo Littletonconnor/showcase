@@ -717,7 +717,7 @@ function SessionItem(props: { session: SessionRow }) {
           </span>
           <span
             className={cx(
-              "flex items-center gap-1 truncate text-[11px] leading-snug",
+              "flex items-center gap-1 text-[11px] leading-snug",
               isSel ? "text-brand/60" : isVacant ? "text-faint/70" : "text-faint/90",
             )}
           >
@@ -727,9 +727,21 @@ function SessionItem(props: { session: SessionRow }) {
                 title="Agent is listening"
               />
             ) : null}
-            <span className="truncate">
+            <span className="min-w-0 flex-1 truncate">
               {props.session.agent} · {relTime(props.session.lastActiveAt)}
             </span>
+            {/* Open review findings — the resume signal. Hidden on hover so it
+                never collides with the ⋯ action, like the surface count. */}
+            {props.session.openFindings ? (
+              <span
+                className="flex-none rounded-full bg-amber-500/15 px-1.5 font-medium tabular-nums text-amber-700 group-hover/menu-item:opacity-0 dark:text-amber-300"
+                title={`${props.session.openFindings} open finding${
+                  props.session.openFindings === 1 ? "" : "s"
+                }`}
+              >
+                {props.session.openFindings} open
+              </span>
+            ) : null}
           </span>
         </span>
       </SidebarMenuButton>
@@ -782,6 +794,15 @@ function SessionItem(props: { session: SessionRow }) {
 // first finding of that label. A finding the user has Approved or Dismissed is
 // "resolved"; once every finding under a label is resolved the chip strikes
 // through and dims, so you watch the review burn down. Nothing for no badges.
+// Canonical review finding labels (R1: critical→Bug, warning→Nit, info→Question,
+// success→Praise). The burndown counts these and only these — a verdict card
+// ("Request changes") or an "Explainer" badge is not a finding to resolve, so it
+// never blocks the review from reaching "complete".
+const FINDING_LABELS = new Set(["Bug", "Nit", "Question", "Praise"]);
+// Verdict labels an agent's summary card might carry, matched case-insensitively
+// to name the terminal state ("Review complete — Request changes").
+const VERDICT_LABELS = new Set(["request changes", "approved", "approve", "looks good"]);
+
 function ReviewSummary(props: { surfaces: Surface[] }) {
   const comments = useBoard((s) => s.comments);
   const resolved = useMemo(() => {
@@ -808,51 +829,129 @@ function ReviewSummary(props: { surfaces: Surface[] }) {
     if (resolved.has(s.id)) g.done += 1;
     byLabel.set(s.badge.label, g);
   }
-  if (byLabel.size === 0) return null;
   const groups = [...byLabel.entries()].sort(
     (a, b) => BADGE_TONE_ORDER.indexOf(a[1].tone) - BADGE_TONE_ORDER.indexOf(b[1].tone),
   );
+
+  // The burndown: open (unresolved) findings, worst-severity first, drive the
+  // "Next open finding" pager and the open/resolved tally. Excludes verdict and
+  // explainer badges (see FINDING_LABELS) so "Review complete" means the findings
+  // are done, not that every badge has been touched.
+  const findings = props.surfaces.filter((s) => s.badge && FINDING_LABELS.has(s.badge.label));
+  const openFindings = findings
+    .filter((s) => !resolved.has(s.id))
+    .sort(
+      (a, b) => BADGE_TONE_ORDER.indexOf(a.badge!.tone) - BADGE_TONE_ORDER.indexOf(b.badge!.tone),
+    );
+  const findingsTotal = findings.length;
+  const openCount = openFindings.length;
+  const verdict = props.surfaces.find(
+    (s) => s.badge && VERDICT_LABELS.has(s.badge.label.toLowerCase()),
+  )?.badge?.label;
+
+  // `j` / `k` page through the open findings (worst first), wrapping. A ref holds
+  // the live list so the once-mounted key handler always sees the current set as
+  // findings resolve out from under the cursor.
+  const openRef = useRef(openFindings);
+  openRef.current = openFindings;
+  const cursorRef = useRef(-1);
+  const jumpToOpen = (dir: 1 | -1) => {
+    const list = openRef.current;
+    if (!list.length) return;
+    cursorRef.current = (((cursorRef.current + dir) % list.length) + list.length) % list.length;
+    cardEls.get(list[cursorRef.current].id)?.card.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if (e.key !== "j" && e.key !== "k") return;
+      const el = root().activeElement as HTMLElement | null;
+      const tag = el?.tagName;
+      // Don't hijack typing in the composer, an editable title, or a focused part.
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "IFRAME" || el?.isContentEditable)
+        return;
+      if (useBoard.getState().readingId || !openRef.current.length) return;
+      e.preventDefault();
+      jumpToOpen(e.key === "j" ? 1 : -1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (byLabel.size === 0) return null;
   const jumpTo = (id: string) =>
     cardEls.get(id)?.card.scrollIntoView({ behavior: "smooth", block: "start" });
-  // No "N findings" total — it would double-count the agent's own verdict card.
-  // The per-label chips are each an exact count and the verdict chip (e.g.
-  // "Request changes") surfaces the verdict on its own.
   return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-0.5">
-      {groups.map(([label, g]) => {
-        const allDone = g.done === g.total;
-        return (
-          <button
-            key={label}
-            type="button"
-            title={
-              allDone
-                ? `${label} — resolved`
-                : g.done > 0
-                  ? `Jump to ${label} (${g.done}/${g.total} resolved)`
-                  : `Jump to ${label}`
-            }
-            onClick={() => jumpTo(g.firstId)}
-            className={cx(
-              "inline-flex items-center gap-1.5 rounded-full py-[3px] pr-2 pl-[7px] text-[11px] leading-none font-semibold ring-1 ring-inset transition-all hover:opacity-80",
-              BADGE_TONE_CLASS[g.tone] ?? BADGE_TONE_CLASS.neutral,
-              allDone && "opacity-55 line-through",
-            )}
-          >
-            {allDone ? (
-              <Check className="size-2.5" strokeWidth={3} />
-            ) : (
-              <span
-                className={cx(
-                  "size-1.5 rounded-full",
-                  BADGE_DOT_CLASS[g.tone] ?? BADGE_DOT_CLASS.neutral,
-                )}
-              />
-            )}
-            {g.total} {label}
-          </button>
-        );
-      })}
+    <div className="mt-1.5 flex flex-col gap-1.5">
+      {/* Per-label chips: each an exact count, worst-severity first, jumping to
+          its first finding; struck through once every card under it resolves. */}
+      <div className="flex flex-wrap items-center gap-1.5 pl-0.5">
+        {groups.map(([label, g]) => {
+          const allDone = g.done === g.total;
+          return (
+            <button
+              key={label}
+              type="button"
+              title={
+                allDone
+                  ? `${label} — resolved`
+                  : g.done > 0
+                    ? `Jump to ${label} (${g.done}/${g.total} resolved)`
+                    : `Jump to ${label}`
+              }
+              onClick={() => jumpTo(g.firstId)}
+              className={cx(
+                "inline-flex items-center gap-1.5 rounded-full py-[3px] pr-2 pl-[7px] text-[11px] leading-none font-semibold ring-1 ring-inset transition-all hover:opacity-80",
+                BADGE_TONE_CLASS[g.tone] ?? BADGE_TONE_CLASS.neutral,
+                allDone && "opacity-55 line-through",
+              )}
+            >
+              {allDone ? (
+                <Check className="size-2.5" strokeWidth={3} />
+              ) : (
+                <span
+                  className={cx(
+                    "size-1.5 rounded-full",
+                    BADGE_DOT_CLASS[g.tone] ?? BADGE_DOT_CLASS.neutral,
+                  )}
+                />
+              )}
+              {g.total} {label}
+            </button>
+          );
+        })}
+      </div>
+      {/* The burndown row: an open/resolved tally and a pager while findings are
+          open, an explicit terminal verdict once they're all resolved. */}
+      {findingsTotal > 0 ? (
+        <div className="flex items-center gap-2 pl-0.5 text-[11px]">
+          {openCount > 0 ? (
+            <>
+              <span className="tabular-nums text-faint">
+                {openCount} open · {findingsTotal - openCount} resolved
+              </span>
+              <button
+                type="button"
+                onClick={() => jumpToOpen(1)}
+                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-brand transition-colors hover:bg-brand-subtle"
+              >
+                Next open finding
+                <ArrowDown className="size-3" />
+              </button>
+              <span className="text-faint/70 max-[700px]:hidden">or press j / k</span>
+            </>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700 dark:text-emerald-300">
+              <Check className="size-3" strokeWidth={3} />
+              Review complete{verdict ? ` — ${verdict}` : ""}
+            </span>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

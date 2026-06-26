@@ -387,11 +387,16 @@ test("approving a finding strikes it through in the header verdict bar", async (
   const chip = header.getByRole("button", { name: "1 Bug" });
   await expect(chip).toBeVisible();
   await expect(chip).not.toHaveAttribute("title", "Bug — resolved");
+  // The cockpit shows the open tally and the pager while findings are open.
+  await expect(header.getByText("1 open · 0 resolved")).toBeVisible();
+  await expect(header.getByRole("button", { name: /Next open finding/ })).toBeVisible();
 
   // Approve the finding from its card footer.
   const card = page.locator(`.card[data-id="${surface.id}"]`);
   await card.getByRole("button", { name: "Approve" }).click();
 
-  // The chip flips to resolved (title changes; line-through is applied).
+  // The chip flips to resolved (title changes; line-through is applied)…
   await expect(chip).toHaveAttribute("title", "Bug — resolved", { timeout: 10_000 });
+  // …and with no findings left open, the review reaches its terminal state.
+  await expect(header.getByText("Review complete")).toBeVisible({ timeout: 10_000 });
 });
