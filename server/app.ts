@@ -403,6 +403,20 @@ export function coerceFinding(raw: any): FindingInput {
   };
 }
 
+// Coerce a loosely-typed `churn` array ([{file, added, removed}]) — shared by
+// the REST reviews route and both MCP transports. buildChurnChart does the
+// heavier filtering, so this just narrows the field types.
+export function coerceChurn(
+  raw: any,
+): Array<{ file?: string; added?: number; removed?: number }> | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  return raw.map((c) => ({
+    file: typeof c?.file === "string" ? c.file : undefined,
+    added: typeof c?.added === "number" ? c.added : undefined,
+    removed: typeof c?.removed === "number" ? c.removed : undefined,
+  }));
+}
+
 // publish_review: the WHOLE review in one call. The agent submits its verdict +
 // a findings[] array; showcase explodes it into a verdict card plus one finding
 // card per entry (each composed by buildFinding). One call, same effort as a
@@ -468,6 +482,61 @@ function buildVerdictMarkdown(input: {
     lines.push(`**Coverage** — ${normalizeProse(input.coverage)}`);
   }
   return lines.join("\n") || "_Review in progress._";
+}
+
+// Churn added green / removed red — the diff convention, matched to the inline
+// finding diffs.
+const CHURN_ADDED = "#2f9e44";
+const CHURN_REMOVED = "#e03131";
+
+// Build a "churn by file" bar chart (added/removed lines per file) for the
+// verdict card — the at-a-glance shape of the PR. Files are ranked by total
+// churn and capped so the axis stays legible on a large PR; labels are the
+// basename (truncated) since the full path won't fit an x tick.
+function buildChurnChart(
+  churn: Array<{ file?: string; added?: number; removed?: number }>,
+): SurfacePart | undefined {
+  const rows = churn
+    .map((c) => ({
+      file: typeof c?.file === "string" ? c.file : "",
+      added: Number.isFinite(c?.added) ? Number(c?.added) : 0,
+      removed: Number.isFinite(c?.removed) ? Number(c?.removed) : 0,
+    }))
+    .filter((c) => c.file && c.added + c.removed > 0)
+    .sort((a, b) => b.added + b.removed - (a.added + a.removed));
+  if (rows.length === 0) return undefined;
+
+  const MAX_FILES = 10;
+  const shown = rows.slice(0, MAX_FILES);
+  const label = (path: string) => {
+    const base = path.split("/").pop() || path;
+    return base.length > 18 ? `…${base.slice(-17)}` : base;
+  };
+  // Disambiguate identical basenames so the x axis doesn't collapse two files.
+  const seen = new Map<string, number>();
+  const data = shown.map((r) => {
+    let name = label(r.file);
+    const n = seen.get(name) ?? 0;
+    seen.set(name, n + 1);
+    if (n > 0) name = `${name} (${n + 1})`;
+    return { file: name, added: r.added, removed: r.removed };
+  });
+  const extra = rows.length - shown.length;
+  const total = rows.reduce((s, r) => s + r.added + r.removed, 0);
+  const caption =
+    `Churn by file — ${rows.length} file${rows.length > 1 ? "s" : ""}, ${total} lines` +
+    (extra > 0 ? ` (top ${MAX_FILES} shown)` : "");
+  return {
+    kind: "chart",
+    chartType: "bar",
+    data,
+    x: "file",
+    y: ["added", "removed"],
+    stacked: true,
+    colors: [CHURN_ADDED, CHURN_REMOVED],
+    yLabel: "lines",
+    caption,
+  };
 }
 
 export function createApp({
@@ -639,6 +708,7 @@ export function createApp({
     summary?: string;
     coverage?: string;
     architecture?: string;
+    churn?: Array<{ file?: string; added?: number; removed?: number }>;
     findings: FindingInput[];
     session?: string;
     sessionTitle?: string;
@@ -653,10 +723,13 @@ export function createApp({
     }
     const badge = REVIEW_VERDICT[input.verdict ?? "comment"] ?? REVIEW_VERDICT.comment;
     // The verdict card is the review's map: summary + tally + findings table,
-    // then an optional architecture diagram of how the changed pieces interact.
+    // then a churn-by-file chart (the PR's shape) and an architecture diagram
+    // (how the changed pieces interact) when provided.
     const verdictParts: SurfacePart[] = [
       { kind: "markdown", markdown: buildVerdictMarkdown(input) },
     ];
+    const churnChart = Array.isArray(input.churn) ? buildChurnChart(input.churn) : undefined;
+    if (churnChart) verdictParts.push(churnChart);
     if (input.architecture?.trim()) {
       verdictParts.push({ kind: "mermaid", mermaid: input.architecture.trim() });
     }
@@ -1171,6 +1244,7 @@ export function createApp({
       summary: str(body.summary),
       coverage: str(body.coverage),
       architecture: str(body.architecture),
+      churn: coerceChurn(body.churn),
       findings,
       session: str(body.session),
       sessionTitle: str(body.sessionTitle),

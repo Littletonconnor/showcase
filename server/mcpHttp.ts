@@ -1,5 +1,11 @@
 import type { Hono } from "hono";
-import { type CommentWait, coerceFinding, type Feedback, type FindingInput } from "./app.ts";
+import {
+  coerceChurn,
+  type CommentWait,
+  coerceFinding,
+  type Feedback,
+  type FindingInput,
+} from "./app.ts";
 import { decodeBase64 } from "./base64.ts";
 import {
   type Asset,
@@ -48,6 +54,7 @@ export interface McpDeps {
     summary?: string;
     coverage?: string;
     architecture?: string;
+    churn?: Array<{ file?: string; added?: number; removed?: number }>;
     findings: FindingInput[];
     session?: string;
     sessionTitle?: string;
@@ -125,6 +132,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
           summary: str(args.summary),
           coverage: str(args.coverage),
           architecture: str(args.architecture),
+          churn: coerceChurn(args.churn),
           findings,
           session: str(args.session),
           sessionTitle: str(args.sessionTitle),

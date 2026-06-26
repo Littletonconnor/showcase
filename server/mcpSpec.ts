@@ -63,6 +63,8 @@ const d = {
   findingDiagram: "Optional mermaid source visualizing the relevant flow/structure",
   reviewArchitecture:
     "Optional mermaid source for the verdict card: a diagram of the changed pieces and how they interact (data/control flow, new vs. touched components). Gives the reader a map of the PR before the findings.",
+  reviewChurn:
+    "Optional per-file line churn for the verdict card, as [{file, added, removed}] — straight from `git diff --numstat <base>...<branch>`. showcase renders it as a green-added / red-removed bar chart (the shape of the PR), ranked by churn and capped to the top files.",
   reviewVerdict: "request_changes | approve | comment — the verdict badge on the lead card",
   reviewBranch: "Branch under review (shows in the verdict header, e.g. 'cl/ALLM-116')",
   reviewBase: "Base branch the review is against (e.g. 'master')",
@@ -195,7 +197,7 @@ export const MCP_TOOL_DESCRIPTIONS = {
   updateSurface:
     "Revise a surface in place (same card, new version). Prefer this over publishing a near-duplicate. Pass the full replacement parts array. If the result includes userFeedback, read it.",
   publishReview:
-    "Publish a WHOLE code review in one call — the strongly preferred way to review a PR on showcase. Pass a `verdict` (request_changes|approve|comment), an optional `summary`/`coverage`, an optional `architecture` mermaid (a diagram of how the changed pieces interact, shown on the verdict card), and a `findings` array; showcase explodes it into a verdict card (summary + tally + findings table + your architecture diagram) + ONE card per finding. Each finding card is FIXED structure: severity badge, the problem, a before→after `suggestion` rendered as an inline diff, and `fix` (why it's better). Same effort as writing the review, but it physically cannot become a wall of markdown — the structure is the API. For every fix you'd recommend, pass `suggestion:{before,after}` (NOT `patch`) so the diff always renders. Returns the sessionId + the created surface ids.",
+    "Publish a WHOLE code review in one call — the strongly preferred way to review a PR on showcase. Pass a `verdict` (request_changes|approve|comment), an optional `summary`/`coverage`, an optional `architecture` mermaid (a diagram of how the changed pieces interact), an optional `churn` array ([{file, added, removed}] from `git diff --numstat`, rendered as a churn-by-file chart), and a `findings` array; showcase explodes it into a verdict card (summary + tally + findings table + your churn chart + architecture diagram) + ONE card per finding. Each finding card is FIXED structure: severity badge, the problem, a before→after `suggestion` rendered as an inline diff, and `fix` (why it's better). Same effort as writing the review, but it physically cannot become a wall of markdown — the structure is the API. For every fix you'd recommend, pass `suggestion:{before,after}` (NOT `patch`) so the diff always renders. Returns the sessionId + the created surface ids.",
   reviewFinding:
     "Publish ONE structured review finding as a multimodal card (prefer publish_review to submit a whole review at once). showcase composes it from your fields — a severity badge + the problem + a before→after suggested-change diff + the rationale. Never dump a review into one markdown surface. For a fix, pass `suggestion:{before,after}` (the current code and your proposed code) — showcase computes the diff so it ALWAYS shows the change; use `patch` only to show the PR's actual change in context. `title` and `problem` are required. Returns the surface id + URL; pass the returned sessionId as `session` on the rest of the review.",
   publishSnippet:
@@ -288,6 +290,19 @@ export const HTTP_MCP_TOOLS = [
         summary: { type: "string", description: d.reviewSummary },
         coverage: { type: "string", description: d.reviewCoverage },
         architecture: { type: "string", description: d.reviewArchitecture },
+        churn: {
+          type: "array",
+          description: d.reviewChurn,
+          items: {
+            type: "object",
+            properties: {
+              file: { type: "string" },
+              added: { type: "number" },
+              removed: { type: "number" },
+            },
+            required: ["file", "added", "removed"],
+          },
+        },
         findings: { type: "array", items: MCP_FINDING_JSON_SCHEMA, description: d.reviewFindings },
         session: { type: "string", description: d.session },
         sessionTitle: { type: "string", description: d.sessionTitle },
@@ -510,6 +525,10 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
     summary: z.string().optional().describe(d.reviewSummary),
     coverage: z.string().optional().describe(d.reviewCoverage),
     architecture: z.string().optional().describe(d.reviewArchitecture),
+    churn: z
+      .array(z.object({ file: z.string(), added: z.number(), removed: z.number() }))
+      .optional()
+      .describe(d.reviewChurn),
     findings: z.array(findingStdioSchema).describe(d.reviewFindings),
     sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
   },

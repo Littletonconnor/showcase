@@ -83,7 +83,17 @@ server.registerTool(
     description: MCP_TOOL_DESCRIPTIONS.publishReview,
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.publishReview,
   },
-  async ({ verdict, branch, base, summary, coverage, architecture, findings, sessionTitle }) => {
+  async ({
+    verdict,
+    branch,
+    base,
+    summary,
+    coverage,
+    architecture,
+    churn,
+    findings,
+    sessionTitle,
+  }) => {
     const session = await ensureSession(sessionTitle ?? (branch ? `Review: ${branch}` : undefined));
     const result = JSON.parse(
       await api("/api/reviews", {
@@ -95,6 +105,7 @@ server.registerTool(
           summary,
           coverage,
           architecture,
+          churn,
           findings,
           session,
         }),

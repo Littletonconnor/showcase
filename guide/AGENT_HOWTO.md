@@ -81,7 +81,7 @@ This is showcase's flagship workflow — _"the future of code review is multimod
 
 **The structure is fixed, so every review reads the same** no matter how big or small the PR:
 
-- **Verdict card** (the map) — the verdict badge, your `summary`, a finding **tally** + **severity table**, your `coverage` note, and an `architecture` mermaid showing how the changed pieces interact. Read this first and you know the shape of the PR.
+- **Verdict card** (the map) — the verdict badge, your `summary`, a finding **tally** + **severity table**, your `coverage` note, a **churn-by-file chart** (from `churn`, green-added / red-removed), and an `architecture` mermaid showing how the changed pieces interact. Read this first and you know the shape of the PR.
 - **One card per finding** (top-to-bottom: what's wrong → the change → why) — a severity badge + `file:line`, the **Problem**, a **before→after `suggestion`** rendered as an inline diff, and **Why it's better** (`fix`).
 
 ```jsonc
@@ -94,6 +94,11 @@ This is showcase's flagship workflow — _"the future of code review is multimod
   "coverage": "Read the entity + mapping + cipher wiring; did not exercise the sql-schema repo changes.",
   // A map of the change for the verdict card — new vs. touched pieces and how they interact.
   "architecture": "flowchart LR\n  C[ChatController] --> F[FinancialChatFeedback]\n  F --> M[(feedback.hbm.xml)]\n  W[LembasWorker] -->|SHARED_CIPHER_INFOS| F",
+  // Per-file line churn (straight from `git diff --numstat`) → a green/red bar chart of the PR's shape.
+  "churn": [
+    { "file": "FinancialChatFeedback.java", "added": 86, "removed": 0 },
+    { "file": "feedback.hbm.xml", "added": 14, "removed": 2 },
+  ],
   "findings": [
     {
       "severity": "nit", // bug|nit|question|praise|note → the badge

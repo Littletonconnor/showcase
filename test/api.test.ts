@@ -163,6 +163,42 @@ test("publish_review explodes one call into a verdict card + a card per finding"
   assert.equal((await app.request("/api/reviews", json({ verdict: "approve" }))).status, 400);
 });
 
+test("publish_review renders churn as a green/red bar chart on the verdict card", async () => {
+  const app = makeApp();
+  const review = (await (
+    await app.request(
+      "/api/reviews",
+      json({
+        branch: "feature",
+        verdict: "comment",
+        churn: [
+          { file: "src/main/java/Foo.java", added: 120, removed: 8 },
+          { file: "Bar.java", added: 4, removed: 30 },
+          { file: "bin.dat", added: 0, removed: 0 }, // no churn → dropped
+        ],
+        findings: [{ severity: "nit", title: "t", problem: "p" }],
+      }),
+    )
+  ).json()) as any;
+  const verdict = (await (await app.request(`/api/surfaces/${review.verdict}`)).json()) as any;
+  // verdict card: markdown + the churn chart (no architecture here).
+  assert.deepEqual(
+    verdict.parts.map((p: any) => p.kind),
+    ["markdown", "chart"],
+  );
+  const chart = verdict.parts[1];
+  assert.equal(chart.chartType, "bar");
+  assert.equal(chart.stacked, true);
+  assert.deepEqual(chart.y, ["added", "removed"]);
+  assert.deepEqual(chart.colors, ["#2f9e44", "#e03131"]); // added green, removed red
+  // Ranked by total churn, basename labels, zero-churn file dropped.
+  assert.deepEqual(
+    chart.data.map((d: any) => d.file),
+    ["Foo.java", "Bar.java"],
+  );
+  assert.match(chart.caption, /2 files, 162 lines/);
+});
+
 test("publish_review reuses the `showcase review` scaffold placeholder as the verdict card", async () => {
   const app = makeApp();
   // `showcase review` seeds a placeholder card badged "In review".

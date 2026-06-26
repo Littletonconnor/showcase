@@ -1093,6 +1093,24 @@ const commands = {
     if (!names) fail(`no changes for ${range} — check the branch and base`);
     const stat = git(["diff", "--shortstat", range]).trim();
 
+    // Per-file line churn, ready to hand to publish_review's `churn` (it renders
+    // a churn-by-file chart). numstat prints "added\tremoved\tfile"; binary files
+    // show "-" counts, which become 0 and get dropped by the chart builder.
+    const numstat = git(["diff", "--numstat", range], { soft: true }).trim();
+    const churn = numstat
+      ? numstat
+          .split("\n")
+          .map((line) => {
+            const [added, removed, ...rest] = line.split("\t");
+            return {
+              file: rest.join(" "),
+              added: Number(added) || 0,
+              removed: Number(removed) || 0,
+            };
+          })
+          .filter((c) => c.file)
+      : [];
+
     const rows = names.split("\n").map((line) => {
       const [status, ...pathParts] = line.split("\t");
       const label = FILE_STATUS[status[0]] ?? status;
@@ -1140,6 +1158,9 @@ const commands = {
       `Review the branch ${branch} against ${base}, then publish it to showcase with ONE call to the publish_review tool (session ${surface.sessionId}). Call get_design_guide first.`,
       `Break the PR into its CRITICAL PIECES — the entity, the wiring, the test coverage — not file-by-file. Read the actual code paths, not just the diff hunks.`,
       `Call publish_review ONCE: pass verdict (request_changes|approve|comment), a one-paragraph summary, a coverage note, an \`architecture\` mermaid (a diagram of how the changed pieces interact, shown on the verdict card), and a findings[] array. Each finding: severity, title, file/line, the problem, and for any fix a \`suggestion:{before,after}\` — the CURRENT code and your PROPOSED code, which showcase renders as a diff that always shows the change. Put WHY the change is better in \`fix\`. Use \`patch\` only to show the PR's actual change in context. showcase turns it into a verdict card + one card per finding.`,
+      churn.length
+        ? `Pass this \`churn\` array to publish_review verbatim so the verdict card shows a churn-by-file chart:\n\`\`\`json\n${JSON.stringify(churn)}\n\`\`\``
+        : "",
       `Do NOT write the review as a single markdown surface — that wall of text is the failure mode publish_review replaces. (publish_review automatically turns this session's "In review" placeholder card into the verdict — just call it with session ${surface.sessionId}.)`,
     ]
       .filter(Boolean)
@@ -1151,6 +1172,7 @@ const commands = {
       url: `${BASE}/session/${surface.sessionId}/s/${surface.id}`,
       range,
       files: names.split("\n").length,
+      churn,
       profile: profile ? profilePath : null,
       prompt,
     });
