@@ -97,3 +97,38 @@
       sans-serif;
   }
 }
+
+/* Print / PDF export. `showcase export --pdf` renders the self-contained export
+ * HTML through headless Chrome, and a plain Ctrl-P of the live board uses these
+ * same rules: drop the interactive shell (sidebar, pager, keyboard hints, card
+ * footers) and keep cards from splitting across page breaks, so the output reads
+ * as a clean document instead of a screenshot of an app. */
+@media print {
+  [data-slot="sidebar"],
+  [data-slot="sidebar-container"],
+  [data-print-hide] {
+    display: none !important;
+  }
+  /* The content column owns the full page once the sidebar is gone. */
+  [data-slot="sidebar-inset"] {
+    margin: 0 !important;
+  }
+  /* The session header is sticky on screen; in print that reserves a blank band
+   * and shoves content down a page — make it flow inline instead. */
+  [data-print-static] {
+    position: static !important;
+  }
+  /* Deliberately NO `break-inside: avoid`: review cards (and their diagram/diff
+   * sub-parts) are routinely taller than a page, so forcing them whole just
+   * strands big blank gaps. Letting content flow and split where it lands reads
+   * like any long document. (Each part is its own sandboxed iframe, and browsers
+   * can't split an iframe across a page break — so an oversized part still lands
+   * on the next page; that whitespace is a limit of the architecture, not a bug.) */
+  body {
+    background: #fff;
+  }
+  /* No on-screen scrollbar baked into the printed page. */
+  *::-webkit-scrollbar {
+    display: none !important;
+  }
+}

@@ -70,6 +70,9 @@ const SLIDES_CSS = `
 .deck-dots i{width:7px;height:7px;border-radius:999px;background:var(--color-border-primary);cursor:pointer}
 .deck-dots i.on{background:var(--color-text-info)}
 .deck-num{font:400 13px/1 var(--font-mono);color:var(--color-text-tertiary);min-width:46px;text-align:center}
+/* Print / PDF: slides default to hidden (JS shows one at a time), so reveal all
+   of them stacked and drop the controls — the deck prints as a full handout. */
+@media print{.deck>.slide{display:block!important;min-height:0}.deck-ctl{display:none!important}}
 `;
 
 const SLIDES_JS = `
@@ -118,6 +121,10 @@ const ANIMATE_CSS = `
 .anim-play:hover{border-color:var(--color-border-primary)}
 .anim-range{flex:1;min-width:0;accent-color:var(--color-text-info);cursor:pointer}
 .anim-num{flex:none;font:400 13px/1 var(--font-mono);color:var(--color-text-tertiary);min-width:48px;text-align:right}
+/* Print / PDF: a stepper can't be played on paper, and steps default to hidden
+   (JS reveals them) — so a print would be blank. Reveal every step stacked and
+   drop the controls, turning the explainer into the full static explanation. */
+@media print{.anim>.step{display:block!important;animation:none!important}.anim-ctl{display:none!important}}
 `;
 
 const ANIMATE_JS = `
