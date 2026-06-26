@@ -11,12 +11,13 @@ export const MCP_INSTRUCTIONS =
   "renders to an SVG (flowchart, sequence, ERD, …), a `diff` part is a patch the viewer renders as " +
   "a syntax-highlighted split/unified diff. Combine them — e.g. a markdown rationale above a diff part — " +
   "in one card. publish_surface is the general tool; publish_snippet is " +
-  "sugar for a single html part. FOR A CODE REVIEW: call publish_review ONCE with a verdict, an " +
-  "optional `architecture` mermaid (how the changed pieces interact), and a findings[] array. Each " +
+  "sugar for a single html part. FOR A CODE REVIEW: call publish_review ONCE with a verdict, a " +
+  "`changeMap` ({nodes, edges} — the headline visual: the changed pieces and how they interact, each " +
+  "node tagged new/modified/touched/removed), and a findings[] array. Each " +
   "finding is a fixed structure: severity, the problem, a before→after `suggestion` (the current code " +
   "and your proposed code — showcase renders it as a diff that ALWAYS shows the change), and `fix` " +
   "(why it's better). showcase explodes the call into a verdict card (summary + tally + table + your " +
-  "architecture diagram) + a card per finding. Pass `suggestion:{before,after}` for every fix — never " +
+  "change map) + a card per finding. Pass `suggestion:{before,after}` for every fix — never " +
   "a raw `patch`, which renders empty if it isn't a valid unified diff. NEVER write a review as one " +
   "big markdown surface — that wall of text is the failure mode publish_review exists to prevent. " +
   "Call get_design_guide once before your first publish. On your first " +
@@ -61,8 +62,14 @@ const d = {
   findingPatch:
     "Fallback only: a unified/git diff hunk to show the PR's actual change in context. For a suggested fix, use `suggestion` instead — a raw patch renders empty if it isn't a valid unified diff. Must include `diff --git`/`---`/`+++` headers to render reliably.",
   findingDiagram: "Optional mermaid source visualizing the relevant flow/structure",
+  reviewChangeMap:
+    "THE headline review visual: a structured map of what changed and how it interacts. Pass {nodes, edges}. Each node {id, label, status, kind?}: status is new|modified|touched|removed (color-coded green/amber/gray/red — `touched` = existing code the change pulls in but doesn't edit); kind is file|class|function|service|table|external (picks the shape). Each edge {from, to, label?}: from/to are node ids, label is the interaction (calls, reads, persists, installs…). showcase renders a consistently styled graph. Build it from your reading of the diff — show the changed pieces and every interaction between them.",
+  reviewChangeNode:
+    "A node: {id (unique, referenced by edges), label (the symbol/file name), status (new|modified|touched|removed), kind? (file|class|function|service|table|external)}",
+  reviewChangeEdge:
+    "An interaction: {from (node id), to (node id), label? (e.g. 'calls', 'persists')}",
   reviewArchitecture:
-    "Optional mermaid source for the verdict card: a diagram of the changed pieces and how they interact (data/control flow, new vs. touched components). Gives the reader a map of the PR before the findings.",
+    "Escape-hatch raw mermaid for the verdict card when `changeMap` can't express the diagram you want (e.g. a sequence diagram). Prefer `changeMap` for the changed pieces and how they interact; this is only rendered when no `changeMap` is given.",
   reviewChurn:
     "Optional per-file line churn for the verdict card, as [{file, added, removed}] — straight from `git diff --numstat <base>...<branch>`. showcase renders it as a green-added / red-removed bar chart (the shape of the PR), ranked by churn and capped to the top files.",
   reviewVerdict: "request_changes | approve | comment — the verdict badge on the lead card",
@@ -197,7 +204,7 @@ export const MCP_TOOL_DESCRIPTIONS = {
   updateSurface:
     "Revise a surface in place (same card, new version). Prefer this over publishing a near-duplicate. Pass the full replacement parts array. If the result includes userFeedback, read it.",
   publishReview:
-    "Publish a WHOLE code review in one call — the strongly preferred way to review a PR on showcase. Pass a `verdict` (request_changes|approve|comment), an optional `summary`/`coverage`, an optional `architecture` mermaid (a diagram of how the changed pieces interact), an optional `churn` array ([{file, added, removed}] from `git diff --numstat`, rendered as a churn-by-file chart), and a `findings` array; showcase explodes it into a verdict card (summary + tally + findings table + your churn chart + architecture diagram) + ONE card per finding. Each finding card is FIXED structure: severity badge, the problem, a before→after `suggestion` rendered as an inline diff, and `fix` (why it's better). Same effort as writing the review, but it physically cannot become a wall of markdown — the structure is the API. For every fix you'd recommend, pass `suggestion:{before,after}` (NOT `patch`) so the diff always renders. Returns the sessionId + the created surface ids.",
+    "Publish a WHOLE code review in one call — the strongly preferred way to review a PR on showcase. Pass a `verdict` (request_changes|approve|comment), an optional `summary`/`coverage`, a `changeMap` ({nodes, edges} — the headline visual: the changed pieces and how they interact, color-coded new/modified/touched/removed), and a `findings` array; showcase explodes it into a verdict card (summary + tally + findings table + the change map) + ONE card per finding. Each finding card is FIXED structure: severity badge, the problem, a before→after `suggestion` rendered as an inline diff, and `fix` (why it's better). Same effort as writing the review, but it physically cannot become a wall of markdown — the structure is the API. For every fix you'd recommend, pass `suggestion:{before,after}` (NOT `patch`) so the diff always renders. Returns the sessionId + the created surface ids.",
   reviewFinding:
     "Publish ONE structured review finding as a multimodal card (prefer publish_review to submit a whole review at once). showcase composes it from your fields — a severity badge + the problem + a before→after suggested-change diff + the rationale. Never dump a review into one markdown surface. For a fix, pass `suggestion:{before,after}` (the current code and your proposed code) — showcase computes the diff so it ALWAYS shows the change; use `patch` only to show the PR's actual change in context. `title` and `problem` are required. Returns the surface id + URL; pass the returned sessionId as `session` on the rest of the review.",
   publishSnippet:
@@ -289,6 +296,43 @@ export const HTTP_MCP_TOOLS = [
         base: { type: "string", description: d.reviewBase },
         summary: { type: "string", description: d.reviewSummary },
         coverage: { type: "string", description: d.reviewCoverage },
+        changeMap: {
+          type: "object",
+          description: d.reviewChangeMap,
+          properties: {
+            nodes: {
+              type: "array",
+              description: d.reviewChangeNode,
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  label: { type: "string" },
+                  status: { type: "string", enum: ["new", "modified", "touched", "removed"] },
+                  kind: {
+                    type: "string",
+                    enum: ["file", "class", "function", "service", "table", "external"],
+                  },
+                },
+                required: ["id", "label", "status"],
+              },
+            },
+            edges: {
+              type: "array",
+              description: d.reviewChangeEdge,
+              items: {
+                type: "object",
+                properties: {
+                  from: { type: "string" },
+                  to: { type: "string" },
+                  label: { type: "string" },
+                },
+                required: ["from", "to"],
+              },
+            },
+          },
+          required: ["nodes"],
+        },
         architecture: { type: "string", description: d.reviewArchitecture },
         churn: {
           type: "array",
@@ -524,6 +568,22 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
     base: z.string().optional().describe(d.reviewBase),
     summary: z.string().optional().describe(d.reviewSummary),
     coverage: z.string().optional().describe(d.reviewCoverage),
+    changeMap: z
+      .object({
+        nodes: z.array(
+          z.object({
+            id: z.string(),
+            label: z.string(),
+            status: z.enum(["new", "modified", "touched", "removed"]),
+            kind: z.enum(["file", "class", "function", "service", "table", "external"]).optional(),
+          }),
+        ),
+        edges: z
+          .array(z.object({ from: z.string(), to: z.string(), label: z.string().optional() }))
+          .optional(),
+      })
+      .optional()
+      .describe(d.reviewChangeMap),
     architecture: z.string().optional().describe(d.reviewArchitecture),
     churn: z
       .array(z.object({ file: z.string(), added: z.number(), removed: z.number() }))

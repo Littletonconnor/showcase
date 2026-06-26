@@ -195,31 +195,21 @@ const REVIEW_BUG_FLOW = `flowchart LR
   size -- no --> store[store]
   read -. OOM .-> heap[heap exhausted]`;
 
-// The verdict card's architecture diagram: how the changed pieces interact, so
-// the reader has a map of the PR before the findings.
-const REVIEW_ARCH = `flowchart LR
-  Client([Client]) -->|POST /api/assets| Upload[uploadAsset]
-  Upload --> Guard{size guard}
-  Guard --> Store[(asset store)]
-  Mime[parseMime] -. duplicated .-> Upload
-  Mime -. duplicated .-> Publish[publishSurface]`;
-
-// Churn-by-file for the verdict card — the shape of the PR at a glance.
-const REVIEW_CHURN = {
-  kind: "chart",
-  chartType: "bar",
-  x: "file",
-  y: ["added", "removed"],
-  stacked: true,
-  colors: ["#2f9e44", "#e03131"],
-  yLabel: "lines",
-  caption: "Churn by file — 3 files, 96 lines",
-  data: [
-    { file: "app.ts", added: 41, removed: 6 },
-    { file: "assets.ts", added: 28, removed: 12 },
-    { file: "types.ts", added: 7, removed: 2 },
-  ],
-};
+// The verdict card's change map: the changed pieces and how they interact,
+// color-coded new/modified/touched (the shape buildChangeMap emits server-side).
+const REVIEW_CHANGEMAP = `flowchart LR
+  n0(["Client"]):::touched
+  n1["uploadAsset"]:::modified
+  n2["size guard"]:::new
+  n3["parseMime"]:::new
+  n4["publishSurface"]:::touched
+  n0 -->|"POST /api/assets"| n1
+  n1 -->|"checks"| n2
+  n3 -->|"used by"| n1
+  n3 -->|"used by"| n4
+  classDef new stroke:#2f9e44,color:#2f9e44,stroke-width:1.5px;
+  classDef modified stroke:#d9870a,color:#d9870a,stroke-width:1.5px;
+  classDef touched stroke:#9aa0a6,color:#9aa0a6;`;
 
 // A nit's suggested fix as a before→after pair — the viewer computes the diff.
 const REVIEW_NIT_BEFORE = `const mime = (c.req.header('content-type') ?? '').split(';')[0].trim().toLowerCase();`;
@@ -265,8 +255,7 @@ export const DEMO_SESSIONS = [
             markdown:
               "## Review summary\n\n**2 findings** · 1 bug · 1 nit — **request changes**\n\n| # | Severity | Finding | Location |\n|---|----------|---------|----------|\n| 1 | 🔴 Bug | Unbounded asset upload buffers the whole body before the size check | `server/app.ts:747` |\n| 2 | 🟡 Nit | `mime` parse duplicated across three handlers | `server/app.ts:182` |\n\n**Coverage** — read the asset upload + auth paths and the comment long-poll; did not exercise the SQL migration or the e2e suite.\n\nThe blocker (#1) is below. Tap **Approve** on a card once it's addressed.",
           },
-          REVIEW_CHURN,
-          { kind: "mermaid", mermaid: REVIEW_ARCH },
+          { kind: "mermaid", mermaid: REVIEW_CHANGEMAP },
         ],
       },
       {

@@ -417,6 +417,25 @@ export function coerceChurn(
   }));
 }
 
+// Coerce a loosely-typed change map ({nodes, edges}) — shared by the REST
+// reviews route and both MCP transports. buildChangeMap does the validation;
+// this just narrows the field types.
+export function coerceChangeMap(raw: any): ChangeMapInput | undefined {
+  if (!raw || typeof raw !== "object" || !Array.isArray(raw.nodes)) return undefined;
+  const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+  return {
+    nodes: raw.nodes.map((n: any) => ({
+      id: str(n?.id),
+      label: str(n?.label),
+      status: str(n?.status),
+      kind: str(n?.kind),
+    })),
+    edges: Array.isArray(raw.edges)
+      ? raw.edges.map((e: any) => ({ from: str(e?.from), to: str(e?.to), label: str(e?.label) }))
+      : [],
+  };
+}
+
 // publish_review: the WHOLE review in one call. The agent submits its verdict +
 // a findings[] array; showcase explodes it into a verdict card plus one finding
 // card per entry (each composed by buildFinding). One call, same effort as a
@@ -482,6 +501,65 @@ function buildVerdictMarkdown(input: {
     lines.push(`**Coverage** — ${normalizeProse(input.coverage)}`);
   }
   return lines.join("\n") || "_Review in progress._";
+}
+
+// The change map: the headline review visual — the changed pieces and how they
+// interact. The agent passes structure (nodes tagged new/modified/touched/
+// removed + labeled edges); showcase emits a styled mermaid so every map looks
+// the same and reads at a glance. Status colors are stroke+text only (no baked
+// fill) so they stay legible in both light and dark without re-theming.
+const CHANGE_STATUS: Record<string, string> = {
+  new: "stroke:#2f9e44,color:#2f9e44,stroke-width:1.5px",
+  modified: "stroke:#d9870a,color:#d9870a,stroke-width:1.5px",
+  touched: "stroke:#9aa0a6,color:#9aa0a6",
+  removed: "stroke:#e03131,color:#e03131,stroke-width:1.5px,stroke-dasharray:4 3",
+};
+
+export interface ChangeMapInput {
+  nodes: Array<{ id?: string; label?: string; status?: string; kind?: string }>;
+  edges?: Array<{ from?: string; to?: string; label?: string }>;
+}
+
+function buildChangeMap(map: ChangeMapInput): SurfacePart | undefined {
+  const nodes = Array.isArray(map?.nodes) ? map.nodes : [];
+  const valid = nodes.filter(
+    (n) => n && typeof n.id === "string" && n.id.trim() && n.label?.trim(),
+  );
+  if (valid.length === 0) return undefined;
+
+  // Map agent ids → safe mermaid identifiers (n0, n1, …); labels carry the real
+  // names, escaped so a quote/newline can't break the diagram syntax.
+  const id = new Map<string, string>();
+  valid.forEach((n, i) => id.set(n.id as string, `n${i}`));
+  const esc = (s: string) =>
+    s
+      .replace(/["\n]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 60);
+  const shape = (kind: string | undefined, label: string) => {
+    const t = esc(label);
+    if (kind === "table" || kind === "store" || kind === "db") return `[("${t}")]`; // cylinder
+    if (kind === "external" || kind === "actor" || kind === "service") return `(["${t}"])`; // stadium
+    return `["${t}"]`; // rounded rect
+  };
+
+  const lines = ["flowchart LR"];
+  const used = new Set<string>();
+  for (const n of valid) {
+    const status =
+      typeof n.status === "string" && Object.hasOwn(CHANGE_STATUS, n.status) ? n.status : "touched";
+    used.add(status);
+    lines.push(`  ${id.get(n.id as string)}${shape(n.kind, n.label as string)}:::${status}`);
+  }
+  for (const e of Array.isArray(map?.edges) ? map.edges! : []) {
+    if (!e || typeof e.from !== "string" || typeof e.to !== "string") continue;
+    if (!id.has(e.from) || !id.has(e.to)) continue;
+    const label = e.label?.trim() ? `|"${esc(e.label)}"|` : "";
+    lines.push(`  ${id.get(e.from)} -->${label} ${id.get(e.to)}`);
+  }
+  for (const s of used) lines.push(`  classDef ${s} ${CHANGE_STATUS[s]};`);
+  return { kind: "mermaid", mermaid: lines.join("\n") };
 }
 
 // Churn added green / removed red — the diff convention, matched to the inline
@@ -708,6 +786,7 @@ export function createApp({
     summary?: string;
     coverage?: string;
     architecture?: string;
+    changeMap?: ChangeMapInput;
     churn?: Array<{ file?: string; added?: number; removed?: number }>;
     findings: FindingInput[];
     session?: string;
@@ -723,16 +802,18 @@ export function createApp({
     }
     const badge = REVIEW_VERDICT[input.verdict ?? "comment"] ?? REVIEW_VERDICT.comment;
     // The verdict card is the review's map: summary + tally + findings table,
-    // then a churn-by-file chart (the PR's shape) and an architecture diagram
-    // (how the changed pieces interact) when provided.
+    // then the change map (the changed pieces and how they interact). A raw
+    // `architecture` mermaid is the escape hatch when no structured map is given.
     const verdictParts: SurfacePart[] = [
       { kind: "markdown", markdown: buildVerdictMarkdown(input) },
     ];
-    const churnChart = Array.isArray(input.churn) ? buildChurnChart(input.churn) : undefined;
-    if (churnChart) verdictParts.push(churnChart);
-    if (input.architecture?.trim()) {
+    const changeMapPart = input.changeMap ? buildChangeMap(input.changeMap) : undefined;
+    if (changeMapPart) verdictParts.push(changeMapPart);
+    else if (input.architecture?.trim()) {
       verdictParts.push({ kind: "mermaid", mermaid: input.architecture.trim() });
     }
+    const churnChart = Array.isArray(input.churn) ? buildChurnChart(input.churn) : undefined;
+    if (churnChart) verdictParts.push(churnChart);
     const verdictTitle = input.branch ? `Review — ${input.branch}` : "Review verdict";
 
     // If this session was scaffolded by `showcase review`, reuse its "In review"
@@ -1244,6 +1325,7 @@ export function createApp({
       summary: str(body.summary),
       coverage: str(body.coverage),
       architecture: str(body.architecture),
+      changeMap: coerceChangeMap(body.changeMap),
       churn: coerceChurn(body.churn),
       findings,
       session: str(body.session),

@@ -1,5 +1,7 @@
 import type { Hono } from "hono";
 import {
+  type ChangeMapInput,
+  coerceChangeMap,
   coerceChurn,
   type CommentWait,
   coerceFinding,
@@ -54,6 +56,7 @@ export interface McpDeps {
     summary?: string;
     coverage?: string;
     architecture?: string;
+    changeMap?: ChangeMapInput;
     churn?: Array<{ file?: string; added?: number; removed?: number }>;
     findings: FindingInput[];
     session?: string;
@@ -132,6 +135,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
           summary: str(args.summary),
           coverage: str(args.coverage),
           architecture: str(args.architecture),
+          changeMap: coerceChangeMap(args.changeMap),
           churn: coerceChurn(args.churn),
           findings,
           session: str(args.session),

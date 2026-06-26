@@ -163,6 +163,54 @@ test("publish_review explodes one call into a verdict card + a card per finding"
   assert.equal((await app.request("/api/reviews", json({ verdict: "approve" }))).status, 400);
 });
 
+test("publish_review renders a changeMap as a styled, color-coded mermaid on the verdict card", async () => {
+  const app = makeApp();
+  const review = (await (
+    await app.request(
+      "/api/reviews",
+      json({
+        branch: "feature",
+        verdict: "comment",
+        changeMap: {
+          nodes: [
+            { id: "ctrl", label: "ChatController", status: "modified", kind: "class" },
+            { id: "ent", label: "FinancialChatFeedback", status: "new", kind: "class" },
+            { id: "db", label: "feedback.hbm.xml", status: "new", kind: "table" },
+            { id: "junk", status: "new" }, // no label → dropped
+          ],
+          edges: [
+            { from: "ctrl", to: "ent", label: "saves" },
+            { from: "ent", to: "db", label: "persists" },
+            { from: "ent", to: "nope" }, // unknown target → dropped
+          ],
+        },
+        findings: [{ severity: "nit", title: "t", problem: "p" }],
+      }),
+    )
+  ).json()) as any;
+  const verdict = (await (await app.request(`/api/surfaces/${review.verdict}`)).json()) as any;
+  assert.deepEqual(
+    verdict.parts.map((p: any) => p.kind),
+    ["markdown", "mermaid"],
+  );
+  const src = verdict.parts[1].mermaid as string;
+  assert.match(src, /^flowchart LR/);
+  // Labels carried, statuses applied, table → cylinder shape.
+  assert.match(src, /\["ChatController"\]:::modified/);
+  assert.match(src, /\["FinancialChatFeedback"\]:::new/);
+  assert.match(src, /\[\("feedback\.hbm\.xml"\)\]:::new/);
+  // Edges with labels; the edge to an unknown node is dropped.
+  assert.match(src, /-->\|"saves"\|/);
+  assert.match(src, /-->\|"persists"\|/);
+  assert.doesNotMatch(src, /nope/);
+  // Only the used statuses get a classDef (no `removed`/`touched` here).
+  assert.match(src, /classDef new /);
+  assert.match(src, /classDef modified /);
+  assert.doesNotMatch(src, /classDef removed/);
+  // The label-less node was dropped (3 nodes → n0..n2, no n3).
+  assert.doesNotMatch(src, /\bn3\b/);
+});
+
 test("publish_review renders churn as a green/red bar chart on the verdict card", async () => {
   const app = makeApp();
   const review = (await (
