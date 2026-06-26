@@ -320,6 +320,40 @@ test("finding composes a structured review card", async () => {
     assert.deepEqual(out.badge, { tone: "critical", label: "Bug" });
     const full = (await (await fetch(`${server.url}/api/surfaces/${out.id}`)).json()) as any;
     assert.equal(full.title, "Null check missing — Foo.java:12");
+
+    // --before/--after read each side from a file → a computed before/after diff.
+    const dir = mkdtempSync(join(tmpdir(), "showcase-sugg-"));
+    const before = join(dir, "before.txt");
+    const after = join(dir, "after.txt");
+    writeFileSync(before, "timeout(5000)");
+    writeFileSync(after, "timeout(DEFAULT_MS)");
+    const { code: c2, stdout: s2 } = await runWith(
+      { env: { SHOWCASE_URL: server.url } },
+      "finding",
+      "--title",
+      "Use a constant",
+      "--problem",
+      "magic number",
+      "--before",
+      before,
+      "--after",
+      after,
+      "--fix",
+      "names the intent",
+      "--session",
+      out.sessionId,
+    );
+    assert.equal(c2, 0);
+    const sugg = (await (
+      await fetch(`${server.url}/api/surfaces/${JSON.parse(s2).id}`)
+    ).json()) as any;
+    assert.deepEqual(
+      sugg.parts.map((p: any) => p.kind),
+      ["markdown", "diff", "markdown"],
+    );
+    assert.deepEqual(sugg.parts[1].files, [
+      { filename: "suggestion", before: "timeout(5000)", after: "timeout(DEFAULT_MS)" },
+    ]);
   } finally {
     await server.close();
   }
@@ -353,7 +387,7 @@ test("review scaffolds a session from a branch diff", async () => {
   }
 });
 
-test("review folds in the review profile and demands review_finding", async () => {
+test("review folds in the review profile and demands publish_review", async () => {
   const server = await serveApp();
   const repo = gitRepo();
   const profile = join(mkdtempSync(join(tmpdir(), "showcase-prof-")), "review.md");

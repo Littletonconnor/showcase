@@ -24,7 +24,8 @@ usage:
   showcase finding [options]              publish one structured review finding
       --title <t>       the finding (required)    --problem <text>  what's wrong (required)
       --severity <s>    bug|nit|question|praise|note   --file <f> --line <n>
-      --fix <text>      suggested fix   --patch <file|->  diff shown inline
+      --before <file|-> --after <file|->  suggested fix as a before→after diff (preferred)
+      --fix <text>      why the change is better   --patch <file|->  raw diff (fallback)
       --diagram <file|-> mermaid of the flow   (also: --session, --session-title)
   showcase publish <file|-> [options]     publish an HTML surface (one html part)
       --title <t>       surface title
@@ -494,6 +495,21 @@ function entrypoint(...parts) {
   return existsSync(built) ? built : join(ROOT, ...parts);
 }
 
+// `serve`/`mcp` run the server with the current node binary. When running from
+// source (a `.ts` entrypoint, not a built `dist/*.js`), Node strips types only
+// on ≥ 22.18 — on an older node (the common nvm v20 default) the spawn dies with
+// a cryptic ERR_UNKNOWN_FILE_EXTENSION. Fail fast here with the actual fix.
+function ensureNodeCanRun(entry) {
+  if (!entry.endsWith(".ts")) return;
+  const [major, minor] = process.versions.node.split(".").map(Number);
+  if (major > 22 || (major === 22 && minor >= 18)) return;
+  fail(
+    `running from source needs Node ≥ 22.18 to strip TypeScript (you have ${process.version}).\n` +
+      `  Switch with nvm: \`nvm use 22\` (or 24), then re-run —\n` +
+      `  or run a one-off with a newer binary: PATH="$(dirname "$(nvm which 22)"):$PATH" showcase serve`,
+  );
+}
+
 // --- git helpers, for `showcase review` ---
 
 // Run git, returning stdout. `soft` swallows failures (returns "") so callers
@@ -530,7 +546,9 @@ const commands = {
       options: { port: { type: "string" }, open: { type: "boolean" } },
     });
     const port = flags.port ?? process.env.PORT ?? "8229";
-    const child = spawn(process.execPath, [entrypoint("server", "index.ts")], {
+    const entry = entrypoint("server", "index.ts");
+    ensureNodeCanRun(entry);
+    const child = spawn(process.execPath, [entry], {
       stdio: "inherit",
       env: { ...process.env, PORT: port },
     });
@@ -549,7 +567,9 @@ const commands = {
 
   async mcp() {
     parse();
-    const child = spawn(process.execPath, [entrypoint("mcp", "server.ts")], {
+    const entry = entrypoint("mcp", "server.ts");
+    ensureNodeCanRun(entry);
+    const child = spawn(process.execPath, [entry], {
       stdio: "inherit",
       env: process.env,
     });
@@ -1098,6 +1118,8 @@ const commands = {
         title,
         sessionTitle: title,
         agent: flags.agent ?? process.env.SHOWCASE_AGENT ?? "agent",
+        // "In review" is the sentinel publish_review looks for to reuse this card
+        // as the verdict (see REVIEW_PLACEHOLDER_LABEL in server/app.ts).
         badge: { tone: "neutral", label: "In review" },
         parts: [{ kind: "markdown", markdown }],
       }),
@@ -1117,8 +1139,8 @@ const commands = {
       profile && `Apply your review profile first (load any skills it names):\n${profile}`,
       `Review the branch ${branch} against ${base}, then publish it to showcase with ONE call to the publish_review tool (session ${surface.sessionId}). Call get_design_guide first.`,
       `Break the PR into its CRITICAL PIECES — the entity, the wiring, the test coverage — not file-by-file. Read the actual code paths, not just the diff hunks.`,
-      `Call publish_review ONCE: pass verdict (request_changes|approve|comment), a summary, a coverage note, and a findings[] array — one entry per piece, each with severity, title, file/line, the problem (and a fix), the relevant hunk as \`patch\` so the diff shows inline, and a mermaid \`diagram\` when flow/structure matters. showcase turns it into a verdict card + one card per finding.`,
-      `Do NOT write the review as a single markdown surface — that wall of text is the failure mode publish_review replaces. (You can replace the placeholder "In review" card, surface ${surface.id}, or just let publish_review create the verdict.)`,
+      `Call publish_review ONCE: pass verdict (request_changes|approve|comment), a one-paragraph summary, a coverage note, an \`architecture\` mermaid (a diagram of how the changed pieces interact, shown on the verdict card), and a findings[] array. Each finding: severity, title, file/line, the problem, and for any fix a \`suggestion:{before,after}\` — the CURRENT code and your PROPOSED code, which showcase renders as a diff that always shows the change. Put WHY the change is better in \`fix\`. Use \`patch\` only to show the PR's actual change in context. showcase turns it into a verdict card + one card per finding.`,
+      `Do NOT write the review as a single markdown surface — that wall of text is the failure mode publish_review replaces. (publish_review automatically turns this session's "In review" placeholder card into the verdict — just call it with session ${surface.sessionId}.)`,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -1147,6 +1169,8 @@ const commands = {
         line: { type: "string" },
         problem: { type: "string" },
         fix: { type: "string" },
+        before: { type: "string" },
+        after: { type: "string" },
         patch: { type: "string" },
         diagram: { type: "string" },
         session: { type: "string" },
@@ -1156,9 +1180,18 @@ const commands = {
     });
     if (!flags.title || !flags.problem) {
       fail(
-        "usage: showcase finding --title <t> --problem <text> [--severity bug|nit|question|praise|note] [--file f] [--line n] [--fix <text>] [--patch <file|->] [--diagram <file|->]",
+        "usage: showcase finding --title <t> --problem <text> [--severity bug|nit|question|praise|note] [--file f] [--line n] [--fix <text>] [--before <file|->] [--after <file|->] [--patch <file|->] [--diagram <file|->]",
       );
     }
+    // A before→after suggestion renders as a diff that always shows the change;
+    // prefer it over --patch. Each side reads a file (or - for stdin).
+    const suggestion =
+      flags.before !== undefined || flags.after !== undefined
+        ? {
+            before: flags.before !== undefined ? readContent(flags.before) : "",
+            after: flags.after !== undefined ? readContent(flags.after) : "",
+          }
+        : undefined;
     const session = flags.session ?? (await resolveSession(flags, { create: true }));
     outSurface(
       await api("/api/findings", {
@@ -1170,6 +1203,7 @@ const commands = {
           line: flags.line ? Number(flags.line) : undefined,
           problem: flags.problem,
           fix: flags.fix,
+          suggestion,
           patch: flags.patch ? readContent(flags.patch) : undefined,
           diagram: flags.diagram ? readContent(flags.diagram) : undefined,
           session,

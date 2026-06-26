@@ -1,5 +1,5 @@
 import type { Hono } from "hono";
-import type { CommentWait, Feedback } from "./app.ts";
+import { type CommentWait, coerceFinding, type Feedback, type FindingInput } from "./app.ts";
 import { decodeBase64 } from "./base64.ts";
 import {
   type Asset,
@@ -38,35 +38,17 @@ export interface McpDeps {
     sessionTitle?: string;
     agent?: string;
   }): FlowResult<Surface>;
-  publishFinding(input: {
-    severity?: string;
-    title: string;
-    file?: string;
-    line?: number;
-    problem: string;
-    fix?: string;
-    patch?: string;
-    diagram?: string;
-    session?: string;
-    sessionTitle?: string;
-    agent?: string;
-  }): FlowResult<Surface>;
+  publishFinding(
+    input: FindingInput & { session?: string; sessionTitle?: string; agent?: string },
+  ): FlowResult<Surface>;
   publishReview(input: {
     verdict?: string;
     branch?: string;
     base?: string;
     summary?: string;
     coverage?: string;
-    findings: Array<{
-      severity?: string;
-      title: string;
-      file?: string;
-      line?: number;
-      problem: string;
-      fix?: string;
-      patch?: string;
-      diagram?: string;
-    }>;
+    architecture?: string;
+    findings: FindingInput[];
     session?: string;
     sessionTitle?: string;
     agent?: string;
@@ -135,24 +117,14 @@ export function registerMcp(app: Hono, deps: McpDeps) {
       }
       case "publish_review": {
         const str = (v: unknown) => (typeof v === "string" ? v : undefined);
-        const findings = Array.isArray(args.findings)
-          ? args.findings.map((f: any) => ({
-              severity: str(f?.severity),
-              title: String(f?.title ?? ""),
-              file: str(f?.file),
-              line: typeof f?.line === "number" ? f.line : undefined,
-              problem: String(f?.problem ?? ""),
-              fix: str(f?.fix),
-              patch: str(f?.patch),
-              diagram: str(f?.diagram),
-            }))
-          : [];
+        const findings = Array.isArray(args.findings) ? args.findings.map(coerceFinding) : [];
         const result = await deps.publishReview({
           verdict: str(args.verdict),
           branch: str(args.branch),
           base: str(args.base),
           summary: str(args.summary),
           coverage: str(args.coverage),
+          architecture: str(args.architecture),
           findings,
           session: str(args.session),
           sessionTitle: str(args.sessionTitle),
@@ -173,14 +145,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
       case "review_finding": {
         const str = (v: unknown) => (typeof v === "string" ? v : undefined);
         const result = await deps.publishFinding({
-          severity: str(args.severity),
-          title: String(args.title ?? ""),
-          file: str(args.file),
-          line: typeof args.line === "number" ? args.line : undefined,
-          problem: String(args.problem ?? ""),
-          fix: str(args.fix),
-          patch: str(args.patch),
-          diagram: str(args.diagram),
+          ...coerceFinding(args),
           session: str(args.session),
           sessionTitle: str(args.sessionTitle),
           agent: str(args.agent),

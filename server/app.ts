@@ -306,10 +306,19 @@ export interface FindingInput {
   line?: number;
   problem: string;
   fix?: string;
+  // A concrete fix as a before→after pair. The viewer computes the diff from the
+  // two contents (parseDiffFromFile), so it ALWAYS renders the change — unlike a
+  // hand-crafted `patch`, which shows an empty "−0 +0" diff whenever the agent
+  // sends a bare hunk or malformed unified diff. Prefer this for fixes.
+  suggestion?: { before: string; after: string };
   patch?: string;
   diagram?: string;
 }
 
+// A finding card reads top-to-bottom as one thought: what's wrong, the concrete
+// change, why it's better, and (optionally) how it fits. The structure is fixed
+// so every finding in every review looks the same — the reviewer can scan it
+// without re-learning the layout per card.
 function buildFinding(input: FindingInput): {
   title: string;
   badge: SurfaceBadge;
@@ -321,13 +330,64 @@ function buildFinding(input: FindingInput): {
     : "";
   const title = `${input.title.trim()}${loc}`.slice(0, MAX_TITLE);
   const fix = input.fix?.trim();
-  const markdown = fix
-    ? `**Problem** — ${input.problem.trim()}\n\n**Fix** — ${fix}`
-    : input.problem.trim();
-  const parts: SurfacePart[] = [{ kind: "markdown", markdown }];
+  const s = input.suggestion;
+  const hasSuggestion = !!s && (!!s.before?.trim() || !!s.after?.trim());
+
+  const parts: SurfacePart[] = [];
+  // Lead: the problem. When there's a suggestion diff, `fix` becomes the
+  // rationale UNDER the change ("why it's better"); without one, it stays inline
+  // as the textual fix so prose-only findings still carry a recommendation.
+  parts.push({
+    kind: "markdown",
+    markdown:
+      fix && !hasSuggestion
+        ? `**Problem** — ${input.problem.trim()}\n\n**Fix** — ${fix}`
+        : `**Problem** — ${input.problem.trim()}`,
+  });
+  if (hasSuggestion) {
+    parts.push({
+      kind: "diff",
+      files: [
+        {
+          filename: input.file ?? "suggestion",
+          before: s.before ?? "",
+          after: s.after ?? "",
+        },
+      ],
+    });
+    if (fix) parts.push({ kind: "markdown", markdown: `**Why it's better** — ${fix}` });
+  } else if (input.patch?.trim()) {
+    // Fallback: a raw unified patch (e.g. the PR's actual change, in context).
+    parts.push({ kind: "diff", patch: input.patch });
+  }
   if (input.diagram?.trim()) parts.push({ kind: "mermaid", mermaid: input.diagram.trim() });
-  if (input.patch?.trim()) parts.push({ kind: "diff", patch: input.patch });
   return { title, badge, parts };
+}
+
+// Coerce loosely-typed request/tool args into a FindingInput — shared by the
+// REST routes (findings + reviews) and both MCP transports so the finding shape
+// is parsed in exactly one place.
+export function coerceFinding(raw: any): FindingInput {
+  const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+  const sg = raw?.suggestion;
+  const suggestion =
+    sg && (typeof sg.before === "string" || typeof sg.after === "string")
+      ? {
+          before: typeof sg.before === "string" ? sg.before : "",
+          after: typeof sg.after === "string" ? sg.after : "",
+        }
+      : undefined;
+  return {
+    severity: str(raw?.severity),
+    title: String(raw?.title ?? ""),
+    file: str(raw?.file),
+    line: typeof raw?.line === "number" ? raw.line : undefined,
+    problem: String(raw?.problem ?? ""),
+    fix: str(raw?.fix),
+    suggestion,
+    patch: str(raw?.patch),
+    diagram: str(raw?.diagram),
+  };
 }
 
 // publish_review: the WHOLE review in one call. The agent submits its verdict +
@@ -340,6 +400,12 @@ const REVIEW_VERDICT: Record<string, SurfaceBadge> = {
   approve: { tone: "success", label: "Approve" },
   comment: { tone: "neutral", label: "Comments" },
 };
+
+// The `showcase review` scaffold seeds a placeholder card with this badge label;
+// publish_review reuses that card as the verdict (revises it in place) so the
+// scaffold EVOLVES into the verdict instead of leaving a duplicate above the
+// review. Keep in sync with the badge `bin/showcase.js` review() sets.
+const REVIEW_PLACEHOLDER_LABEL = "In review";
 
 // The verdict card's body: the summary, a scannable findings table, and a
 // coverage note — built from the same findings[] the cards are.
@@ -357,6 +423,19 @@ function buildVerdictMarkdown(input: {
   if (input.summary?.trim()) lines.push(input.summary.trim());
   const real = input.findings.filter((f) => f.title?.trim() && f.problem?.trim());
   if (real.length > 0) {
+    // A one-line severity tally above the table, so the weight of the review is
+    // legible at a glance even when the findings list is long.
+    const tally = new Map<string, number>();
+    for (const f of real) {
+      const label = FINDING_SEVERITY[f.severity ?? "note"]?.label ?? "Note";
+      tally.set(label, (tally.get(label) ?? 0) + 1);
+    }
+    const order = ["Bug", "Nit", "Question", "Note", "Praise"];
+    const parts = [...tally.entries()]
+      .sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]))
+      .map(([label, n]) => `${n} ${label}${n > 1 && label !== "Praise" ? "s" : ""}`);
+    lines.push("");
+    lines.push(`**${real.length} finding${real.length > 1 ? "s" : ""}** — ${parts.join(" · ")}`);
     lines.push("");
     lines.push("| Severity | Finding | Location |");
     lines.push("| --- | --- | --- |");
@@ -541,6 +620,7 @@ export function createApp({
     base?: string;
     summary?: string;
     coverage?: string;
+    architecture?: string;
     findings: FindingInput[];
     session?: string;
     sessionTitle?: string;
@@ -554,17 +634,49 @@ export function createApp({
       return { error: '"findings" must be an array', status: 400 };
     }
     const badge = REVIEW_VERDICT[input.verdict ?? "comment"] ?? REVIEW_VERDICT.comment;
-    const verdictResult = await publishSurface({
-      parts: [{ kind: "markdown", markdown: buildVerdictMarkdown(input) }],
-      title: input.branch ? `Review — ${input.branch}` : "Review verdict",
-      badge,
-      session: input.session,
-      sessionTitle: input.sessionTitle ?? (input.branch ? `Review: ${input.branch}` : undefined),
-      agent: input.agent,
-      cwd: input.cwd,
-    });
-    if ("error" in verdictResult) return verdictResult;
-    const session = verdictResult.surface.sessionId;
+    // The verdict card is the review's map: summary + tally + findings table,
+    // then an optional architecture diagram of how the changed pieces interact.
+    const verdictParts: SurfacePart[] = [
+      { kind: "markdown", markdown: buildVerdictMarkdown(input) },
+    ];
+    if (input.architecture?.trim()) {
+      verdictParts.push({ kind: "mermaid", mermaid: input.architecture.trim() });
+    }
+    const verdictTitle = input.branch ? `Review — ${input.branch}` : "Review verdict";
+
+    // If this session was scaffolded by `showcase review`, reuse its "In review"
+    // placeholder as the verdict card (revise in place) so it evolves from
+    // pending → verdict instead of leaving an orphan above the review.
+    const placeholder = input.session
+      ? (await store.listSurfaces(input.session)).find(
+          (s) => s.badge?.label === REVIEW_PLACEHOLDER_LABEL,
+        )
+      : undefined;
+
+    let verdictSurface: Surface;
+    if (placeholder) {
+      const revised = await reviseSurface(placeholder.id, {
+        parts: verdictParts,
+        title: verdictTitle,
+        badge,
+      });
+      if ("error" in revised) return revised;
+      verdictSurface = revised.surface;
+    } else {
+      const verdictResult = await publishSurface({
+        parts: verdictParts,
+        title: verdictTitle,
+        badge,
+        session: input.session,
+        sessionTitle: input.sessionTitle ?? (input.branch ? `Review: ${input.branch}` : undefined),
+        agent: input.agent,
+        cwd: input.cwd,
+      });
+      if ("error" in verdictResult) return verdictResult;
+      verdictSurface = verdictResult.surface;
+    }
+
+    const session = verdictSurface.sessionId;
     const findings: string[] = [];
     for (const f of input.findings) {
       if (!f?.title?.trim() || !f?.problem?.trim()) continue; // skip malformed entries
@@ -572,7 +684,7 @@ export function createApp({
       const r = await publishSurface({ parts, title, badge: fbadge, session });
       if (!("error" in r)) findings.push(r.surface.id);
     }
-    return { session, verdict: verdictResult.surface.id, findings };
+    return { session, verdict: verdictSurface.id, findings };
   }
 
   // Store an uploaded blob. Like publishSurface, an explicit session is
@@ -1009,14 +1121,7 @@ export function createApp({
     }
     const str = (v: unknown) => (typeof v === "string" ? v : undefined);
     const result = await publishFinding({
-      severity: str(body.severity),
-      title: body.title,
-      file: str(body.file),
-      line: typeof body.line === "number" ? body.line : undefined,
-      problem: body.problem,
-      fix: str(body.fix),
-      patch: str(body.patch),
-      diagram: str(body.diagram),
+      ...coerceFinding(body),
       session: str(body.session),
       sessionTitle: str(body.sessionTitle),
       agent: str(body.agent),
@@ -1040,22 +1145,14 @@ export function createApp({
       return c.json({ error: '"findings" array is required' }, 400);
     }
     const str = (v: unknown) => (typeof v === "string" ? v : undefined);
-    const findings = body.findings.map((f: any) => ({
-      severity: str(f?.severity),
-      title: String(f?.title ?? ""),
-      file: str(f?.file),
-      line: typeof f?.line === "number" ? f.line : undefined,
-      problem: String(f?.problem ?? ""),
-      fix: str(f?.fix),
-      patch: str(f?.patch),
-      diagram: str(f?.diagram),
-    }));
+    const findings = body.findings.map(coerceFinding);
     const result = await publishReview({
       verdict: str(body.verdict),
       branch: str(body.branch),
       base: str(body.base),
       summary: str(body.summary),
       coverage: str(body.coverage),
+      architecture: str(body.architecture),
       findings,
       session: str(body.session),
       sessionTitle: str(body.sessionTitle),

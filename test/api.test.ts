@@ -113,6 +113,7 @@ test("publish_review explodes one call into a verdict card + a card per finding"
       verdict: "request_changes",
       summary: "Adds the entity + cipher wiring.",
       coverage: "Read the entity; skipped the schema repo.",
+      architecture: "flowchart LR; A-->B",
       findings: [
         {
           severity: "bug",
@@ -120,7 +121,8 @@ test("publish_review explodes one call into a verdict card + a card per finding"
           file: "Foo.java",
           line: 12,
           problem: "no checkNotNull",
-          patch: "@@ -1 +1 @@\n-a\n+b",
+          suggestion: { before: "this.a = a;", after: "this.a = checkNotNull(a);" },
+          fix: "fails fast at construction",
         },
         { severity: "praise", title: "Clean cipher split", problem: "scopes the new cipher" },
         { title: "", problem: "" }, // malformed entries are skipped, not cards
@@ -140,14 +142,76 @@ test("publish_review explodes one call into a verdict card + a card per finding"
   assert.deepEqual(verdict.badge, { tone: "warning", label: "Request changes" });
   assert.match(verdict.parts[0].markdown, /Coverage/);
   assert.match(verdict.parts[0].markdown, /Null check missing/); // the findings table
+  assert.match(verdict.parts[0].markdown, /\*\*2 findings\*\* — 1 Bug · 1 Praise/); // the tally
+  // architecture diagram rides the verdict card as a trailing mermaid part.
+  assert.deepEqual(
+    verdict.parts.map((p: any) => p.kind),
+    ["markdown", "mermaid"],
+  );
+  // The bug finding's suggestion → a before/after diff; fix → "Why it's better".
   const bug = surfaces.find((s) => s.title.startsWith("Null check missing"));
   assert.deepEqual(bug.badge, { tone: "critical", label: "Bug" });
   assert.deepEqual(
     bug.parts.map((p: any) => p.kind),
-    ["markdown", "diff"],
+    ["markdown", "diff", "markdown"],
   );
+  assert.deepEqual(bug.parts[1].files, [
+    { filename: "Foo.java", before: "this.a = a;", after: "this.a = checkNotNull(a);" },
+  ]);
+  assert.match(bug.parts[2].markdown, /\*\*Why it's better\*\* — fails fast/);
 
   assert.equal((await app.request("/api/reviews", json({ verdict: "approve" }))).status, 400);
+});
+
+test("publish_review reuses the `showcase review` scaffold placeholder as the verdict card", async () => {
+  const app = makeApp();
+  // `showcase review` seeds a placeholder card badged "In review".
+  const placeholder = (await (
+    await app.request(
+      "/api/surfaces",
+      json({
+        title: "Review: feature",
+        sessionTitle: "Review: feature",
+        badge: { tone: "neutral", label: "In review" },
+        parts: [{ kind: "markdown", markdown: "## Review: feature\n\n2 files changed" }],
+      }),
+    )
+  ).json()) as any;
+
+  const review = (await (
+    await app.request(
+      "/api/reviews",
+      json({
+        branch: "feature",
+        verdict: "comment",
+        summary: "looks good overall",
+        session: placeholder.sessionId,
+        findings: [{ severity: "nit", title: "tiny thing", problem: "small" }],
+      }),
+    )
+  ).json()) as any;
+
+  // The verdict IS the placeholder, revised in place — not a new orphan card.
+  assert.equal(review.verdict, placeholder.id);
+  const surfaces = (await (
+    await app.request(`/api/sessions/${review.session}/surfaces`)
+  ).json()) as any[];
+  assert.equal(surfaces.length, 2, "verdict (reused) + 1 finding — no orphan placeholder");
+  const verdict = surfaces.find((s) => s.id === placeholder.id);
+  assert.deepEqual(verdict.badge, { tone: "neutral", label: "Comments" }); // re-badged to the verdict
+  assert.equal(verdict.title, "Review — feature");
+  assert.match(verdict.parts[0].markdown, /looks good overall/);
+  assert.ok(verdict.version >= 2, "the placeholder was revised, not recreated");
+
+  // Without a scaffold placeholder, the verdict is a brand-new card (unchanged).
+  const fresh = (await (
+    await app.request("/api/reviews", json({ branch: "other", verdict: "approve", findings: [] }))
+  ).json()) as any;
+  const freshSurfaces = (await (
+    await app.request(`/api/sessions/${fresh.session}/surfaces`)
+  ).json()) as any[];
+  assert.equal(freshSurfaces.length, 1);
+  assert.equal(freshSurfaces[0].id, fresh.verdict);
 });
 
 test("review_finding composes a multimodal card from structured fields", async () => {
@@ -170,14 +234,36 @@ test("review_finding composes a multimodal card from structured fields", async (
   const lean = (await res.json()) as any;
   // severity → badge, and the file:line rides the title.
   assert.deepEqual(lean.badge, { tone: "critical", label: "Bug" });
-  // problem + fix + diagram + patch → markdown, mermaid, diff (in that order).
-  assert.deepEqual(lean.kinds, ["markdown", "mermaid", "diff"]);
+  // No suggestion: fix folds into the problem markdown; patch → diff; diagram → mermaid last.
+  assert.deepEqual(lean.kinds, ["markdown", "diff", "mermaid"]);
 
   const full = (await (await app.request(`/api/surfaces/${lean.id}`)).json()) as any;
   assert.equal(full.title, "Constructor doesn't fail-fast — Foo.java:38");
   assert.match(full.parts[0].markdown, /\*\*Problem\*\* — args assigned/);
   assert.match(full.parts[0].markdown, /\*\*Fix\*\* — checkNotNull/);
-  assert.equal(full.parts[2].patch, "@@ -1 +1 @@\n-a\n+b");
+  assert.equal(full.parts[1].patch, "@@ -1 +1 @@\n-a\n+b");
+
+  // A finding WITH a before/after suggestion: the fix becomes the rationale under
+  // a computed diff, so the card reads Problem → suggested change → why.
+  const suggested = (await (
+    await app.request(
+      "/api/findings",
+      json({
+        title: "Use a constant",
+        problem: "magic number",
+        suggestion: { before: "timeout(5000)", after: "timeout(DEFAULT_MS)" },
+        fix: "names the intent and avoids drift",
+        session: lean.sessionId,
+      }),
+    )
+  ).json()) as any;
+  assert.deepEqual(suggested.kinds, ["markdown", "diff", "markdown"]);
+  const suggestedFull = (await (await app.request(`/api/surfaces/${suggested.id}`)).json()) as any;
+  assert.doesNotMatch(suggestedFull.parts[0].markdown, /\*\*Fix\*\*/); // not folded inline
+  assert.deepEqual(suggestedFull.parts[1].files, [
+    { filename: "suggestion", before: "timeout(5000)", after: "timeout(DEFAULT_MS)" },
+  ]);
+  assert.match(suggestedFull.parts[2].markdown, /\*\*Why it's better\*\* — names the intent/);
 
   // Minimal call: just title + problem (note severity, no extras).
   const minimal = (await (

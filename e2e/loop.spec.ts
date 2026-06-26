@@ -299,6 +299,59 @@ test("clicking a diff line opens a line-anchored comment", async ({ page, reques
   expect(c?.anchor?.line, "the comment carries the diff line").toBeGreaterThan(0);
 });
 
+test("a finding's before/after suggestion renders real changed lines, not an empty diff", async ({
+  page,
+  request,
+}) => {
+  // Guards the reported "−0 +0" bug: a finding's fix as a {before, after} pair
+  // must render an actual deletion + addition (the viewer computes the diff from
+  // the two contents), so the suggested change is always visible.
+  const finding = await (
+    await request.post("/api/findings", {
+      data: {
+        title: "Use the shared constant",
+        problem: "magic number",
+        file: "config.ts",
+        suggestion: { before: "const timeout = 5000;", after: "const timeout = DEFAULT_MS;" },
+        fix: "names the intent and avoids drift",
+        sessionTitle: "suggestion render",
+      },
+    })
+  ).json();
+  await page.goto(`/?surface=${finding.id}`);
+  const card = page.locator(`.card[data-id="${finding.id}"]`);
+  await expect(card).toBeVisible();
+
+  // The card is markdown(problem) → diff(suggestion) → markdown(why), each its
+  // own sandbox iframe. Scan every frame's shadow roots for the diff's line
+  // rows: a deletion AND an addition prove the change rendered (not "−0 +0").
+  const seenAdditionAndDeletion = async () => {
+    for (const f of page.frames()) {
+      const ok = await f
+        .evaluate(() => {
+          const types: string[] = [];
+          for (const c of document.querySelectorAll("diffs-container")) {
+            for (const row of c.shadowRoot?.querySelectorAll("[data-line-type]") ?? []) {
+              types.push(row.getAttribute("data-line-type") ?? "");
+            }
+          }
+          // The bridge matches by substring (e.g. "addition"), so do the same.
+          return (
+            types.some((t) => t.includes("addition")) && types.some((t) => t.includes("deletion"))
+          );
+        })
+        .catch(() => false);
+      if (ok) return true;
+    }
+    return false;
+  };
+  await expect
+    .poll(seenAdditionAndDeletion, {
+      message: "the suggestion diff shows a deletion and an addition",
+    })
+    .toBe(true);
+});
+
 test("a review session rolls its finding badges into a header summary", async ({
   page,
   request,

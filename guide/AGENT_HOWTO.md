@@ -73,11 +73,16 @@ Pass `badge: { tone, label }` on `publish_surface` / `update_surface` (label ≤
 
 This is showcase's flagship workflow — _"the future of code review is multimodal."_ A reviewing agent publishes one **finding card** per issue, each combining the explanation, a picture of the problem, and the fix, so the user grasps it far faster than a text thread.
 
-**Start from a scaffold:** `showcase review <branch> [--base <base>]` creates a "Review: <branch>" session seeded with a verdict-placeholder card (the diffstat + file list) and prints the session id + a ready-to-paste prompt. Review into that session, then publish your finding cards. **Be thorough — a shallow review is worse than none.** Read the actual code paths, not just the diff hunks; trace how the change behaves at runtime; and back every claim with a concrete file:line and the real values involved.
+**Start from a scaffold:** `showcase review <branch> [--base <base>]` creates a "Review: <branch>" session seeded with a verdict-placeholder card (the diffstat + file list) and prints the session id + a ready-to-paste prompt. Review into that session — when you call `publish_review` with it, the placeholder **becomes** the verdict card (no duplicate). **Be thorough — a shallow review is worse than none.** Read the actual code paths, not just the diff hunks; trace how the change behaves at runtime; and back every claim with a concrete file:line and the real values involved.
 
 **Break the PR into its critical pieces** — the entity, the wiring, the test coverage — not file-by-file. Read the actual code paths, not just the diff hunks.
 
-**Publish the whole review in ONE `publish_review` call.** Do NOT write it as a single markdown surface — that wall of text is the exact failure this replaces. You hand over a `verdict`, a `summary`/`coverage`, and a `findings[]` array (one entry per piece); showcase explodes it into a verdict card + one card per finding (each a severity badge + a Problem/Fix explanation + the diff **inline** + an optional diagram). It's the same effort as writing the review, but it can't become a wall — the structure is the API:
+**Publish the whole review in ONE `publish_review` call.** Do NOT write it as a single markdown surface — that wall of text is the exact failure this replaces. You hand over a `verdict`, a `summary`/`coverage`, an `architecture` diagram, and a `findings[]` array (one entry per piece); showcase explodes it into a verdict card + one card per finding. It's the same effort as writing the review, but it can't become a wall — the structure is the API.
+
+**The structure is fixed, so every review reads the same** no matter how big or small the PR:
+
+- **Verdict card** (the map) — the verdict badge, your `summary`, a finding **tally** + **severity table**, your `coverage` note, and an `architecture` mermaid showing how the changed pieces interact. Read this first and you know the shape of the PR.
+- **One card per finding** (top-to-bottom: what's wrong → the change → why) — a severity badge + `file:line`, the **Problem**, a **before→after `suggestion`** rendered as an inline diff, and **Why it's better** (`fix`).
 
 ```jsonc
 // publish_review — one call → a verdict card + a card per finding
@@ -87,6 +92,8 @@ This is showcase's flagship workflow — _"the future of code review is multimod
   "verdict": "comment", // request_changes | approve | comment
   "summary": "Adds the FinancialChatFeedback entity + cipher wiring + persistence tests. No P1s.",
   "coverage": "Read the entity + mapping + cipher wiring; did not exercise the sql-schema repo changes.",
+  // A map of the change for the verdict card — new vs. touched pieces and how they interact.
+  "architecture": "flowchart LR\n  C[ChatController] --> F[FinancialChatFeedback]\n  F --> M[(feedback.hbm.xml)]\n  W[LembasWorker] -->|SHARED_CIPHER_INFOS| F",
   "findings": [
     {
       "severity": "nit", // bug|nit|question|praise|note → the badge
@@ -94,8 +101,12 @@ This is showcase's flagship workflow — _"the future of code review is multimod
       "file": "FinancialChatFeedback.java",
       "line": 38,
       "problem": "`createdAt`/`userId` are assigned without null checks; the `.hbm.xml` enforces not-null at the DB layer, so a null surfaces at flush, not construction.",
-      "fix": "`checkNotNull` each required arg (WF convention, used in `InMemoryDocFileReaderImpl`).",
-      "patch": "@@ -38,2 +38,2 @@\n-    this.createdAt = createdAt;\n+    this.createdAt = checkNotNull(createdAt);",
+      // The fix as a before→after pair — showcase computes the diff so it ALWAYS renders.
+      "suggestion": {
+        "before": "this.createdAt = createdAt;\nthis.userId = userId;",
+        "after": "this.createdAt = checkNotNull(createdAt);\nthis.userId = checkNotNull(userId);",
+      },
+      "fix": "Fails fast at construction (WF convention, used in `InMemoryDocFileReaderImpl`) instead of at DB flush.",
     },
     {
       "severity": "praise",
@@ -107,9 +118,11 @@ This is showcase's flagship workflow — _"the future of code review is multimod
 }
 ```
 
-**Be thorough, and back every claim.** Each `problem` names the symbol + `file:line` and the concrete impact (who hits it, how bad, under what input — quantify when you can). `fix` says what to change and why. Pass the **relevant hunk** as `patch` so the change shows inline; add a `diagram` when control/data flow matters. Findings aren't only problems — use `praise` for genuinely good work and `question` for what you couldn't judge. (To add a single finding later, `review_finding` takes the same fields for one card.)
+**Always use `suggestion:{before,after}` for a fix, not `patch`.** showcase builds the diff from the two contents, so the change always renders; a hand-written `patch` shows an empty "−0 +0" diff the moment it isn't a valid unified diff. Reserve `patch` for showing the PR's _actual_ change in context. Put **why** the change is better in `fix` — it renders under the diff as "Why it's better."
 
-**The verdict card is built for you** from `publish_review`'s `verdict` + `summary` + `coverage` + the `findings[]` (it renders a scannable severity table). The session header **also** rolls every finding badge into a live count summary — "1 Bug · 1 Nit · 1 Praise" — each chip jumping to its finding, and it **burns down** as the user Approves/Dismisses cards. So write a real `summary` and an honest `coverage` note (what you reviewed and deliberately skipped), and the verdict reads as a verdict, not a sentence.
+**Be thorough, and back every claim.** Each `problem` names the symbol + `file:line` and the concrete impact (who hits it, how bad, under what input — quantify when you can). Add a `diagram` to a finding when its own control/data flow matters. Findings aren't only problems — use `praise` for genuinely good work and `question` for what you couldn't judge. (To add a single finding later, `review_finding` takes the same fields for one card.)
+
+**The verdict card is built for you** from `publish_review`'s `verdict` + `summary` + `coverage` + `architecture` + the `findings[]` (the tally, severity table, and diagram). The session header **also** rolls every finding badge into a live count summary — "1 Bug · 1 Nit · 1 Praise" — each chip jumping to its finding, and it **burns down** as the user Approves/Dismisses cards. So write a real `summary` and an honest `coverage` note (what you reviewed and deliberately skipped), and the verdict reads as a verdict, not a sentence.
 
 **Calibrate severity honestly:** `critical`→Bug (wrong/unsafe), `warning`→Nit (style/maintainability), `info`→Question (you need context to judge), `success`→Praise (genuinely good — call it out, reviews aren't only negative). Don't inflate; don't pad with trivia.
 

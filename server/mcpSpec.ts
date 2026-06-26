@@ -11,11 +11,15 @@ export const MCP_INSTRUCTIONS =
   "renders to an SVG (flowchart, sequence, ERD, …), a `diff` part is a patch the viewer renders as " +
   "a syntax-highlighted split/unified diff. Combine them — e.g. a markdown rationale above a diff part — " +
   "in one card. publish_surface is the general tool; publish_snippet is " +
-  "sugar for a single html part. FOR A CODE REVIEW: call publish_review ONCE with a findings[] array " +
-  "(verdict + summary + one finding per critical piece, each with the relevant diff in `patch`) — " +
-  "showcase explodes it into a verdict card + a card per finding (badge + explanation + inline diff). " +
-  "NEVER write a review as one big markdown surface — that wall of text is the failure mode " +
-  "publish_review exists to prevent. Call get_design_guide once before your first publish. On your first " +
+  "sugar for a single html part. FOR A CODE REVIEW: call publish_review ONCE with a verdict, an " +
+  "optional `architecture` mermaid (how the changed pieces interact), and a findings[] array. Each " +
+  "finding is a fixed structure: severity, the problem, a before→after `suggestion` (the current code " +
+  "and your proposed code — showcase renders it as a diff that ALWAYS shows the change), and `fix` " +
+  "(why it's better). showcase explodes the call into a verdict card (summary + tally + table + your " +
+  "architecture diagram) + a card per finding. Pass `suggestion:{before,after}` for every fix — never " +
+  "a raw `patch`, which renders empty if it isn't a valid unified diff. NEVER write a review as one " +
+  "big markdown surface — that wall of text is the failure mode publish_review exists to prevent. " +
+  "Call get_design_guide once before your first publish. On your first " +
   'publish, also pass sessionTitle to name the session after the task (e.g. "Auth refactor"). The ' +
   "user can comment in their browser; call wait_for_feedback after publishing something you want a " +
   "reaction to. Any publish/update/reply result may carry a userFeedback array — comments the user " +
@@ -50,17 +54,22 @@ const d = {
     "File the finding is about — rides the card title (e.g. 'FinancialChatFeedback.java')",
   findingLine: "Line number — rides the title as :N",
   findingProblem: "What's wrong, or what this critical piece does and why it matters — markdown",
-  findingFix: "Suggested fix or follow-up — markdown (optional)",
+  findingFix:
+    "WHY the suggested change is better (rationale) when you pass `suggestion`; otherwise a textual fix/follow-up — markdown (optional)",
+  findingSuggestion:
+    "The concrete fix as a before→after pair {before, after} — the CURRENT code and your PROPOSED code. showcase renders it as a clean inline diff and ALWAYS shows the change (it computes the diff from the two contents). PREFER this over `patch` for any fix you'd suggest.",
   findingPatch:
-    "The relevant diff hunk (unified/git) — rendered INLINE in the card so the change is visible",
+    "Fallback only: a unified/git diff hunk to show the PR's actual change in context. For a suggested fix, use `suggestion` instead — a raw patch renders empty if it isn't a valid unified diff. Must include `diff --git`/`---`/`+++` headers to render reliably.",
   findingDiagram: "Optional mermaid source visualizing the relevant flow/structure",
+  reviewArchitecture:
+    "Optional mermaid source for the verdict card: a diagram of the changed pieces and how they interact (data/control flow, new vs. touched components). Gives the reader a map of the PR before the findings.",
   reviewVerdict: "request_changes | approve | comment — the verdict badge on the lead card",
   reviewBranch: "Branch under review (shows in the verdict header, e.g. 'cl/ALLM-116')",
   reviewBase: "Base branch the review is against (e.g. 'master')",
   reviewSummary: "One-paragraph verdict summary for the lead card — markdown",
   reviewCoverage: "What you reviewed and deliberately skipped, so the user can trust the depth",
   reviewFindings:
-    "The findings, each its own card. Per finding: severity, title, file/line, problem, fix?, the relevant diff as `patch`, and an optional mermaid `diagram`.",
+    "The findings, each its own card. Per finding: severity, title, file/line, problem, a before→after `suggestion` for the fix (preferred over `patch`), `fix` (why it's better), and an optional mermaid `diagram`.",
   session: "Session id from a previous publish (omit on first)",
   sessionTitle:
     'Session name shown in the sidebar — name the task, e.g. "Auth refactor". Honored only when this publish creates the session.',
@@ -186,9 +195,9 @@ export const MCP_TOOL_DESCRIPTIONS = {
   updateSurface:
     "Revise a surface in place (same card, new version). Prefer this over publishing a near-duplicate. Pass the full replacement parts array. If the result includes userFeedback, read it.",
   publishReview:
-    "Publish a WHOLE code review in one call — the strongly preferred way to review a PR on showcase. Pass a `verdict` (request_changes|approve|comment), an optional `summary`/`coverage`, and a `findings` array; showcase explodes it into a verdict card + ONE card per finding (each a severity badge + explanation + the diff INLINE + an optional diagram). Same effort as writing the review, but it physically cannot become a wall of markdown — the structure is the API. Put the relevant diff hunk in each finding's `patch`. Returns the sessionId + the created surface ids.",
+    "Publish a WHOLE code review in one call — the strongly preferred way to review a PR on showcase. Pass a `verdict` (request_changes|approve|comment), an optional `summary`/`coverage`, an optional `architecture` mermaid (a diagram of how the changed pieces interact, shown on the verdict card), and a `findings` array; showcase explodes it into a verdict card (summary + tally + findings table + your architecture diagram) + ONE card per finding. Each finding card is FIXED structure: severity badge, the problem, a before→after `suggestion` rendered as an inline diff, and `fix` (why it's better). Same effort as writing the review, but it physically cannot become a wall of markdown — the structure is the API. For every fix you'd recommend, pass `suggestion:{before,after}` (NOT `patch`) so the diff always renders. Returns the sessionId + the created surface ids.",
   reviewFinding:
-    "Publish ONE structured review finding as a multimodal card (prefer publish_review to submit a whole review at once). showcase composes it from your fields — a severity badge + the explanation + the relevant diff INLINE + an optional diagram. Never dump a review into one markdown surface. Always pass the relevant `patch` so the diff shows in the card. `title` and `problem` are required. Returns the surface id + URL; pass the returned sessionId as `session` on the rest of the review.",
+    "Publish ONE structured review finding as a multimodal card (prefer publish_review to submit a whole review at once). showcase composes it from your fields — a severity badge + the problem + a before→after suggested-change diff + the rationale. Never dump a review into one markdown surface. For a fix, pass `suggestion:{before,after}` (the current code and your proposed code) — showcase computes the diff so it ALWAYS shows the change; use `patch` only to show the PR's actual change in context. `title` and `problem` are required. Returns the surface id + URL; pass the returned sessionId as `session` on the rest of the review.",
   publishSnippet:
     "Publish an HTML snippet — sugar for a surface with one html part. Send a body fragment only. Returns the id, view URL, and sessionId. Pass sessionTitle on first publish. Prefer publish_surface when you want a diff or multiple parts.",
   updateSnippet: "Revise an html snippet in place — sugar for update_surface with one html part.",
@@ -230,6 +239,15 @@ const MCP_FINDING_JSON_SCHEMA = {
     file: { type: "string", description: d.findingFile },
     line: { type: "number", description: d.findingLine },
     problem: { type: "string", description: d.findingProblem },
+    suggestion: {
+      type: "object",
+      description: d.findingSuggestion,
+      properties: {
+        before: { type: "string", description: "The current code (verbatim)" },
+        after: { type: "string", description: "Your proposed replacement" },
+      },
+      required: ["before", "after"],
+    },
     fix: { type: "string", description: d.findingFix },
     patch: { type: "string", description: d.findingPatch },
     diagram: { type: "string", description: d.findingDiagram },
@@ -269,6 +287,7 @@ export const HTTP_MCP_TOOLS = [
         base: { type: "string", description: d.reviewBase },
         summary: { type: "string", description: d.reviewSummary },
         coverage: { type: "string", description: d.reviewCoverage },
+        architecture: { type: "string", description: d.reviewArchitecture },
         findings: { type: "array", items: MCP_FINDING_JSON_SCHEMA, description: d.reviewFindings },
         session: { type: "string", description: d.session },
         sessionTitle: { type: "string", description: d.sessionTitle },
@@ -461,6 +480,10 @@ const badgeStdioSchemas = {
     .describe(d.badge),
 };
 
+const suggestionStdioSchema = z
+  .object({ before: z.string(), after: z.string() })
+  .describe(d.findingSuggestion);
+
 const findingStdioSchema = z.object({
   severity: z.enum(["bug", "nit", "question", "praise", "note"]).optional(),
   title: z.string(),
@@ -468,6 +491,7 @@ const findingStdioSchema = z.object({
   line: z.number().optional(),
   problem: z.string(),
   fix: z.string().optional(),
+  suggestion: suggestionStdioSchema.optional(),
   patch: z.string().optional(),
   diagram: z.string().optional(),
 });
@@ -485,6 +509,7 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
     base: z.string().optional().describe(d.reviewBase),
     summary: z.string().optional().describe(d.reviewSummary),
     coverage: z.string().optional().describe(d.reviewCoverage),
+    architecture: z.string().optional().describe(d.reviewArchitecture),
     findings: z.array(findingStdioSchema).describe(d.reviewFindings),
     sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
   },
@@ -498,6 +523,7 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
     line: z.number().optional().describe(d.findingLine),
     problem: z.string().describe(d.findingProblem),
     fix: z.string().optional().describe(d.findingFix),
+    suggestion: suggestionStdioSchema.optional(),
     patch: z.string().optional().describe(d.findingPatch),
     diagram: z.string().optional().describe(d.findingDiagram),
     sessionTitle: z.string().optional().describe(d.stdioSessionTitle),

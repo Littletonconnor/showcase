@@ -195,6 +195,19 @@ const REVIEW_BUG_FLOW = `flowchart LR
   size -- no --> store[store]
   read -. OOM .-> heap[heap exhausted]`;
 
+// The verdict card's architecture diagram: how the changed pieces interact, so
+// the reader has a map of the PR before the findings.
+const REVIEW_ARCH = `flowchart LR
+  Client([Client]) -->|POST /api/assets| Upload[uploadAsset]
+  Upload --> Guard{size guard}
+  Guard --> Store[(asset store)]
+  Mime[parseMime] -. duplicated .-> Upload
+  Mime -. duplicated .-> Publish[publishSurface]`;
+
+// A nit's suggested fix as a before→after pair — the viewer computes the diff.
+const REVIEW_NIT_BEFORE = `const mime = (c.req.header('content-type') ?? '').split(';')[0].trim().toLowerCase();`;
+const REVIEW_NIT_AFTER = `const mime = parseMime(c);`;
+
 const REVIEW_BUG_DIFF = `diff --git a/server/app.ts b/server/app.ts
 --- a/server/app.ts
 +++ b/server/app.ts
@@ -235,6 +248,7 @@ export const DEMO_SESSIONS = [
             markdown:
               "## Review summary\n\n**2 findings** · 1 bug · 1 nit — **request changes**\n\n| # | Severity | Finding | Location |\n|---|----------|---------|----------|\n| 1 | 🔴 Bug | Unbounded asset upload buffers the whole body before the size check | `server/app.ts:747` |\n| 2 | 🟡 Nit | `mime` parse duplicated across three handlers | `server/app.ts:182` |\n\n**Coverage** — read the asset upload + auth paths and the comment long-poll; did not exercise the SQL migration or the e2e suite.\n\nThe blocker (#1) is below. Tap **Approve** on a card once it's addressed.",
           },
+          { kind: "mermaid", mermaid: REVIEW_ARCH },
         ],
       },
       {
@@ -253,13 +267,22 @@ export const DEMO_SESSIONS = [
           {
             kind: "markdown",
             markdown:
-              "**What** — the `content-type` → mime split is copy-pasted in `uploadAsset`, `publishSurface`, and the snippet handler.\n\n**Why it matters** — three copies drift: a future tweak (charset stripping, casing) has to be made in three places or they diverge. Low severity, but cheap to fix now.\n\n**Fix** — extract a `parseMime(c)` helper and call it from each.",
+              "**Problem** — the `content-type` → mime split is copy-pasted in `uploadAsset`, `publishSurface`, and the snippet handler. Three copies drift: a future tweak (charset stripping, casing) has to be made in three places or they diverge.",
           },
           {
-            kind: "code",
-            language: "typescript",
-            title: "the repeated line",
-            code: "const mime = (c.req.header('content-type') ?? '').split(';')[0].trim().toLowerCase();",
+            kind: "diff",
+            files: [
+              {
+                filename: "server/app.ts",
+                before: REVIEW_NIT_BEFORE,
+                after: REVIEW_NIT_AFTER,
+              },
+            ],
+          },
+          {
+            kind: "markdown",
+            markdown:
+              "**Why it's better** — one `parseMime(c)` helper means charset/casing rules live in a single place; the three call sites can't diverge.",
           },
         ],
       },
