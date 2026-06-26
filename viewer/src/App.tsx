@@ -35,7 +35,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { onBridgeMessage } from "./bridge.ts";
 import { routeGet, routeSubscribe, root } from "./host.ts";
-import { Card, cardEls, Thread } from "./Card.tsx";
+import { Card, cardEls } from "./Card.tsx";
+import { Thread } from "./Thread.tsx";
 import { cx } from "./cx.ts";
 import {
   Sidebar,
