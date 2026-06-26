@@ -121,10 +121,18 @@ test("publish_review explodes one call into a verdict card + a card per finding"
           file: "Foo.java",
           line: 12,
           problem: "no checkNotNull",
+          confidence: "high",
+          coverage: "read the constructor; did not run the suite",
           suggestion: { before: "this.a = a;", after: "this.a = checkNotNull(a);" },
           fix: "fails fast at construction",
         },
-        { severity: "praise", title: "Clean cipher split", problem: "scopes the new cipher" },
+        {
+          severity: "praise",
+          title: "Clean cipher split",
+          problem: "scopes the new cipher",
+          confidence: "medium",
+          coverage: "skimmed the cipher wiring",
+        },
         { title: "", problem: "" }, // malformed entries are skipped, not cards
       ],
     }),
@@ -159,8 +167,105 @@ test("publish_review explodes one call into a verdict card + a card per finding"
     { filename: "Foo.java", before: "this.a = a;", after: "this.a = checkNotNull(a);" },
   ]);
   assert.match(bug.parts[2].markdown, /\*\*Why it's better\*\* — fails fast/);
+  // The honesty signal rides the head of the leading markdown part.
+  assert.match(bug.parts[0].markdown, /High confidence/);
+  assert.match(bug.parts[0].markdown, /\*\*Coverage\*\* — read the constructor/);
 
   assert.equal((await app.request("/api/reviews", json({ verdict: "approve" }))).status, 400);
+});
+
+test("publish_review rejects a finding missing the honesty signal (confidence/coverage)", async () => {
+  const app = makeApp();
+  // Missing confidence → 400, and nothing is published (validated up front).
+  const noConf = await app.request(
+    "/api/reviews",
+    json({
+      verdict: "comment",
+      findings: [{ title: "x", problem: "y", coverage: "checked it" }],
+    }),
+  );
+  assert.equal(noConf.status, 400);
+  assert.match(((await noConf.json()) as any).error, /confidence/);
+  // Missing coverage → 400.
+  const noCov = await app.request(
+    "/api/reviews",
+    json({
+      verdict: "comment",
+      findings: [{ title: "x", problem: "y", confidence: "high" }],
+    }),
+  );
+  assert.equal(noCov.status, 400);
+  assert.match(((await noCov.json()) as any).error, /coverage/);
+});
+
+test("publish_review leads the verdict card with the opinionated overview (intent/risk/budget/manifest)", async () => {
+  const app = makeApp();
+  const review = (await (
+    await app.request(
+      "/api/reviews",
+      json({
+        branch: "feature/auth",
+        verdict: "request_changes",
+        intent: "Tighten token validation and add a revocation check.",
+        risk: { size: 1, surfaceArea: 1, sensitivity: 3, testDelta: 1, band: "high" },
+        budget: "~8 min · 2 files need real eyes · 1 mechanical",
+        manifest: [
+          {
+            file: "pkg-lock.json",
+            added: 900,
+            removed: 200,
+            priority: "mechanical",
+            note: "generated",
+          },
+          {
+            file: "auth/token.ts",
+            added: 18,
+            removed: 4,
+            priority: "sensitive",
+            note: "token check",
+          },
+          { file: "api/routes.ts", added: 40, removed: 12, priority: "logic", note: "public API" },
+        ],
+        findings: [
+          { severity: "bug", title: "t", problem: "p", confidence: "high", coverage: "c" },
+        ],
+      }),
+    )
+  ).json()) as any;
+  const verdict = (await (await app.request(`/api/surfaces/${review.verdict}`)).json()) as any;
+  // The overview html part LEADS, then the verdict markdown.
+  assert.equal(verdict.parts[0].kind, "html");
+  assert.deepEqual(verdict.parts[0].kits, ["review"]);
+  assert.equal(verdict.parts[1].kind, "markdown");
+  const html = verdict.parts[0].html as string;
+  // Intent, risk band, budget all rendered.
+  assert.match(html, /Tighten token validation/);
+  assert.match(html, /risk-band high/);
+  assert.match(html, /Risk: High/);
+  assert.match(html, /~8 min/);
+  // Sensitive + logic rows are in the hot manifest; mechanical collapses into the
+  // low-attention bucket. Priority order: sensitive before logic.
+  const tokenAt = html.indexOf("auth/token.ts");
+  const routesAt = html.indexOf("api/routes.ts");
+  assert.ok(tokenAt > 0 && routesAt > 0 && tokenAt < routesAt, "sensitive ranks before logic");
+  assert.match(html, /manifest-row sensitive/);
+  assert.match(html, /cold-toggle/); // the mechanical bucket toggle
+  assert.match(html, /1 mechanical file/);
+  // The mechanical row lives inside the collapsed bucket.
+  assert.ok(html.indexOf("cold-bucket") < html.indexOf("pkg-lock.json"));
+});
+
+test("publish_review without overview structure stays back-compatible (no html part)", async () => {
+  const app = makeApp();
+  const review = (await (
+    await app.request(
+      "/api/reviews",
+      json({ branch: "feature", verdict: "approve", summary: "ok", findings: [] }),
+    )
+  ).json()) as any;
+  const verdict = (await (await app.request(`/api/surfaces/${review.verdict}`)).json()) as any;
+  assert.equal(verdict.parts[0].kind, "markdown", "no overview fields → verdict markdown leads");
+  assert.ok(!verdict.parts.some((p: any) => p.kind === "html"));
 });
 
 test("publish_review renders a changeMap as a styled, color-coded mermaid on the verdict card", async () => {
@@ -184,7 +289,9 @@ test("publish_review renders a changeMap as a styled, color-coded mermaid on the
             { from: "ent", to: "nope" }, // unknown target → dropped
           ],
         },
-        findings: [{ severity: "nit", title: "t", problem: "p" }],
+        findings: [
+          { severity: "nit", title: "t", problem: "p", confidence: "high", coverage: "c" },
+        ],
       }),
     )
   ).json()) as any;
@@ -211,6 +318,37 @@ test("publish_review renders a changeMap as a styled, color-coded mermaid on the
   assert.doesNotMatch(src, /\bn3\b/);
 });
 
+test("publish_review color-codes changeMap edge status with linkStyle lines (§8.2)", async () => {
+  const app = makeApp();
+  const review = (await (
+    await app.request(
+      "/api/reviews",
+      json({
+        verdict: "comment",
+        changeMap: {
+          nodes: [
+            { id: "a", label: "authMiddleware", status: "touched" },
+            { id: "b", label: "validateToken", status: "modified" },
+            { id: "c", label: "revocationList", status: "new" },
+          ],
+          edges: [
+            { from: "a", to: "b", label: "calls", status: "existing" },
+            { from: "b", to: "c", label: "now checks", status: "new" },
+            { from: "a", to: "c", label: "dropped", status: "removed" },
+          ],
+        },
+        findings: [],
+      }),
+    )
+  ).json()) as any;
+  const verdict = (await (await app.request(`/api/surfaces/${review.verdict}`)).json()) as any;
+  const src = verdict.parts.find((p: any) => p.kind === "mermaid").mermaid as string;
+  // One linkStyle per edge, indexed in emission order, reusing the status palette.
+  assert.match(src, /linkStyle 0 stroke:#9aa0a6;/); // existing → gray
+  assert.match(src, /linkStyle 1 stroke:#2f9e44,stroke-width:1\.5px;/); // new → green
+  assert.match(src, /linkStyle 2 stroke:#e03131,stroke-width:1\.5px,stroke-dasharray:4 3;/); // removed → red dashed
+});
+
 test("publish_review renders churn as a green/red bar chart on the verdict card", async () => {
   const app = makeApp();
   const review = (await (
@@ -224,7 +362,9 @@ test("publish_review renders churn as a green/red bar chart on the verdict card"
           { file: "Bar.java", added: 4, removed: 30 },
           { file: "bin.dat", added: 0, removed: 0 }, // no churn → dropped
         ],
-        findings: [{ severity: "nit", title: "t", problem: "p" }],
+        findings: [
+          { severity: "nit", title: "t", problem: "p", confidence: "high", coverage: "c" },
+        ],
       }),
     )
   ).json()) as any;
@@ -270,7 +410,15 @@ test("publish_review reuses the `showcase review` scaffold placeholder as the ve
         verdict: "comment",
         summary: "looks good overall",
         session: placeholder.sessionId,
-        findings: [{ severity: "nit", title: "tiny thing", problem: "small" }],
+        findings: [
+          {
+            severity: "nit",
+            title: "tiny thing",
+            problem: "small",
+            confidence: "high",
+            coverage: "c",
+          },
+        ],
       }),
     )
   ).json()) as any;
@@ -309,7 +457,15 @@ test("double-escaped newlines in review prose render as real paragraphs", async 
         verdict: "comment",
         summary: "First para.\\n\\nSecond para.",
         coverage: "read x\\nand y",
-        findings: [{ severity: "nit", title: "t", problem: "line one\\n\\nline two" }],
+        findings: [
+          {
+            severity: "nit",
+            title: "t",
+            problem: "line one\\n\\nline two",
+            confidence: "high",
+            coverage: "c",
+          },
+        ],
       }),
     )
   ).json()) as any;
@@ -333,6 +489,8 @@ test("review_finding composes a multimodal card from structured fields", async (
       file: "Foo.java",
       line: 38,
       problem: "args assigned without null checks",
+      confidence: "high",
+      coverage: "read the constructor and its callers",
       fix: "checkNotNull each required arg",
       patch: "@@ -1 +1 @@\n-a\n+b",
       diagram: "flowchart LR; A-->B",
@@ -360,6 +518,8 @@ test("review_finding composes a multimodal card from structured fields", async (
       json({
         title: "Use a constant",
         problem: "magic number",
+        confidence: "medium",
+        coverage: "grepped for other call sites",
         suggestion: { before: "timeout(5000)", after: "timeout(DEFAULT_MS)" },
         fix: "names the intent and avoids drift",
         session: lean.sessionId,
@@ -374,15 +534,32 @@ test("review_finding composes a multimodal card from structured fields", async (
   ]);
   assert.match(suggestedFull.parts[2].markdown, /\*\*Why it's better\*\* — names the intent/);
 
-  // Minimal call: just title + problem (note severity, no extras).
+  // Minimal call: title + problem + the required honesty signal (no other extras).
   const minimal = (await (
-    await app.request("/api/findings", json({ title: "x", problem: "y", session: lean.sessionId }))
+    await app.request(
+      "/api/findings",
+      json({
+        title: "x",
+        problem: "y",
+        confidence: "low",
+        coverage: "static read only",
+        session: lean.sessionId,
+      }),
+    )
   ).json()) as any;
   assert.deepEqual(minimal.badge, { tone: "neutral", label: "Note" });
   assert.deepEqual(minimal.kinds, ["markdown"]);
+  // The minimal card still leads with the confidence meta + coverage line.
+  const minimalFull = (await (await app.request(`/api/surfaces/${minimal.id}`)).json()) as any;
+  assert.match(minimalFull.parts[0].markdown, /Low confidence/);
+  assert.match(minimalFull.parts[0].markdown, /\*\*Coverage\*\* — static read only/);
 
-  // title + problem are required.
+  // title + problem are required, and so are confidence + coverage.
   assert.equal((await app.request("/api/findings", json({ title: "x" }))).status, 400);
+  assert.equal(
+    (await app.request("/api/findings", json({ title: "x", problem: "y" }))).status,
+    400,
+  );
 });
 
 test("a surface badge is validated, echoed, updatable, and clearable", async () => {

@@ -62,16 +62,34 @@ const d = {
   findingPatch:
     "Fallback only: a unified/git diff hunk to show the PR's actual change in context. For a suggested fix, use `suggestion` instead — a raw patch renders empty if it isn't a valid unified diff. Must include `diff --git`/`---`/`+++` headers to render reliably.",
   findingDiagram: "Optional mermaid source visualizing the relevant flow/structure",
+  findingConfidence:
+    "REQUIRED — high | medium | low. How sure you are this finding is real and the fix is right. The honesty signal: a confident-looking change in an unchecked area is the most dangerous LLM output, so every finding must declare it.",
+  findingCoverage:
+    "REQUIRED — what you DID and did NOT check for this finding, e.g. 'reproduced with a unit test' / 'did not run the migration' / 'read the caller but not the callees'. Makes the verification gap visible.",
+  findingVerified:
+    "Optional boolean — true only if you actually ran/reproduced this (a stronger claim than confidence). Renders a ✓ verified marker.",
+  findingScope:
+    "Optional scope tier this was found at: changed-lines (a bug in the diff), whole-file (an inconsistency with the rest of the file), or codebase (an architectural conflict with code outside the diff). Tells the reviewer how far they must look to judge it.",
+  findingBlastRadius:
+    "Optional blast radius — a tiny call-graph {nodes, edges} (same shape as the review changeMap) of what calls this / what this calls / which tests cover it. Renders as a styled mini-map under the finding.",
   reviewChangeMap:
     "THE headline review visual: a structured map of what changed and how it interacts. Pass {nodes, edges}. Each node {id, label, status, kind?}: status is new|modified|touched|removed (color-coded green/amber/gray/red — `touched` = existing code the change pulls in but doesn't edit); kind is file|class|function|service|table|external (picks the shape). Each edge {from, to, label?}: from/to are node ids, label is the interaction (calls, reads, persists, installs…). showcase renders a consistently styled graph. Build it from your reading of the diff — show the changed pieces and every interaction between them.",
   reviewChangeNode:
     "A node: {id (unique, referenced by edges), label (the symbol/file name), status (new|modified|touched|removed), kind? (file|class|function|service|table|external)}",
   reviewChangeEdge:
-    "An interaction: {from (node id), to (node id), label? (e.g. 'calls', 'persists')}",
+    "An interaction: {from (node id), to (node id), label? (e.g. 'calls', 'persists'), status? (new = coupling the PR introduces → green; removed = a call it severs → red dashed; existing = unchanged context → gray)}. New and severed edges are the coupling changes worth scrutinizing.",
   reviewArchitecture:
     "Escape-hatch raw mermaid for the verdict card when `changeMap` can't express the diagram you want (e.g. a sequence diagram). Prefer `changeMap` for the changed pieces and how they interact; this is only rendered when no `changeMap` is given.",
   reviewChurn:
     "Optional per-file line churn for the verdict card, as [{file, added, removed}] — straight from `git diff --numstat <base>...<branch>`. showcase renders it as a green-added / red-removed bar chart (the shape of the PR), ranked by churn and capped to the top files.",
+  reviewIntent:
+    "What this PR is TRYING to do, in 1–2 sentences in the agent's own words (intent, not a file list). Leads the overview so the reviewer reads a map before entering the territory.",
+  reviewRisk:
+    "Composite, AGENT-AUTHORED risk for the overview: {size, surfaceArea, sensitivity, testDelta} each a 0–3 weight, plus a `band` (low|elevated|high). size=total churn, surfaceArea=distinct files/modules/exports touched, sensitivity=are touched paths auth/data-model/migration/money/deletion/config (weight heaviest), testDelta=did tests move with the change (untouched logic = riskier). You have the semantic context a path regex never will — judge it; showcase just renders the band + four sub-bars consistently.",
+  reviewBudget:
+    "One-line review budget for the overview, e.g. '~8 min · 3 files need real eyes · 9 mechanical'. Tells the reviewer where to spend attention.",
+  reviewManifest:
+    "Priority-ranked file manifest (replaces the alphabetical list) as [{file, added, removed, priority, note}]. priority is sensitive|logic|mechanical (sensitive first, mechanical collapses into a low-attention bucket); note is a one-line 'why it matters'. added/removed are the file's churn. Order is yours; showcase renders the rows with a priority dot, a churn sparkline, the note, and a reviewed checkbox.",
   reviewVerdict: "request_changes | approve | comment — the verdict badge on the lead card",
   reviewBranch: "Branch under review (shows in the verdict header, e.g. 'cl/ALLM-116')",
   reviewBase: "Base branch the review is against (e.g. 'master')",
@@ -234,6 +252,48 @@ const MCP_BADGE_JSON_SCHEMA = {
   required: ["tone", "label"],
 } as const;
 
+// Change-map / blast-radius graph — shared by publish_review's `changeMap`
+// (the headline visual) and each finding's `blastRadius` (the mini call-graph).
+// Edges carry an optional `status` so new/severed coupling is color-coded the
+// same way node status is (§8.2).
+const MCP_CHANGEMAP_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    nodes: {
+      type: "array",
+      description: d.reviewChangeNode,
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          label: { type: "string" },
+          status: { type: "string", enum: ["new", "modified", "touched", "removed"] },
+          kind: {
+            type: "string",
+            enum: ["file", "class", "function", "service", "table", "external"],
+          },
+        },
+        required: ["id", "label", "status"],
+      },
+    },
+    edges: {
+      type: "array",
+      description: d.reviewChangeEdge,
+      items: {
+        type: "object",
+        properties: {
+          from: { type: "string" },
+          to: { type: "string" },
+          label: { type: "string" },
+          status: { type: "string", enum: ["new", "removed", "existing"] },
+        },
+        required: ["from", "to"],
+      },
+    },
+  },
+  required: ["nodes"],
+} as const;
+
 // One finding — shared by review_finding (the whole input) and publish_review
 // (each item in `findings`).
 const MCP_FINDING_JSON_SCHEMA = {
@@ -248,6 +308,18 @@ const MCP_FINDING_JSON_SCHEMA = {
     file: { type: "string", description: d.findingFile },
     line: { type: "number", description: d.findingLine },
     problem: { type: "string", description: d.findingProblem },
+    confidence: {
+      type: "string",
+      enum: ["high", "medium", "low"],
+      description: d.findingConfidence,
+    },
+    coverage: { type: "string", description: d.findingCoverage },
+    verified: { type: "boolean", description: d.findingVerified },
+    scope: {
+      type: "string",
+      enum: ["changed-lines", "whole-file", "codebase"],
+      description: d.findingScope,
+    },
     suggestion: {
       type: "object",
       description: d.findingSuggestion,
@@ -260,8 +332,9 @@ const MCP_FINDING_JSON_SCHEMA = {
     fix: { type: "string", description: d.findingFix },
     patch: { type: "string", description: d.findingPatch },
     diagram: { type: "string", description: d.findingDiagram },
+    blastRadius: { ...MCP_CHANGEMAP_JSON_SCHEMA, description: d.findingBlastRadius },
   },
-  required: ["title", "problem"],
+  required: ["title", "problem", "confidence", "coverage"],
 } as const;
 
 export const HTTP_MCP_TOOLS = [
@@ -296,43 +369,35 @@ export const HTTP_MCP_TOOLS = [
         base: { type: "string", description: d.reviewBase },
         summary: { type: "string", description: d.reviewSummary },
         coverage: { type: "string", description: d.reviewCoverage },
-        changeMap: {
+        intent: { type: "string", description: d.reviewIntent },
+        risk: {
           type: "object",
-          description: d.reviewChangeMap,
+          description: d.reviewRisk,
           properties: {
-            nodes: {
-              type: "array",
-              description: d.reviewChangeNode,
-              items: {
-                type: "object",
-                properties: {
-                  id: { type: "string" },
-                  label: { type: "string" },
-                  status: { type: "string", enum: ["new", "modified", "touched", "removed"] },
-                  kind: {
-                    type: "string",
-                    enum: ["file", "class", "function", "service", "table", "external"],
-                  },
-                },
-                required: ["id", "label", "status"],
-              },
-            },
-            edges: {
-              type: "array",
-              description: d.reviewChangeEdge,
-              items: {
-                type: "object",
-                properties: {
-                  from: { type: "string" },
-                  to: { type: "string" },
-                  label: { type: "string" },
-                },
-                required: ["from", "to"],
-              },
-            },
+            size: { type: "number", minimum: 0, maximum: 3 },
+            surfaceArea: { type: "number", minimum: 0, maximum: 3 },
+            sensitivity: { type: "number", minimum: 0, maximum: 3 },
+            testDelta: { type: "number", minimum: 0, maximum: 3 },
+            band: { type: "string", enum: ["low", "elevated", "high"] },
           },
-          required: ["nodes"],
         },
+        budget: { type: "string", description: d.reviewBudget },
+        manifest: {
+          type: "array",
+          description: d.reviewManifest,
+          items: {
+            type: "object",
+            properties: {
+              file: { type: "string" },
+              added: { type: "number" },
+              removed: { type: "number" },
+              priority: { type: "string", enum: ["sensitive", "logic", "mechanical"] },
+              note: { type: "string" },
+            },
+            required: ["file"],
+          },
+        },
+        changeMap: { ...MCP_CHANGEMAP_JSON_SCHEMA, description: d.reviewChangeMap },
         architecture: { type: "string", description: d.reviewArchitecture },
         churn: {
           type: "array",
@@ -543,16 +608,44 @@ const suggestionStdioSchema = z
   .object({ before: z.string(), after: z.string() })
   .describe(d.findingSuggestion);
 
+// Change-map / blast-radius graph (stdio) — edges carry an optional `status`
+// (§8.2). Shared by publishReview.changeMap and each finding's blastRadius.
+const changeMapStdioSchema = z.object({
+  nodes: z.array(
+    z.object({
+      id: z.string(),
+      label: z.string(),
+      status: z.enum(["new", "modified", "touched", "removed"]),
+      kind: z.enum(["file", "class", "function", "service", "table", "external"]).optional(),
+    }),
+  ),
+  edges: z
+    .array(
+      z.object({
+        from: z.string(),
+        to: z.string(),
+        label: z.string().optional(),
+        status: z.enum(["new", "removed", "existing"]).optional(),
+      }),
+    )
+    .optional(),
+});
+
 const findingStdioSchema = z.object({
   severity: z.enum(["bug", "nit", "question", "praise", "note"]).optional(),
   title: z.string(),
   file: z.string().optional(),
   line: z.number().optional(),
   problem: z.string(),
+  confidence: z.enum(["high", "medium", "low"]).describe(d.findingConfidence),
+  coverage: z.string().describe(d.findingCoverage),
+  verified: z.boolean().optional().describe(d.findingVerified),
+  scope: z.enum(["changed-lines", "whole-file", "codebase"]).optional().describe(d.findingScope),
   fix: z.string().optional(),
   suggestion: suggestionStdioSchema.optional(),
   patch: z.string().optional(),
   diagram: z.string().optional(),
+  blastRadius: changeMapStdioSchema.optional().describe(d.findingBlastRadius),
 });
 
 export const STDIO_MCP_INPUT_SCHEMAS = {
@@ -568,22 +661,31 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
     base: z.string().optional().describe(d.reviewBase),
     summary: z.string().optional().describe(d.reviewSummary),
     coverage: z.string().optional().describe(d.reviewCoverage),
-    changeMap: z
+    intent: z.string().optional().describe(d.reviewIntent),
+    risk: z
       .object({
-        nodes: z.array(
-          z.object({
-            id: z.string(),
-            label: z.string(),
-            status: z.enum(["new", "modified", "touched", "removed"]),
-            kind: z.enum(["file", "class", "function", "service", "table", "external"]).optional(),
-          }),
-        ),
-        edges: z
-          .array(z.object({ from: z.string(), to: z.string(), label: z.string().optional() }))
-          .optional(),
+        size: z.number().min(0).max(3).optional(),
+        surfaceArea: z.number().min(0).max(3).optional(),
+        sensitivity: z.number().min(0).max(3).optional(),
+        testDelta: z.number().min(0).max(3).optional(),
+        band: z.enum(["low", "elevated", "high"]).optional(),
       })
       .optional()
-      .describe(d.reviewChangeMap),
+      .describe(d.reviewRisk),
+    budget: z.string().optional().describe(d.reviewBudget),
+    manifest: z
+      .array(
+        z.object({
+          file: z.string(),
+          added: z.number().optional(),
+          removed: z.number().optional(),
+          priority: z.enum(["sensitive", "logic", "mechanical"]).optional(),
+          note: z.string().optional(),
+        }),
+      )
+      .optional()
+      .describe(d.reviewManifest),
+    changeMap: changeMapStdioSchema.optional().describe(d.reviewChangeMap),
     architecture: z.string().optional().describe(d.reviewArchitecture),
     churn: z
       .array(z.object({ file: z.string(), added: z.number(), removed: z.number() }))
@@ -601,10 +703,15 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
     file: z.string().optional().describe(d.findingFile),
     line: z.number().optional().describe(d.findingLine),
     problem: z.string().describe(d.findingProblem),
+    confidence: z.enum(["high", "medium", "low"]).describe(d.findingConfidence),
+    coverage: z.string().describe(d.findingCoverage),
+    verified: z.boolean().optional().describe(d.findingVerified),
+    scope: z.enum(["changed-lines", "whole-file", "codebase"]).optional().describe(d.findingScope),
     fix: z.string().optional().describe(d.findingFix),
     suggestion: suggestionStdioSchema.optional(),
     patch: z.string().optional().describe(d.findingPatch),
     diagram: z.string().optional().describe(d.findingDiagram),
+    blastRadius: changeMapStdioSchema.optional().describe(d.findingBlastRadius),
     sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
   },
   updateSurface: {

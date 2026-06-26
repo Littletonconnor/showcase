@@ -46,6 +46,17 @@ test("the animate kit ships its stepper css + play/scrub behavior", () => {
   assert.match(js, /type='range'/); // the scrubber
 });
 
+test("the review kit ships its overview vocabulary + burn-down behavior", () => {
+  const { css, js } = kitAssets(["review"]);
+  assert.match(css, /\.risk-band\.high/); // the risk band tones
+  assert.match(css, /\.signal\.hot>i/); // the sensitivity sub-bar
+  assert.match(css, /\.manifest-row\.sensitive/); // priority dot
+  assert.match(css, /\.spark>\.add/); // two-tone churn sparkline
+  assert.match(css, /\.finding-head \.conf\.high/); // confidence chip
+  assert.match(js, /review-progress/); // reviewed-checkbox burn-down
+  assert.match(js, /cold-toggle/); // mechanical-bucket collapse
+});
+
 test("isKnownKit gates on the registry", () => {
   assert.ok(isKnownKit("issues"));
   assert.ok(!isKnownKit("issue"));

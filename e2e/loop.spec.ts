@@ -292,6 +292,8 @@ test("a finding's before/after suggestion renders real changed lines, not an emp
       data: {
         title: "Use the shared constant",
         problem: "magic number",
+        confidence: "medium",
+        coverage: "grepped for other call sites",
         file: "config.ts",
         suggestion: { before: "const timeout = 5000;", after: "const timeout = DEFAULT_MS;" },
         fix: "names the intent and avoids drift",
@@ -399,4 +401,76 @@ test("approving a finding strikes it through in the header verdict bar", async (
   await expect(chip).toHaveAttribute("title", "Bug — resolved", { timeout: 10_000 });
   // …and with no findings left open, the review reaches its terminal state.
   await expect(header.getByText("Review complete")).toBeVisible({ timeout: 10_000 });
+});
+
+test("publish_review renders the opinionated overview in a sandboxed review-kit frame", async ({
+  page,
+  request,
+}) => {
+  // The overview (intent + risk band + budget + priority manifest) ships as a
+  // `review`-kit html part — sandboxed like any agent html. This drives it
+  // through the real iframe so the kit CSS + burn-down JS are exercised end to
+  // end: the manifest ranks sensitive→logic, the mechanical row hides behind a
+  // toggle, and checking a row updates the live reviewed counter.
+  const review = await (
+    await request.post("/api/reviews", {
+      data: {
+        branch: "feature/auth",
+        verdict: "request_changes",
+        intent: "Tighten token validation and add a revocation check.",
+        risk: { size: 1, surfaceArea: 1, sensitivity: 3, testDelta: 1, band: "high" },
+        budget: "~8 min · 2 files need real eyes · 1 mechanical",
+        manifest: [
+          {
+            file: "pkg-lock.json",
+            added: 900,
+            removed: 200,
+            priority: "mechanical",
+            note: "generated",
+          },
+          {
+            file: "auth/token.ts",
+            added: 18,
+            removed: 4,
+            priority: "sensitive",
+            note: "token check",
+          },
+          { file: "api/routes.ts", added: 40, removed: 12, priority: "logic", note: "public API" },
+        ],
+        findings: [
+          {
+            severity: "bug",
+            title: "Revocation list not consulted on refresh",
+            problem: "the refresh path skips the new revocation check",
+            confidence: "high",
+            coverage: "reproduced with a unit test; did not run against prod tokens",
+          },
+        ],
+      },
+    })
+  ).json();
+
+  await page.goto(`/?surface=${review.verdict}`);
+  const card = page.locator(`.card[data-id="${review.verdict}"]`);
+  await expect(card).toBeVisible();
+
+  const overview = card.frameLocator("iframe").first();
+  // Intent, risk band, and budget all render.
+  await expect(
+    overview.getByText("Tighten token validation and add a revocation check."),
+  ).toBeVisible();
+  await expect(overview.locator(".risk-band.high")).toContainText("Risk: High");
+  await expect(overview.getByText("~8 min · 2 files need real eyes · 1 mechanical")).toBeVisible();
+
+  // Hot manifest shows the sensitive + logic rows; the mechanical row is hidden
+  // until its bucket is expanded.
+  await expect(overview.locator(".manifest-row.sensitive .file")).toHaveText("auth/token.ts");
+  await expect(overview.getByText("pkg-lock.json")).toBeHidden();
+  await overview.locator(".cold-toggle").click();
+  await expect(overview.getByText("pkg-lock.json")).toBeVisible();
+
+  // The reviewed-checkbox burn-down counter is live.
+  await expect(overview.locator(".review-progress")).toContainText("0 / 3 reviewed");
+  await overview.locator(".manifest-row.sensitive .rev").check();
+  await expect(overview.locator(".review-progress")).toContainText("1 / 3 reviewed");
 });

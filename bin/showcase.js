@@ -1187,6 +1187,10 @@ const commands = {
         file: { type: "string" },
         line: { type: "string" },
         problem: { type: "string" },
+        confidence: { type: "string" },
+        coverage: { type: "string" },
+        verified: { type: "boolean" },
+        scope: { type: "string" },
         fix: { type: "string" },
         before: { type: "string" },
         after: { type: "string" },
@@ -1197,9 +1201,9 @@ const commands = {
         agent: { type: "string" },
       },
     });
-    if (!flags.title || !flags.problem) {
+    if (!flags.title || !flags.problem || !flags.confidence || !flags.coverage) {
       fail(
-        "usage: showcase finding --title <t> --problem <text> [--severity bug|nit|question|praise|note] [--file f] [--line n] [--fix <text>] [--before <file|->] [--after <file|->] [--patch <file|->] [--diagram <file|->]",
+        "usage: showcase finding --title <t> --problem <text> --confidence high|medium|low --coverage <what you did/didn't check> [--verified] [--scope changed-lines|whole-file|codebase] [--severity bug|nit|question|praise|note] [--file f] [--line n] [--fix <text>] [--before <file|->] [--after <file|->] [--patch <file|->] [--diagram <file|->]",
       );
     }
     // A before→after suggestion renders as a diff that always shows the change;
@@ -1221,6 +1225,10 @@ const commands = {
           file: flags.file,
           line: flags.line ? Number(flags.line) : undefined,
           problem: flags.problem,
+          confidence: flags.confidence,
+          coverage: flags.coverage,
+          verified: flags.verified || undefined,
+          scope: flags.scope,
           fix: flags.fix,
           suggestion,
           patch: flags.patch ? readContent(flags.patch) : undefined,

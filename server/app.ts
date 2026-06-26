@@ -6,7 +6,7 @@ import { decodeBase64 } from "./base64.ts";
 import { EventBus } from "./events.ts";
 import { kitSummaries } from "./kits.ts";
 import { registerMcp } from "./mcpHttp.ts";
-import { renderHtmlPage } from "./surfacePage.ts";
+import { escapeHtml, renderHtmlPage } from "./surfacePage.ts";
 import { DEFAULT_THEME_ID, themeById } from "./themes.ts";
 import {
   type Asset,
@@ -332,7 +332,53 @@ export interface FindingInput {
   suggestion?: { before: string; after: string };
   patch?: string;
   diagram?: string;
+  // The LLM-age honesty signal (required on every real finding — § P3, §7 #2).
+  // `confidence` is how sure the agent is; `coverage` is what it DID and did NOT
+  // check ("reproduced with a unit test" / "did not run the migration"). The most
+  // dangerous LLM output is a confident change in an unchecked area — these make
+  // that gap impossible to hide.
+  confidence?: string;
+  coverage?: string;
+  // Optional: did the agent actually run/reproduce this (a stronger claim than
+  // confidence), and the scope tier it was found at — changed-lines (a bug in the
+  // diff), whole-file (an inconsistency with the rest of the file), or codebase
+  // (an architectural conflict with code outside the diff). The tier tells the
+  // reviewer how far they must look to judge it.
+  verified?: boolean;
+  scope?: string;
+  // Optional blast radius: a tiny call-graph ({nodes, edges}, same shape as the
+  // change map) of what calls this / what this calls / which tests cover it.
+  blastRadius?: ChangeMapInput;
 }
+
+const FINDING_CONFIDENCE: Record<string, string> = {
+  high: "High confidence",
+  medium: "Medium confidence",
+  low: "Low confidence",
+};
+const FINDING_SCOPE: Record<string, string> = {
+  "changed-lines": "changed lines",
+  "whole-file": "whole file",
+  codebase: "codebase",
+};
+
+// A real finding (one that becomes a card) must carry the full structure — the
+// same enforcement that makes title/problem required, extended to the honesty
+// signal. Returns an error string, or null when the finding is complete. Empty
+// placeholder entries (no title AND no problem) are not "real" and are filtered
+// out before this runs.
+export function validateFinding(f: FindingInput): string | null {
+  if (!f.title?.trim() || !f.problem?.trim()) return '"title" and "problem" are required';
+  if (!f.confidence || !Object.hasOwn(FINDING_CONFIDENCE, f.confidence)) {
+    return '"confidence" is required and must be high | medium | low';
+  }
+  if (!f.coverage?.trim()) {
+    return '"coverage" is required — state what you did and did NOT check';
+  }
+  return null;
+}
+
+export const isRealFinding = (f: FindingInput): boolean => !!f.title?.trim() && !!f.problem?.trim();
 
 // A finding card reads top-to-bottom as one thought: what's wrong, the concrete
 // change, why it's better, and (optionally) how it fits. The structure is fixed
@@ -354,16 +400,28 @@ function buildFinding(input: FindingInput): {
   const hasSuggestion = !!s && (!!s.before?.trim() || !!s.after?.trim());
 
   const parts: SurfacePart[] = [];
+  // Head: the honesty signal — confidence · scope · verified — then a coverage
+  // line (what the agent did and did NOT check). This rides above the problem so
+  // the reviewer sees the trust signal before the claim.
+  const meta: string[] = [];
+  if (input.confidence && FINDING_CONFIDENCE[input.confidence]) {
+    meta.push(FINDING_CONFIDENCE[input.confidence]);
+  }
+  if (input.scope && FINDING_SCOPE[input.scope]) meta.push(`scope: ${FINDING_SCOPE[input.scope]}`);
+  if (input.verified) meta.push("✓ verified");
+  const headLines: string[] = [];
+  if (meta.length) headLines.push(`_${meta.join(" · ")}_`);
+  if (input.coverage?.trim()) {
+    headLines.push(`**Coverage** — ${normalizeProse(input.coverage)}`);
+  }
   // Lead: the problem. When there's a suggestion diff, `fix` becomes the
   // rationale UNDER the change ("why it's better"); without one, it stays inline
   // as the textual fix so prose-only findings still carry a recommendation.
-  parts.push({
-    kind: "markdown",
-    markdown:
-      fix && !hasSuggestion
-        ? `**Problem** — ${problem}\n\n**Fix** — ${fix}`
-        : `**Problem** — ${problem}`,
-  });
+  const problemBlock =
+    fix && !hasSuggestion
+      ? `**Problem** — ${problem}\n\n**Fix** — ${fix}`
+      : `**Problem** — ${problem}`;
+  parts.push({ kind: "markdown", markdown: [...headLines, problemBlock].join("\n\n") });
   if (hasSuggestion) {
     parts.push({
       kind: "diff",
@@ -381,6 +439,12 @@ function buildFinding(input: FindingInput): {
     parts.push({ kind: "diff", patch: input.patch });
   }
   if (input.diagram?.trim()) parts.push({ kind: "mermaid", mermaid: input.diagram.trim() });
+  // Tail: the blast radius — a tiny call-graph of what this affects. Reuses the
+  // change-map styling so callers/callees/tests read the same as the overview map.
+  if (input.blastRadius) {
+    const graph = buildChangeMap(input.blastRadius);
+    if (graph) parts.push(graph);
+  }
   return { title, badge, parts };
 }
 
@@ -407,6 +471,11 @@ export function coerceFinding(raw: any): FindingInput {
     suggestion,
     patch: str(raw?.patch),
     diagram: str(raw?.diagram),
+    confidence: str(raw?.confidence),
+    coverage: str(raw?.coverage),
+    verified: typeof raw?.verified === "boolean" ? raw.verified : undefined,
+    scope: str(raw?.scope),
+    blastRadius: coerceChangeMap(raw?.blastRadius),
   };
 }
 
@@ -438,7 +507,12 @@ export function coerceChangeMap(raw: any): ChangeMapInput | undefined {
       kind: str(n?.kind),
     })),
     edges: Array.isArray(raw.edges)
-      ? raw.edges.map((e: any) => ({ from: str(e?.from), to: str(e?.to), label: str(e?.label) }))
+      ? raw.edges.map((e: any) => ({
+          from: str(e?.from),
+          to: str(e?.to),
+          label: str(e?.label),
+          status: str(e?.status),
+        }))
       : [],
   };
 }
@@ -524,8 +598,19 @@ const CHANGE_STATUS: Record<string, string> = {
 
 export interface ChangeMapInput {
   nodes: Array<{ id?: string; label?: string; status?: string; kind?: string }>;
-  edges?: Array<{ from?: string; to?: string; label?: string }>;
+  edges?: Array<{ from?: string; to?: string; label?: string; status?: string }>;
 }
+
+// Edge status (§8.2) — color-codes the *interactions*, the half node status
+// can't show: a `new` edge is coupling the PR introduces (scrutinize it), a
+// `removed` edge is a call it severs (a dropped auth/validation hop is the most
+// dangerous invisible change), `existing` is unchanged context. Shares the
+// node-status palette so one legend covers both. mermaid styles edges by index.
+const EDGE_STATUS: Record<string, string> = {
+  new: "stroke:#2f9e44,stroke-width:1.5px",
+  removed: "stroke:#e03131,stroke-width:1.5px,stroke-dasharray:4 3",
+  existing: "stroke:#9aa0a6",
+};
 
 function buildChangeMap(map: ChangeMapInput): SurfacePart | undefined {
   const nodes = Array.isArray(map?.nodes) ? map.nodes : [];
@@ -559,13 +644,22 @@ function buildChangeMap(map: ChangeMapInput): SurfacePart | undefined {
     used.add(status);
     lines.push(`  ${id.get(n.id as string)}${shape(n.kind, n.label as string)}:::${status}`);
   }
+  // Track each rendered edge's status by its emission index — mermaid styles
+  // edges by index, so the linkStyle lines must match the order edges appear.
+  const edgeStyles: string[] = [];
+  let edgeIndex = 0;
   for (const e of Array.isArray(map?.edges) ? map.edges! : []) {
     if (!e || typeof e.from !== "string" || typeof e.to !== "string") continue;
     if (!id.has(e.from) || !id.has(e.to)) continue;
     const label = e.label?.trim() ? `|"${esc(e.label)}"|` : "";
     lines.push(`  ${id.get(e.from)} -->${label} ${id.get(e.to)}`);
+    if (typeof e.status === "string" && Object.hasOwn(EDGE_STATUS, e.status)) {
+      edgeStyles.push(`  linkStyle ${edgeIndex} ${EDGE_STATUS[e.status]};`);
+    }
+    edgeIndex++;
   }
   for (const s of used) lines.push(`  classDef ${s} ${CHANGE_STATUS[s]};`);
+  for (const ls of edgeStyles) lines.push(ls);
   return { kind: "mermaid", mermaid: lines.join("\n") };
 }
 
@@ -622,6 +716,186 @@ function buildChurnChart(
     yLabel: "lines",
     caption,
   };
+}
+
+// The opinionated overview (§ P1/P2): the agent declares intent, a composite
+// risk band over four sub-signals, a review budget, and a priority-ranked file
+// manifest; showcase renders them the same way every time as a single `review`-
+// kit html part. Risk and priority are AGENT-AUTHORED (the agent has the
+// semantic context a path regex never will) — the server's job is consistent
+// rendering, not second-guessing. This part is sandboxed (renderHtmlPage at
+// /s/:id), so agent strings are escaped for correct structure, not trusted.
+const RISK_BANDS: Record<string, string> = { low: "Low", elevated: "Elevated", high: "High" };
+const PRIORITY_RANK: Record<string, number> = { sensitive: 0, logic: 1, mechanical: 2 };
+const SIGNAL_LABELS: Array<{ key: keyof RiskInput; label: string }> = [
+  { key: "size", label: "Size" },
+  { key: "surfaceArea", label: "Surface" },
+  { key: "sensitivity", label: "Sensitivity" },
+  { key: "testDelta", label: "Tests" },
+];
+
+export interface RiskInput {
+  size?: number;
+  surfaceArea?: number;
+  sensitivity?: number;
+  testDelta?: number;
+  band?: string;
+}
+
+export interface ManifestRowInput {
+  file?: string;
+  added?: number;
+  removed?: number;
+  priority?: string;
+  note?: string;
+}
+
+export interface OverviewInput {
+  intent?: string;
+  risk?: RiskInput;
+  budget?: string;
+  manifest?: ManifestRowInput[];
+}
+
+// A 0–3 agent weight → a labeled sub-bar. Width is the weight as a fraction of
+// 3 (a floor so a 0 still shows the track); tone reddens as the weight climbs so
+// the heaviest axis is the one the eye lands on.
+function signalBar(label: string, raw: number | undefined): string {
+  const w = Math.max(0, Math.min(3, Math.round(Number.isFinite(raw) ? Number(raw) : 0)));
+  const pct = Math.max(6, Math.round((w / 3) * 100));
+  const tone = w >= 3 ? "hot" : w === 2 ? "warm" : "cool";
+  return (
+    `<span class="sig-label">${escapeHtml(label)}<span class="num">${w}/3</span></span>` +
+    `<div class="signal ${tone}"><i style="width:${pct}%"></i></div>`
+  );
+}
+
+// One manifest row: priority dot · file · two-tone churn spark · +/− counts ·
+// "why it matters" note · reviewed checkbox. The spark widths are the added /
+// removed split of the row's churn (an empty track when the row has none).
+function manifestRow(r: {
+  file: string;
+  added: number;
+  removed: number;
+  priority: string;
+  note: string;
+}): string {
+  const total = r.added + r.removed;
+  const addPct = total > 0 ? Math.round((r.added / total) * 100) : 0;
+  const delPct = total > 0 ? 100 - addPct : 0;
+  const spark =
+    total > 0
+      ? `<span class="spark"><span class="add" style="width:${addPct}%"></span><span class="del" style="width:${delPct}%"></span></span>`
+      : `<span class="spark"></span>`;
+  const note = r.note
+    ? `<span class="note">${escapeHtml(r.note)}</span>`
+    : `<span class="note"></span>`;
+  return (
+    `<li class="manifest-row ${r.priority}">` +
+    `<span class="pri"></span>` +
+    `<span class="file">${escapeHtml(r.file)}</span>` +
+    spark +
+    `<span class="churn">+${r.added} −${r.removed}</span>` +
+    note +
+    `<input class="rev" type="checkbox" aria-label="Mark ${escapeHtml(r.file)} reviewed">` +
+    `</li>`
+  );
+}
+
+function buildOverview(input: OverviewInput): SurfacePart | undefined {
+  const intent = input.intent?.trim();
+  const budget = input.budget?.trim();
+  const risk = input.risk;
+  const hasRisk =
+    !!risk &&
+    (risk.band !== undefined ||
+      [risk.size, risk.surfaceArea, risk.sensitivity, risk.testDelta].some((v) =>
+        Number.isFinite(v),
+      ));
+  const rows = (Array.isArray(input.manifest) ? input.manifest : [])
+    .map((m) => ({
+      file: typeof m?.file === "string" ? m.file.trim() : "",
+      added: Number.isFinite(m?.added) ? Math.max(0, Number(m?.added)) : 0,
+      removed: Number.isFinite(m?.removed) ? Math.max(0, Number(m?.removed)) : 0,
+      priority:
+        typeof m?.priority === "string" && Object.hasOwn(PRIORITY_RANK, m.priority)
+          ? m.priority
+          : "logic",
+      note: typeof m?.note === "string" ? m.note.trim() : "",
+    }))
+    .filter((m) => m.file);
+  // Nothing structured to show → let buildVerdictMarkdown carry the review.
+  if (!intent && !budget && !hasRisk && rows.length === 0) return undefined;
+
+  // Priority order (sensitive → logic → mechanical), stable within a tier so the
+  // agent's order is the churn-or-judgement tiebreak. Mechanical rows collapse
+  // into the low-attention bucket the reviewer confirms in one glance.
+  const ranked = rows
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => PRIORITY_RANK[a.r.priority] - PRIORITY_RANK[b.r.priority] || a.i - b.i)
+    .map((x) => x.r);
+  const hot = ranked.filter((r) => r.priority !== "mechanical");
+  const cold = ranked.filter((r) => r.priority === "mechanical");
+
+  const blocks: string[] = [];
+  if (intent) blocks.push(`<p class="title">${escapeHtml(intent)}</p>`);
+
+  if (hasRisk || budget) {
+    const bandKey =
+      typeof risk?.band === "string" && Object.hasOwn(RISK_BANDS, risk.band) ? risk.band : "";
+    const bandLabel = bandKey ? RISK_BANDS[bandKey] : "—";
+    const signals = hasRisk
+      ? `<div class="signals">${SIGNAL_LABELS.map((s) => signalBar(s.label, risk?.[s.key] as number | undefined)).join("")}</div>`
+      : "";
+    const budgetLine = budget ? `<div class="budget">${escapeHtml(budget)}</div>` : "";
+    blocks.push(
+      `<div class="risk">` +
+        `<div class="between"><span class="risk-band ${bandKey}"><span class="lvl"></span>Risk: ${escapeHtml(bandLabel)}</span>` +
+        `<span class="review-progress"></span></div>` +
+        signals +
+        budgetLine +
+        `</div>`,
+    );
+  }
+
+  if (hot.length > 0) blocks.push(`<ul class="manifest">${hot.map(manifestRow).join("")}</ul>`);
+  if (cold.length > 0) {
+    blocks.push(
+      `<button class="cold-toggle" aria-expanded="false" type="button">` +
+        `<span class="caret">▸</span> ${cold.length} mechanical file${cold.length > 1 ? "s" : ""} (low attention)</button>` +
+        `<div class="cold-bucket" hidden><ul class="manifest">${cold.map(manifestRow).join("")}</ul></div>`,
+    );
+  }
+
+  return htmlPart(`<div class="stack lg">${blocks.join("")}</div>`, ["review"]);
+}
+
+// Coerce a loosely-typed overview ({intent, risk, budget, manifest}) — shared by
+// the REST reviews route and both MCP transports; buildOverview validates.
+export function coerceOverview(raw: any): OverviewInput {
+  const num = (v: unknown) => (typeof v === "number" ? v : undefined);
+  const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+  const r = raw?.risk;
+  const risk: RiskInput | undefined =
+    r && typeof r === "object"
+      ? {
+          size: num(r.size),
+          surfaceArea: num(r.surfaceArea),
+          sensitivity: num(r.sensitivity),
+          testDelta: num(r.testDelta),
+          band: str(r.band),
+        }
+      : undefined;
+  const manifest = Array.isArray(raw?.manifest)
+    ? raw.manifest.map((m: any) => ({
+        file: str(m?.file),
+        added: num(m?.added),
+        removed: num(m?.removed),
+        priority: str(m?.priority),
+        note: str(m?.note),
+      }))
+    : undefined;
+  return { intent: str(raw?.intent), risk, budget: str(raw?.budget), manifest };
 }
 
 export function createApp({
@@ -768,9 +1042,8 @@ export function createApp({
   ): Promise<
     { surface: Surface; userFeedback?: Feedback[] } | { error: string; status: 400 | 404 | 413 }
   > {
-    if (!input.title?.trim() || !input.problem?.trim()) {
-      return { error: '"title" and "problem" are required', status: 400 };
-    }
+    const invalid = validateFinding(input);
+    if (invalid) return { error: invalid, status: 400 };
     const { title, badge, parts } = buildFinding(input);
     return publishSurface({
       parts,
@@ -793,6 +1066,10 @@ export function createApp({
     summary?: string;
     coverage?: string;
     architecture?: string;
+    intent?: string;
+    risk?: RiskInput;
+    budget?: string;
+    manifest?: ManifestRowInput[];
     changeMap?: ChangeMapInput;
     churn?: Array<{ file?: string; added?: number; removed?: number }>;
     findings: FindingInput[];
@@ -807,13 +1084,25 @@ export function createApp({
     if (!Array.isArray(input.findings)) {
       return { error: '"findings" must be an array', status: 400 };
     }
+    // Validate every real finding's honesty signal up front — before publishing
+    // the verdict card — so a missing confidence/coverage rejects cleanly instead
+    // of leaving an orphan verdict above a half-published review (§7 #2).
+    for (const f of input.findings) {
+      if (!isRealFinding(f)) continue;
+      const invalid = validateFinding(f);
+      if (invalid) return { error: `finding "${f.title.trim()}": ${invalid}`, status: 400 };
+    }
     const badge = REVIEW_VERDICT[input.verdict ?? "comment"] ?? REVIEW_VERDICT.comment;
-    // The verdict card is the review's map: summary + tally + findings table,
-    // then the change map (the changed pieces and how they interact). A raw
-    // `architecture` mermaid is the escape hatch when no structured map is given.
-    const verdictParts: SurfacePart[] = [
-      { kind: "markdown", markdown: buildVerdictMarkdown(input) },
-    ];
+    // The verdict card is the review's map. It LEADS with the opinionated
+    // overview (intent + risk + budget + priority manifest) when the agent
+    // supplied structure, then the verdict markdown (summary + tally + findings
+    // table + coverage), then the change map (the changed pieces and how they
+    // interact). A raw `architecture` mermaid is the escape hatch when no
+    // structured map is given.
+    const verdictParts: SurfacePart[] = [];
+    const overviewPart = buildOverview(input);
+    if (overviewPart) verdictParts.push(overviewPart);
+    verdictParts.push({ kind: "markdown", markdown: buildVerdictMarkdown(input) });
     const changeMapPart = input.changeMap ? buildChangeMap(input.changeMap) : undefined;
     if (changeMapPart) verdictParts.push(changeMapPart);
     else if (input.architecture?.trim()) {
@@ -857,8 +1146,10 @@ export function createApp({
 
     const session = verdictSurface.sessionId;
     const findings: string[] = [];
+    // Real findings (title + problem) become cards; empty placeholder entries are
+    // skipped. The honesty signal was already validated up front.
     for (const f of input.findings) {
-      if (!f?.title?.trim() || !f?.problem?.trim()) continue; // skip malformed entries
+      if (!isRealFinding(f)) continue;
       const { title, badge: fbadge, parts } = buildFinding(f);
       const r = await publishSurface({ parts, title, badge: fbadge, session });
       if (!("error" in r)) findings.push(r.surface.id);
@@ -1343,6 +1634,7 @@ export function createApp({
     }
     const str = (v: unknown) => (typeof v === "string" ? v : undefined);
     const findings = body.findings.map(coerceFinding);
+    const overview = coerceOverview(body);
     const result = await publishReview({
       verdict: str(body.verdict),
       branch: str(body.branch),
@@ -1350,6 +1642,10 @@ export function createApp({
       summary: str(body.summary),
       coverage: str(body.coverage),
       architecture: str(body.architecture),
+      intent: overview.intent,
+      risk: overview.risk,
+      budget: overview.budget,
+      manifest: overview.manifest,
       changeMap: coerceChangeMap(body.changeMap),
       churn: coerceChurn(body.churn),
       findings,
