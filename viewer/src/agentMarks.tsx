@@ -10,7 +10,7 @@ import type { ReactNode } from "react";
 function Glyph(props: { children: ReactNode; stroke?: boolean }) {
   return (
     <svg
-      className="mr-[5px] size-[13px] flex-none text-muted-foreground"
+      className="size-[13px] flex-none"
       viewBox="0 0 24 24"
       width="13"
       height="13"

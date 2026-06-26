@@ -188,6 +188,74 @@ This is showcase's flagship workflow — _"the future of code review is multimod
 
 **Then run the loop** (below): the user reads each card, taps **Approve** or comments. On a change request, **`update_surface` the same card** with the revised diff — and downgrade or clear its badge — so the fix lands in place as a new version, not a new card. (`showcase demo` seeds a live example of this composition.)
 
+## Recipe: decision review (the form factor)
+
+_The next-generation review, designed for the age of agents and large diffs (`docs/review-form-factor.md`)._ A flat diff scales with **lines**; a change only makes a handful of **decisions**. So instead of finding cards, you triage the diff into a small, risk-ranked queue of decisions the human adjudicates — review time scales with **risk, not size.** Publish it with **`publish_decisions`** (MCP) or **`showcase decisions <session> <file.json>`** (CLI); the user views it at `/?review=<session>`.
+
+**Same delegation rule:** the ANALYSIS is your **`code-review` skill's** — run it first to actually read the code. This is the rendering contract: map its findings into the decision grammar.
+
+**Two registers, by design:**
+
+- The **`brief`** is the ONE strictly plain-English part — ≤4 sentences, **no code identifiers** — so a PM, a designer, anyone grasps what the PR does, why, whether anything changes for users, and the one catch. (It's what makes the review shareable to non-engineers.)
+- The **decisions** are fully technical (symbols, `file:line`, diffs).
+
+**Each decision is one fixed grammar** — triage the diff so there's ONE decision per thing that genuinely needs a human call (the cold/mechanical stuff gets none), hardest first (`decisions[0]` is the lede):
+
+- **`call`** — `block | ship | decide` (your recommendation) · **`kind`** — bug/fix/capability/refactor/migration/risk · **`scope`** — `changed-line | whole-file | codebase` (how far the reviewer must look).
+- **`assertion`** — one sentence, the conclusion · **`impact`** — who hits it, how bad (optional).
+- **`confidence`** + **`coverage`** are **REQUIRED** — the honesty ledger: what you DID and did NOT verify. The form factor mandates this so a confident-but-unchecked claim can't hide as prose.
+- **`gaps`** — declared uncertainties, each `{what, proveScope}`: what you didn't check + the scoped task the reviewer's **"Prove it"** would run. Be honest here; it's the interaction surface.
+- **`pivot`** — `"flips to ✅/⛔ if …"`, ONLY when there's a real fork. Omit on a clean ship — never noise.
+- **`evidence`** — surface parts for the right pane (usually a `diff`, maybe a control-flow `mermaid`). Omit and the decision renders full-width.
+
+```jsonc
+// publish_decisions — a Brief + a risk-ranked decision queue
+{
+  "brief": "This change rejects oversized uploads before downloading them, so one giant upload can't run the server out of memory. Nothing changes for users — only abusive bursts get a 413. One open item: uploads that don't declare their size aren't caught yet.",
+  "verdict": "block",
+  "decisions": [
+    {
+      "call": "block",
+      "kind": "bug",
+      "scope": "changed-line",
+      "assertion": "Oversized uploads buffer the whole body before the size check.",
+      "impact": "A 2 GB upload exhausts heap before the 413 is returned.",
+      "confidence": "high",
+      "coverage": "Reproduced with a 2 GB upload; did not test chunked uploads with no content-length.",
+      "gaps": [
+        {
+          "what": "chunked uploads that omit content-length",
+          "proveScope": "test a chunked upload with no length header",
+        },
+      ],
+      "pivot": "flips to ✅ once a streaming cap covers the no-length case",
+      "evidence": [
+        {
+          "kind": "diff",
+          "files": [
+            {
+              "filename": "server/app.ts",
+              "before": "const buf = await req.arrayBuffer();\n",
+              "after": "if (tooLarge(req)) return r413();\nconst buf = await req.arrayBuffer();\n",
+            },
+          ],
+        },
+      ],
+    },
+    {
+      "call": "ship",
+      "kind": "fix",
+      "scope": "changed-line",
+      "assertion": "The 413 carries a clear message and the limit.",
+      "confidence": "high",
+      "coverage": "Read the handler + a test asserting the body.",
+    },
+  ],
+}
+```
+
+**The human adjudicates** each decision: **Accept** (ratify), **Prove it** (tap a declared gap → you run the scoped check and revise in place), or **Challenge** (they push back → you defend with evidence or concede and revise). So fill the ledger honestly — the gaps you declare are exactly what they'll make you prove.
+
 ## Recipe: animated explainer
 
 showcase's second flagship workflow — **learning & explainers.** When the user shares a screenshot or snippet and says _"explain this on showcase"_ (or asks you to teach a concept), don't dump a wall of prose — build an **animated explainer** they can play through and scrub.

@@ -279,6 +279,40 @@ Icons: the Tabler webfont is on the CSP allowlist —
 `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">`
 then `<i class="ti ti-check"></i>`.
 
+### Annotations — label a detail on a mockup
+
+When you mock up a UI and want to call out a piece of it ("this is the unread
+count", "this marker clears when viewed"), use the `anno` primitive instead of
+hand-rolling a dashed box. A bare dashed label floating over content reads as a
+rendering bug; `anno` reads as an intentional annotation laid _on top of_ the
+mockup — a clean tag with a soft shadow and a hairline leader+dot tying it to
+exactly what it marks.
+
+Make the annotated element `position: relative`, drop an `<span class="anno …">`
+inside it, and pick the edge the tag sits on:
+
+| class                | effect                                                              |
+| -------------------- | ------------------------------------------------------------------- |
+| `anno`               | the callout tag (info tone, soft shadow, off by default no leader)  |
+| `a-r` `a-l` `a-t` `a-b` | which side of the target the tag sits on; draws the leader + dot  |
+| `a-warn` `a-ok` `a-muted` | tone: warning / success / neutral (default is info)            |
+
+```html
+<div class="navitem" style="position:relative">
+  Memory <span class="count">2</span>
+  <span class="anno a-r">unread count</span>
+</div>
+
+<div class="row" style="position:relative">
+  Emergency-fund buffer · 3 months <span class="badge">New</span>
+  <span class="anno a-t a-ok">"New" marker on fresh rows</span>
+</div>
+```
+
+Leave the tag a little breathing room (the leader is ~14px) and prefer the edge
+that points into open space, so the tag and its leader never sit on top of other
+text. The tag is `pointer-events: none`, so it never blocks the mockup beneath.
+
 ## Kits — opt-in component bundles
 
 A **kit** is a richer vocabulary an html part opts into. List kit ids in the

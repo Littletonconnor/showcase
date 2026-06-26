@@ -73,6 +73,14 @@ export interface McpDeps {
   }): Promise<
     { session: string; verdict: string; findings: string[] } | { error: string; status: number }
   >;
+  publishDecisions(input: {
+    brief?: string;
+    verdict?: string;
+    decisions?: unknown;
+    session?: string;
+    sessionTitle?: string;
+    agent?: string;
+  }): Promise<{ sessionId: string; decisions: number } | { error: string; status: number }>;
   reviseSurface(
     id: string,
     patch: { parts?: SurfacePart[]; title?: string; badge?: SurfaceBadge | null },
@@ -158,6 +166,27 @@ export function registerMcp(app: Hono, deps: McpDeps) {
             url: `${origin}/session/${result.session}`,
             verdict: result.verdict,
             findings: result.findings,
+          },
+          null,
+          2,
+        );
+      }
+      case "publish_decisions": {
+        const str = (v: unknown) => (typeof v === "string" ? v : undefined);
+        const result = await deps.publishDecisions({
+          brief: str(args.brief),
+          verdict: str(args.verdict),
+          decisions: args.decisions,
+          session: str(args.session),
+          sessionTitle: str(args.sessionTitle),
+          agent: str(args.agent),
+        });
+        if ("error" in result) throw new Error(result.error);
+        return JSON.stringify(
+          {
+            sessionId: result.sessionId,
+            decisions: result.decisions,
+            url: `${origin}/?review=${result.sessionId}`,
           },
           null,
           2,

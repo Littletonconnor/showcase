@@ -137,6 +137,31 @@ const d = {
   traceTs: "ISO timestamp",
   terminalText: "terminal part: raw output (ANSI SGR color escapes are rendered)",
   terminalCols: "terminal part: optional render width in columns",
+
+  // publish_decisions — the agent-era review form factor (docs/review-form-factor.md)
+  brief:
+    "≤4 plain-English sentences, NO code identifiers — explain the PR so a PM/designer/anyone understands what it does, why, whether anything changes for users, and the one catch (if any). This is the one strictly-jargon-free register; the decisions below are technical.",
+  decisionVerdict:
+    "block | approve | comment — the bottom line (a consequence of the decisions; render it as a chip).",
+  decisions:
+    "The risk-ranked queue the human adjudicates — ONE decision per thing that needs a human call, hardest/riskiest first (decisions[0] is the lede). Triage the diff into a handful of decisions; the cold/mechanical stuff doesn't get one.",
+  decisionCall: "block | ship | decide — your recommendation for this decision.",
+  decisionKind:
+    "bug | fix | capability | refactor | migration | risk — what kind of decision this is.",
+  decisionScope:
+    "changed-line | whole-file | codebase — how far the reviewer must look to judge it (a bug in the diff vs. a file inconsistency vs. an architecture conflict).",
+  decisionAssertion:
+    "One sentence — the conclusion (e.g. 'Token refresh accepts a stale token on a cache hit').",
+  decisionImpact: "Why it matters — who hits it, how bad, under what input. Optional.",
+  decisionConfidence: "REQUIRED — high | medium | low. How sure you are.",
+  decisionCoverage:
+    "REQUIRED — the honesty ledger: what you DID and did NOT verify (e.g. 'reproduced with a test' / 'read the caller, did not run the migration'). The form factor mandates this so a confident-but-unchecked claim can't hide.",
+  decisionGaps:
+    "Declared uncertainties, each a {what, proveScope?} — what you did NOT check, and the scoped task the reviewer's 'Prove it' would dispatch to close it. These ARE the interaction surface.",
+  decisionPivot:
+    "Optional — 'flips to ✅/⛔ if …'. ONLY when there's a real fork (an unverified gap that could change the call, or a load-bearing assumption). Omit on a clean ship — never noise.",
+  decisionEvidence:
+    "Optional right-pane artifacts for this decision: surface parts (usually a `diff`, plus maybe a `mermaid` control-flow or `code`). Absent → the decision renders full-width.",
 };
 
 const MCP_PARTS_DESCRIPTION =
@@ -224,6 +249,8 @@ export const MCP_TOOL_DESCRIPTIONS = {
     "Publish a WHOLE code review in one call — the strongly preferred way to review a PR on showcase. Pass a `verdict` (request_changes|approve|comment), an optional `summary`/`coverage`, a `changeMap` ({nodes, edges} — the headline visual: the changed pieces and how they interact, color-coded new/modified/touched/removed), and a `findings` array; showcase explodes it into a verdict card (summary + tally + findings table + the change map) + ONE card per finding. Each finding card is FIXED structure: severity badge, the problem, a before→after `suggestion` rendered as an inline diff, and `fix` (why it's better). Same effort as writing the review, but it physically cannot become a wall of markdown — the structure is the API. For every fix you'd recommend, pass `suggestion:{before,after}` (NOT `patch`) so the diff always renders. Returns the sessionId + the created surface ids.",
   reviewFinding:
     "Publish ONE structured review finding as a multimodal card (prefer publish_review to submit a whole review at once). showcase composes it from your fields — a severity badge + the problem + a before→after suggested-change diff + the rationale. Never dump a review into one markdown surface. For a fix, pass `suggestion:{before,after}` (the current code and your proposed code) — showcase computes the diff so it ALWAYS shows the change; use `patch` only to show the PR's actual change in context. `title` and `problem` are required. Returns the surface id + URL; pass the returned sessionId as `session` on the rest of the review.",
+  publishDecisions:
+    "Publish a code review as the AGENT-ERA DECISION FORM FACTOR (docs/review-form-factor.md) — review scales with risk, not diff size. Do the ANALYSIS with your `code-review` skill first; this renders it. Pass: a plain-English `brief` (≤4 sentences, no code identifiers — for anyone), a `verdict`, and a risk-ranked `decisions[]` array — ONE decision per thing that needs a human call (a 5,000-line diff is usually a handful), hardest first. Each decision is fixed structure: call (block|ship|decide), kind, scope, a one-sentence assertion, optional impact, REQUIRED confidence + coverage (the honesty ledger — what you did/didn't verify), optional declared gaps (each a scoped 'Prove it' target), an optional pivot, and optional evidence (surface parts — usually a diff — shown in the synced right pane). showcase renders it as a Brief + a scroll-snapped decision queue the human adjudicates. The reviewer reads the Brief to understand, then judges the decisions. Returns sessionId + the /?review=<session> URL.",
   publishSnippet:
     "Publish an HTML snippet — sugar for a surface with one html part. Send a body fragment only. Returns the id, view URL, and sessionId. Pass sessionTitle on first publish. Prefer publish_surface when you want a diff or multiple parts.",
   updateSnippet: "Revise an html snippet in place — sugar for update_surface with one html part.",
@@ -419,6 +446,65 @@ export const HTTP_MCP_TOOLS = [
         agent: { type: "string", description: d.agent },
       },
       required: ["findings"],
+    },
+  },
+  {
+    name: "publish_decisions",
+    description: MCP_TOOL_DESCRIPTIONS.publishDecisions,
+    inputSchema: {
+      type: "object",
+      properties: {
+        brief: { type: "string", description: d.brief },
+        verdict: {
+          type: "string",
+          enum: ["block", "approve", "comment"],
+          description: d.decisionVerdict,
+        },
+        decisions: {
+          type: "array",
+          description: d.decisions,
+          items: {
+            type: "object",
+            properties: {
+              call: {
+                type: "string",
+                enum: ["block", "ship", "decide"],
+                description: d.decisionCall,
+              },
+              kind: { type: "string", description: d.decisionKind },
+              scope: {
+                type: "string",
+                enum: ["changed-line", "whole-file", "codebase"],
+                description: d.decisionScope,
+              },
+              assertion: { type: "string", description: d.decisionAssertion },
+              impact: { type: "string", description: d.decisionImpact },
+              confidence: {
+                type: "string",
+                enum: ["high", "medium", "low"],
+                description: d.decisionConfidence,
+              },
+              coverage: { type: "string", description: d.decisionCoverage },
+              gaps: {
+                type: "array",
+                description: d.decisionGaps,
+                items: {
+                  type: "object",
+                  properties: { what: { type: "string" }, proveScope: { type: "string" } },
+                  required: ["what"],
+                },
+              },
+              pivot: { type: "string", description: d.decisionPivot },
+              evidence: { ...MCP_PARTS_JSON_SCHEMA, description: d.decisionEvidence },
+            },
+            required: ["call", "kind", "scope", "assertion", "confidence", "coverage"],
+          },
+        },
+        session: { type: "string", description: d.session },
+        sessionTitle: { type: "string", description: d.sessionTitle },
+        agent: { type: "string", description: d.agent },
+      },
+      required: ["brief", "decisions"],
     },
   },
   {

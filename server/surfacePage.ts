@@ -148,6 +148,45 @@ svg { font-family: var(--font-sans); fill: var(--color-text-primary); }
 .c-red text, text.c-red { fill: var(--color-text-danger); stroke: none; }
 .c-gray, .c-gray .box { fill: var(--color-background-secondary); stroke: var(--color-border-secondary); }
 .c-gray text, text.c-gray { fill: var(--color-text-secondary); stroke: none; }
+
+/* Annotation callouts — a small labeled tag that points out a detail on a
+   mockup, reading as something laid "on top of" the UI rather than part of it.
+   Anchor it inside a position:relative target and add an edge class (a-r / a-l /
+   a-t / a-b) for the side it sits on; a hairline leader + dot tie the tag to what
+   it marks, and a soft shadow lifts it off the surface — an intentional
+   annotation, not a stray dashed box. Tone via a-warn / a-ok / a-muted (info by
+   default). pointer-events stay off so a tag never blocks the mockup beneath. */
+.anno {
+  position: absolute; z-index: 5; white-space: nowrap; pointer-events: none;
+  font: 500 11px/1.3 var(--font-sans);
+  color: var(--color-text-info);
+  background: var(--color-background-primary);
+  border: 0.5px solid var(--color-border-info);
+  border-radius: 7px; padding: 2.5px 8px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05), 0 4px 11px -3px rgba(0,0,0,0.14);
+}
+/* The leader line (::before) and anchor dot (::after) only render when an edge
+   class is set, so a bare .anno (older surfaces) is left untouched. */
+.anno[class*="a-"]::before, .anno[class*="a-"]::after { content: ""; position: absolute; background: var(--color-border-info); }
+.anno[class*="a-"]::after { width: 5px; height: 5px; border-radius: 50%; }
+.anno.a-r { left: calc(100% + 14px); top: 50%; transform: translateY(-50%); }
+.anno.a-r::before { width: 10px; height: 1.5px; left: -12px; top: 50%; transform: translateY(-50%); }
+.anno.a-r::after { left: -14px; top: 50%; transform: translate(-50%, -50%); }
+.anno.a-l { right: calc(100% + 14px); top: 50%; transform: translateY(-50%); }
+.anno.a-l::before { width: 10px; height: 1.5px; right: -12px; top: 50%; transform: translateY(-50%); }
+.anno.a-l::after { right: -14px; top: 50%; transform: translate(50%, -50%); }
+.anno.a-t { bottom: calc(100% + 14px); left: 50%; transform: translateX(-50%); }
+.anno.a-t::before { width: 1.5px; height: 10px; bottom: -12px; left: 50%; transform: translateX(-50%); }
+.anno.a-t::after { bottom: -14px; left: 50%; transform: translate(-50%, 50%); }
+.anno.a-b { top: calc(100% + 14px); left: 50%; transform: translateX(-50%); }
+.anno.a-b::before { width: 1.5px; height: 10px; top: -12px; left: 50%; transform: translateX(-50%); }
+.anno.a-b::after { top: -14px; left: 50%; transform: translate(-50%, -50%); }
+.anno.a-warn { color: var(--color-text-warning); border-color: var(--color-border-warning); }
+.anno.a-warn::before, .anno.a-warn::after { background: var(--color-border-warning); }
+.anno.a-ok { color: var(--color-text-success); border-color: var(--color-border-success); }
+.anno.a-ok::before, .anno.a-ok::after { background: var(--color-border-success); }
+.anno.a-muted { color: var(--color-text-secondary); border-color: var(--color-border-secondary); }
+.anno.a-muted::before, .anno.a-muted::after { background: var(--color-border-secondary); }
 `;
 
 // Shared SVG defs injected into every snippet doc. Inline SVGs anywhere in

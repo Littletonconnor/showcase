@@ -28,6 +28,7 @@ import {
   sessionLabel,
   sessionLink,
   type SessionRow,
+  type Surface,
 } from "./api.ts";
 import {
   DropdownMenu,
@@ -38,7 +39,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { onBridgeMessage } from "./bridge.ts";
 import { routeGet, routeSubscribe, root } from "./host.ts";
-import { Card, cardEls } from "./Card.tsx";
+import { BADGE_DOT_CLASS, Card, cardEls } from "./Card.tsx";
 import { Thread } from "./Thread.tsx";
 import { cx } from "./cx.ts";
 import {
@@ -120,13 +121,28 @@ function Brand(props?: { className?: string }) {
       aria-label="showcase — home"
       onClick={() => goHome()}
     >
-      <span
-        className={cx(
-          "size-[7px] flex-none rounded-full transition-all duration-300",
-          live ? "bg-[#4caf78] shadow-[0_0_0_3px_rgba(76,175,120,0.18)]" : "bg-faint",
-        )}
-        title={live ? "Live" : "Reconnecting…"}
-      ></span>
+      {/* Branded app-icon tile: a warm terracotta gradient with a cream spark —
+          the same surface/sparkle motif the agent marks and session titles use,
+          scaled up as the hero mark so the chrome reads as one family. The live
+          dot rides the corner as a presence badge (green = connected, faint =
+          reconnecting) instead of floating loose beside the wordmark. */}
+      <span className="relative flex size-7 flex-none items-center justify-center rounded-[9px] bg-gradient-to-br from-[#cf6d49] to-[#a8472b] shadow-sm ring-1 ring-black/10 ring-inset">
+        <svg
+          viewBox="0 0 24 24"
+          className="size-[15px] text-[#fdf3ec]"
+          fill="currentColor"
+          aria-hidden="true"
+        >
+          <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .962 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.962 0z" />
+        </svg>
+        <span
+          className={cx(
+            "absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-panel transition-colors duration-300",
+            live ? "bg-[#4caf78]" : "bg-faint",
+          )}
+          title={live ? "Live" : "Reconnecting…"}
+        ></span>
+      </span>
       <span className="truncate group-data-[collapsible=icon]:hidden">showcase</span>
     </button>
   );
@@ -148,7 +164,7 @@ function SessionSearch(props: { query: string; onQuery: (q: string) => void }) {
         placeholder="Search chats…"
         value={props.query}
         onChange={(e) => props.onQuery(e.target.value)}
-        className="h-8 rounded-lg border-border/70 bg-surface pr-7 pl-8 text-[13px] shadow-none transition-colors hover:border-border focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/20"
+        className="h-9 rounded-lg border-transparent bg-surface pr-7 pl-8 text-[13px] shadow-sm ring-1 ring-brand/25 focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-brand/40"
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             if (props.query) {
@@ -573,8 +589,8 @@ function SessionItem(props: { session: SessionRow }) {
   if (renaming) {
     return (
       <SidebarMenuItem data-id={props.session.id}>
-        <div className="flex h-auto items-center gap-2 rounded-lg px-2 py-2">
-          <span className="flex-none">
+        <div className="flex h-auto items-center gap-2.5 rounded-lg px-2 py-1.5">
+          <span className="flex size-6 flex-none items-center justify-center rounded-md bg-surface text-muted-foreground ring-1 ring-border/70">
             <AgentMark agent={props.session.agent} />
           </span>
           <input
@@ -605,17 +621,27 @@ function SessionItem(props: { session: SessionRow }) {
         aria-current={isSel ? "true" : undefined}
         onClick={open}
         className={cx(
-          "h-auto items-start gap-2 rounded-lg py-1 pr-7 transition-colors duration-150 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:py-2",
-          // One quiet selection signal, claude.ai-style: a soft accent-subtle
-          // tint with the title in accent — no competing white lift or left
-          // rail. Hover is a calm gray wash. The agent mark stays neutral.
+          "h-auto items-start gap-2.5 rounded-lg py-1.5 pr-7 transition-colors duration-150 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:py-2",
+          // The selected row lifts off the panel as a soft accent card —
+          // brand-subtle tint, a faint brand ring, and a low shadow — so it
+          // reads with the same depth as the surfaces on the right. Hover is a
+          // calm gray wash. Weight never changes between states.
           isSel
-            ? "bg-brand-subtle hover:bg-brand-subtle data-[active=true]:bg-brand-subtle"
-            : "hover:bg-hover/60 data-[active=true]:bg-brand-subtle",
+            ? "bg-brand-subtle shadow-xs ring-1 ring-brand/15 hover:bg-brand-subtle data-[active=true]:bg-brand-subtle"
+            : "hover:bg-hover data-[active=true]:bg-brand-subtle",
         )}
       >
-        {/* The agent mark anchors the row at the icon-rail width too. */}
-        <span className="mt-0.5 flex-none text-muted-foreground group-data-[collapsible=icon]:mt-0">
+        {/* The agent mark sits in a small tile — a white chip on the warm panel
+            that echoes the card surfaces on the right and anchors each row.
+            In the collapsed rail the tile drops away to a bare centered glyph. */}
+        <span
+          className={cx(
+            "mt-px flex size-6 flex-none items-center justify-center rounded-md ring-1 group-data-[collapsible=icon]:mt-0 group-data-[collapsible=icon]:size-4 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:ring-0",
+            isSel
+              ? "bg-brand-subtle text-brand ring-brand/20"
+              : "bg-surface text-muted-foreground ring-border/70",
+          )}
+        >
           <AgentMark agent={props.session.agent} />
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-px group-data-[collapsible=icon]:hidden">
@@ -745,6 +771,37 @@ function SessionView(props: { onConnect?: () => void }) {
   const reading = useBoard((s) => s.readingId !== null);
   const current = sessions.find((x) => x.id === selected);
   const surfaceCount = current?.surfaceCount ?? 0;
+
+  // The table-of-contents rail lives in the left reading gutter as an in-flow
+  // sticky flex item (with a matching spacer on the right so the stream stays
+  // centered). It only appears once a session has enough cards to be worth
+  // navigating AND the row is wide enough to hold the rail without squeezing the
+  // 860px stream — measured live, so it adapts to the sidebar collapsing.
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [tocTop, setTocTop] = useState(120);
+  const [tocRoom, setTocRoom] = useState(false);
+  const tocEligible = !!selected && !streamLoading && !reading && surfaces.length >= 3;
+  useEffect(() => {
+    if (!tocEligible) {
+      setTocRoom(false);
+      return;
+    }
+    const row = rowRef.current;
+    const header = document.querySelector<HTMLElement>("#sessionView [data-print-static]");
+    if (!row) return;
+    const NEEDED = 860 + 2 * (224 + 24); // stream + rail+gap on each side
+    const measure = () => {
+      setTocRoom(row.clientWidth >= NEEDED);
+      if (header) setTocTop(header.offsetHeight + 12);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(row);
+    if (header) ro.observe(header);
+    return () => ro.disconnect();
+  }, [tocEligible, surfaces.length]);
+  const showToc = tocEligible && tocRoom;
+
   return (
     <div id="sessionView" hidden={sessions.length === 0}>
       <div
@@ -778,25 +835,88 @@ function SessionView(props: { onConnect?: () => void }) {
           <ReviewSummary surfaces={surfaces} />
         </div>
       </div>
-      <div
-        id="stream"
-        className="mx-auto max-w-[860px] px-7 pt-[22px] pb-[120px] max-[700px]:px-3.5 max-[700px]:pt-4 max-[700px]:pb-[120px]"
-      >
-        <WhatsNewCard />
-        {streamLoading ? (
-          <CardSkeletons />
-        ) : surfaces.length === 0 ? (
-          <EmptySession />
-        ) : reading ? null : (
-          surfaces.map((s) => <Card surface={s} key={s.id} />)
-        )}
-        {selected && !streamLoading && !isReadonly() ? (
-          <div data-print-hide>
-            <SessionChat sessionId={selected} onConnect={props.onConnect} />
-          </div>
-        ) : null}
+      <div ref={rowRef} className="flex w-full justify-center gap-6">
+        {showToc ? <SurfaceOutline surfaces={surfaces} top={tocTop} /> : null}
+        <div
+          id="stream"
+          className="w-full min-w-0 max-w-[860px] px-7 pt-[22px] pb-[120px] max-[700px]:px-3.5 max-[700px]:pt-4 max-[700px]:pb-[120px]"
+        >
+          <WhatsNewCard />
+          {streamLoading ? (
+            <CardSkeletons />
+          ) : surfaces.length === 0 ? (
+            <EmptySession />
+          ) : reading ? null : (
+            surfaces.map((s) => <Card surface={s} key={s.id} />)
+          )}
+          {selected && !streamLoading && !isReadonly() ? (
+            <div data-print-hide>
+              <SessionChat sessionId={selected} onConnect={props.onConnect} />
+            </div>
+          ) : null}
+        </div>
+        {/* Mirror the rail's width on the right so the stream stays centered. */}
+        {showToc ? <div aria-hidden className="w-[224px] shrink-0" /> : null}
       </div>
     </div>
+  );
+}
+
+// A live table of contents for a card-heavy session: every surface as a jump
+// link in the left reading gutter, so a long stream stays navigable. It's an
+// in-flow sticky flex item (self-start so it can pin) bound to the same scroll
+// container as the session header, so it stays put as the stream scrolls. The
+// SessionView gates whether it renders and passes the sticky offset that clears
+// the variable-height header. The active entry mirrors the focused surface the
+// app already tracks in the URL (Card's 50%-threshold scroll spy), so the rail
+// and the deep link agree.
+function SurfaceOutline(props: { surfaces: Surface[]; top: number }) {
+  const [activeId, setActiveId] = useState<string | null>(() => routeGet().surfaceId ?? null);
+  useEffect(() => routeSubscribe((r) => setActiveId(r.surfaceId ?? null)), []);
+
+  return (
+    <nav
+      aria-label="Surface contents"
+      className="sticky h-fit w-[224px] shrink-0 self-start overflow-y-auto pb-6"
+      style={{ top: props.top, maxHeight: `calc(100dvh - ${props.top + 24}px)` }}
+    >
+      <div className="mb-1.5 px-2 text-[10px] font-medium tracking-[0.09em] text-faint/70 uppercase">
+        Contents
+      </div>
+      <ul className="flex flex-col gap-px" role="list">
+        {props.surfaces.map((s) => {
+          const active = s.id === activeId;
+          return (
+            <li key={s.id}>
+              <button
+                type="button"
+                onClick={() =>
+                  cardEls.get(s.id)?.card.scrollIntoView({ behavior: "smooth", block: "start" })
+                }
+                title={s.title}
+                aria-current={active ? "true" : undefined}
+                className={cx(
+                  "flex w-full items-center gap-2 rounded-md py-[5px] pr-2 pl-2 text-left text-[12px] leading-snug",
+                  active
+                    ? "bg-brand-subtle text-brand"
+                    : "text-muted-foreground hover:bg-hover hover:text-foreground",
+                )}
+              >
+                {/* A tone dot mirrors the card's status badge so the rail reads
+                    as the same artifact; a plain marker when the card has none. */}
+                <span
+                  className={cx(
+                    "size-1.5 flex-none rounded-full",
+                    s.badge ? BADGE_DOT_CLASS[s.badge.tone] : active ? "bg-brand" : "bg-faint/45",
+                  )}
+                />
+                <span className="min-w-0 flex-1 truncate">{s.title}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
   );
 }
 

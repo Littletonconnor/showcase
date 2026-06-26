@@ -1316,6 +1316,45 @@ export function createApp({
     return { session, verdict: verdictSurface.id, findings };
   }
 
+  // Publish a decision-queue review (the agent-era form factor — see
+  // docs/review-form-factor.md). Like publishSurface, an explicit session is
+  // validated and a missing one auto-created. The Review is validated (the
+  // honesty-ledger `coverage` is required on every decision) and stored per
+  // session; the viewer renders it at /?review=<sessionId>.
+  async function publishDecisions(input: {
+    brief?: string;
+    verdict?: string;
+    decisions?: unknown;
+    session?: string;
+    sessionTitle?: string;
+    agent?: string;
+    cwd?: string;
+  }): Promise<{ sessionId: string; decisions: number } | { error: string; status: 400 | 404 }> {
+    const parsed = coerceReview({
+      brief: input.brief,
+      verdict: input.verdict,
+      decisions: input.decisions,
+    });
+    if ("error" in parsed) return { error: parsed.error, status: 400 };
+
+    let sessionId = input.session;
+    if (sessionId && !(await store.getSession(sessionId))) {
+      return { error: `session "${sessionId}" not found`, status: 404 };
+    }
+    if (!sessionId) {
+      const session = await store.createSession({
+        agent: input.agent ?? "agent",
+        title: input.sessionTitle?.slice(0, MAX_TITLE),
+        cwd: input.cwd,
+      });
+      bus.broadcast({ type: "session-created", id: session.id });
+      sessionId = session.id;
+    }
+    const review = await store.putReview(sessionId, parsed.review);
+    if (!review) return { error: "session not found", status: 404 };
+    return { sessionId, decisions: review.decisions.length };
+  }
+
   // Store an uploaded blob. Like publishSurface, an explicit session is
   // validated and a missing one is auto-created so an upload can precede the
   // first publish. The asset's data is dropped from the result (it's bytes).
@@ -2253,6 +2292,7 @@ export function createApp({
     publishSurface,
     publishFinding,
     publishReview,
+    publishDecisions,
     reviseSurface,
     deleteSurface,
     createComment,

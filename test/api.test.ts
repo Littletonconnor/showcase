@@ -800,6 +800,71 @@ test("publish_surface MCP tool round-trips a diff part", async () => {
   assert.equal(full.parts[0].patch, "@@ -1 +1 @@\n-x\n+y");
 });
 
+test("publish_decisions MCP tool stores a decision review and returns the /?review url", async () => {
+  const app = makeApp();
+  const list = (await (await app.request("/mcp", mcpCall(1, "tools/list"))).json()) as any;
+  assert.ok(list.result.tools.map((t: any) => t.name).includes("publish_decisions"));
+
+  const res = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(2, "tools/call", {
+        name: "publish_decisions",
+        arguments: {
+          brief: "Adds a guard so one client can't overwhelm the server.",
+          verdict: "block",
+          decisions: [
+            {
+              call: "block",
+              kind: "bug",
+              scope: "whole-file",
+              assertion: "The limiter counts per-process.",
+              confidence: "high",
+              coverage: "read it; did not load-test",
+              evidence: [
+                { kind: "diff", files: [{ filename: "limit.ts", before: "a\n", after: "b\n" }] },
+              ],
+            },
+          ],
+        },
+      }),
+    )
+  ).json()) as any;
+  const payload = JSON.parse(res.result.content[0].text);
+  assert.ok(payload.sessionId);
+  assert.match(payload.url, /\/\?review=/);
+  assert.equal(payload.decisions, 1);
+
+  const stored = (await (
+    await app.request(`/api/sessions/${payload.sessionId}/review`)
+  ).json()) as any;
+  assert.equal(stored.decisions[0].call, "block");
+  assert.equal(stored.decisions[0].evidence[0].kind, "diff");
+
+  // A decision missing the required honesty ledger is rejected at the tool layer.
+  const bad = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(3, "tools/call", {
+        name: "publish_decisions",
+        arguments: {
+          brief: "x",
+          decisions: [
+            {
+              call: "ship",
+              kind: "fix",
+              scope: "changed-line",
+              assertion: "y",
+              confidence: "high",
+            },
+          ],
+        },
+      }),
+    )
+  ).json()) as any;
+  assert.ok(bad.error || bad.result?.isError, "missing coverage should error");
+});
+
 test("publishes a markdown part; /s has no html doc for it", async () => {
   const app = makeApp();
   const res = await app.request(
