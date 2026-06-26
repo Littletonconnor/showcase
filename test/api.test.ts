@@ -14,7 +14,7 @@ function makeApp(authToken?: string, opts?: { publicRead?: "session" | "full" })
     viewerHtml: "<html>viewer</html>",
     guideMarkdown: "# guide",
     setupText: "# setup",
-    agentHowtoText: "# agent how-to",
+    playbookText: "# playbook",
     authToken,
     ...opts,
   });
@@ -1302,7 +1302,7 @@ function makeVersionApp(version?: string, latest?: { version: string; notes?: st
     viewerHtml: "<html>viewer</html>",
     guideMarkdown: "# guide",
     setupText: "# setup",
-    agentHowtoText: "# agent how-to",
+    playbookText: "# playbook",
     version,
     upgradeCommand: "npm install -g showcase",
     fetchLatestRelease: () =>
@@ -1464,6 +1464,8 @@ test("auth token guards mutating routes when configured", async () => {
   // docs and bootstrap instructions stay open
   assert.equal((await app.request("/guide")).status, 200);
   assert.equal((await app.request("/setup")).status, 200);
+  assert.equal((await app.request("/playbook")).status, 200);
+  // back-compat alias stays open too
   assert.equal((await app.request("/agent-howto")).status, 200);
   // ?key= grants access and sets a cookie for subsequent requests
   const keyed = await app.request("/?key=secret");

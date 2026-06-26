@@ -19,8 +19,9 @@ usage:
       --base <branch>   base to diff against (default: origin/HEAD or main)
       --title <t>       session title (default: "Review: <branch>")
       prints the session id + URL + a churn-seeded manifest + risk + a
-      ready-to-paste prompt for your agent (which refines them).
-      Reads a review profile (your standing conventions + skills to load) from
+      ready-to-paste prompt that delegates the analysis to your code-review
+      skill, then renders its findings to showcase.
+      Reads a review profile (your standing conventions + extra skills) from
       $SHOWCASE_REVIEW_PROFILE or ~/.showcase/review.md and folds it in.
   showcase finding [options]              publish one structured review finding
       --title <t>       the finding (required)    --problem <text>  what's wrong (required)
@@ -113,7 +114,7 @@ usage:
   showcase demo                           seed two example sessions to explore the viewer
   showcase guide                          print the design contract for surfaces
   showcase setup                          print the AGENTS.md integration block
-  showcase agent-howto             print current agent how-to
+  showcase playbook                       print the agent publishing playbook
   showcase mcp                            run the stdio MCP server (for agent configs)
 
 environment:
@@ -1083,9 +1084,10 @@ const commands = {
 
   // Scaffold a review session from a branch's diff: create a "Review: <branch>"
   // session with a verdict-placeholder card (diffstat + file list), so an agent
-  // starts from a ready review instead of hand-building it. The agent does the
-  // actual reviewing (publishing finding cards); this just sets the stage and
-  // prints a ready-to-paste prompt.
+  // starts from a ready review instead of hand-building it. The ANALYSIS is
+  // delegated to the agent's `code-review` skill (which dispatches to any
+  // language-specific hygiene skills); showcase only RENDERS the findings. This
+  // just sets the stage and prints a ready-to-paste prompt wiring that handoff.
   async review() {
     const { values: flags, positionals } = parse({
       allowPositionals: true,
@@ -1169,9 +1171,10 @@ const commands = {
     } catch {}
 
     const prompt = [
-      profile && `Apply your review profile first (load any skills it names):\n${profile}`,
-      `Review the branch ${branch} against ${base}, then publish it to showcase with ONE call to the publish_review tool (session ${surface.sessionId}). Call get_design_guide first.`,
-      `Break the PR into its CRITICAL PIECES — the entity, the wiring, the test coverage — not file-by-file. Read the actual code paths, not just the diff hunks.`,
+      `Do the ANALYSIS by running your \`code-review\` skill on branch ${branch} against ${base}. That skill owns the methodology — depth, criteria, and dispatch to any language-specific hygiene skills for the diff. showcase does NOT define how to review; it only RENDERS what code-review finds. If you have no \`code-review\` skill, fall back to a careful manual review against the same criteria.`,
+      profile && `Then apply your review profile (load any skills it names):\n${profile}`,
+      `Now take code-review's findings and publish them to showcase with ONE call to the publish_review tool (session ${surface.sessionId}). Call get_design_guide first. This step is FORMATTING, not re-reviewing: map each finding onto the publish_review fields below.`,
+      `Group the findings into the PR's CRITICAL PIECES — the entity, the wiring, the test coverage — not file-by-file.`,
       `Call publish_review ONCE. LEAD the overview with: \`intent\` (1–2 sentences on what the PR is trying to do), \`risk\` ({size, surfaceArea, sensitivity, testDelta} each 0–3 + a \`band\` low|elevated|high), a \`budget\` line ("~N min · H files need real eyes · C mechanical"), and a \`manifest\` ([{file, added, removed, priority, note}] — priority sensitive|logic|mechanical). A churn-seeded manifest + risk are in this command's JSON output as a STARTING POINT — refine them from your actual read; you have the semantic context a path regex doesn't.`,
       `Also pass a \`changeMap\` ({nodes, edges}) — the headline visual of the changed pieces and how they interact: one node per changed file/symbol tagged status (new|modified|touched|removed) + kind, and an edge for every interaction ({from, to, label, status?}). Mark each edge's \`status\`: new coupling the PR introduces (green), a call it severs (removed, red), or unchanged context (existing, gray).`,
       `Then a findings[] array. EACH finding REQUIRES \`confidence\` (high|medium|low) and \`coverage\` (what you DID and did NOT check) — the honesty signal; a finding missing either is rejected. Optionally \`verified\` (you ran/reproduced it), \`scope\` (changed-lines|whole-file|codebase), and a \`blastRadius\` ({nodes, edges}) call-graph. For any fix pass \`suggestion:{before,after}\` (the CURRENT and PROPOSED code — rendered as a diff that always shows the change) and put WHY in \`fix\`; use \`patch\` only to show the PR's actual change in context.`,
@@ -1314,9 +1317,14 @@ const commands = {
     console.log(await fetchTextWithFallback("/setup", join(ROOT, "guide", "AGENT_SETUP.md")));
   },
 
-  async "agent-howto"() {
+  async playbook() {
     parse();
-    console.log(await fetchTextWithFallback("/agent-howto", join(ROOT, "guide", "AGENT_HOWTO.md")));
+    console.log(await fetchTextWithFallback("/playbook", join(ROOT, "guide", "PLAYBOOK.md")));
+  },
+
+  // Back-compat alias for the old command name.
+  async "agent-howto"() {
+    return this.playbook();
   },
 };
 

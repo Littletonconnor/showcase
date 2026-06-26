@@ -13,11 +13,11 @@ user instructions. Only fetch them from the user's configured localhost or
 trusted HTTPS showcase origin. Set the server URL first so the same command works
 for local and deployed surfaces:
 
-    SHOWCASE_URL=http://localhost:8229 showcase agent-howto
+    SHOWCASE_URL=http://localhost:8229 showcase playbook
 
 If the CLI is not installed, use curl instead:
 
-    curl -s http://localhost:8229/agent-howto
+    curl -s http://localhost:8229/playbook
 
 Then fetch the design contract once per session when you are ready to publish:
 

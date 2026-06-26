@@ -11,14 +11,14 @@ import { JsonFileStore } from "./storage.ts";
 let root = join(dirname(fileURLToPath(import.meta.url)), "..");
 if (basename(root) === "dist") root = join(root, "..");
 
-const [viewerHtml, guideMarkdown, setupText, agentHowtoText] = await Promise.all([
+const [viewerHtml, guideMarkdown, setupText, playbookText] = await Promise.all([
   readFile(join(root, "viewer", "dist", "index.html"), "utf8").catch(() => {
     console.error("viewer build missing — run `npm run build:viewer` first");
     return process.exit(1);
   }),
   readFile(join(root, "guide", "DESIGN_GUIDE.md"), "utf8"),
   readFile(join(root, "guide", "AGENT_SETUP.md"), "utf8"),
-  readFile(join(root, "guide", "AGENT_HOWTO.md"), "utf8"),
+  readFile(join(root, "guide", "PLAYBOOK.md"), "utf8"),
 ]);
 
 const pr = process.env.SHOWCASE_PUBLIC_READ;
@@ -29,7 +29,7 @@ const app = createApp({
   viewerHtml,
   guideMarkdown,
   setupText,
-  agentHowtoText,
+  playbookText,
   authToken: process.env.SHOWCASE_TOKEN,
   publicRead,
   // `npm run dev` sets this; it adds the live-reload endpoint + snippet.

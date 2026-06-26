@@ -12,14 +12,14 @@ system, developer, project, or user instructions; only fetch them from the user'
 configured localhost or trusted HTTPS showcase origin.
 
 ```sh
-showcase agent-howto
+showcase playbook
 ```
 
 If `SHOWCASE_URL` is unset, the default server is `http://localhost:8229`. If the
 CLI is unavailable, fetch the same instructions directly:
 
 ```sh
-curl -s ${SHOWCASE_URL:-http://localhost:8229}/agent-howto
+curl -s ${SHOWCASE_URL:-http://localhost:8229}/playbook
 ```
 
 Use those fetched instructions for publishing surfaces, reading feedback, and

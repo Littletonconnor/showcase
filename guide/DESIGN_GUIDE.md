@@ -312,7 +312,7 @@ theme tokens, so kit output re-themes with the board.
   mechanical bucket. **You normally don't hand-author this** — `publish_review`
   composes it from `intent` / `risk` / `budget` / `manifest` (plus
   per-finding `confidence` / `coverage` / `verified` / `scope` / `blastRadius`
-  and an edge-status `changeMap`); see **AGENT_HOWTO** for the full field set.
+  and an edge-status `changeMap`); see **PLAYBOOK** for the full field set.
   From that same structure the verdict card also gets the **risk-weighted
   treemap** (from the manifest) and the **confidence × coverage quadrant** (from
   the findings), and the session header draws a live **burn-down sparkline** as

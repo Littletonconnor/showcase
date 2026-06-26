@@ -31,10 +31,21 @@ optional **mermaid diagram** of the relevant flow. You read, push back in the
 thread, approve or dismiss to burn down a live verdict bar, and the agent revises
 the fix in place. Far faster than a wall of inline comments.
 
+**showcase doesn't review — it renders.** The analysis is delegated to the
+agent's own **`code-review` skill** (a generic, showcase-agnostic review skill);
+showcase only takes the findings and formats them into finding cards + a verdict.
+The contract is the skill _name_: `showcase review` tells the agent to run its
+`code-review` skill, so anyone using showcase either has that skill or drops their
+own in under that name. The dependency is one-way — showcase knows about
+`code-review`, `code-review` knows nothing about showcase — so the reviewer stays
+reusable outside showcase, and showcase stays usable with any reviewer. A
+`code-review` skill can in turn dispatch to language-specific hygiene skills
+(e.g. Java, TypeScript) without showcase ever knowing the difference.
+
 **Make it _your_ reviewer:** drop a `~/.showcase/review.md` (or point
 `$SHOWCASE_REVIEW_PROFILE` at one) holding your standing review conventions and
-the skills to load — `showcase review` folds it into every review prompt, so the
-agent applies your standards and loads your tools each time.
+any extra skills to load — `showcase review` folds it into every review prompt on
+top of the `code-review` handoff, so the agent applies your standards each time.
 
 ### 📚 Understand & explain code
 
@@ -111,10 +122,10 @@ A good PR-review prompt to paste:
 
 ```text
 Review this branch against main and publish a visual review to showcase.
-Call get_design_guide first. For each notable finding, publish ONE card:
-a severity badge, a one-paragraph markdown explanation, a mermaid diagram of
-the relevant flow, and the diff. Lead with a verdict card. Then wait_for_feedback
-and revise cards in place as I comment.
+Run your code-review skill to do the analysis, then render its findings:
+call get_design_guide first, then ONE publish_review call — a verdict card plus
+one card per finding (severity badge, explanation, the diff, optional diagram).
+Then wait_for_feedback and revise cards in place as I comment.
 ```
 
 Shell-only agents can skip MCP entirely and drive showcase with the CLI or curl —
@@ -196,7 +207,7 @@ channels.
 | `viewer/`          | React 19 + zustand + Tailwind viewer, Vite-built to a single `viewer/dist/index.html`.                                                    |
 | `mcp/`             | stdio MCP server — a thin client over the HTTP API.                                                                                       |
 | `bin/showcase.js`  | Zero-dependency CLI (Node built-ins only).                                                                                                |
-| `guide/`           | The instructions agents fetch at runtime (`/setup`, `/guide`, `/agent-howto`).                                                            |
+| `guide/`           | The instructions agents fetch at runtime (`/setup`, `/guide`, `/playbook`).                                                               |
 | `skills/showcase/` | The Claude Code skill.                                                                                                                    |
 
 ---

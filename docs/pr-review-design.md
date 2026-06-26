@@ -342,7 +342,7 @@ resolve a whole review without the mouse; oracle covers the key paths.
 
 ### Updated agent guidance `~1h`
 
-`guide/DESIGN_GUIDE.md` + `guide/AGENT_HOWTO.md`: document the `review` kit, the
+`guide/DESIGN_GUIDE.md` + `guide/PLAYBOOK.md`: document the `review` kit, the
 new `publish_review` fields (intent / risk / manifest / confidence / verified /
 blast radius), and the standardized template, with a copy-paste example. Reseed
 `bin/demoData.js` so the demo review reproduces the new overview.

@@ -1,4 +1,4 @@
-# showcase — agent how-to
+# showcase — agent playbook
 
 The user keeps a showcase surface open in their browser. You publish surfaces to it; they appear instantly as cards. The user can comment on any surface and you can pick up those comments from the terminal — it is a two-way surface, not a fire-and-forget renderer.
 
@@ -73,11 +73,13 @@ Pass `badge: { tone, label }` on `publish_surface` / `update_surface` (label ≤
 
 This is showcase's flagship workflow — _"the future of code review is multimodal."_ A reviewing agent publishes one **finding card** per issue, each combining the explanation, a picture of the problem, and the fix, so the user grasps it far faster than a text thread.
 
-**Start from a scaffold:** `showcase review <branch> [--base <base>]` creates a "Review: <branch>" session seeded with a verdict-placeholder card (the diffstat + file list) and prints the session id + a ready-to-paste prompt. Review into that session — when you call `publish_review` with it, the placeholder **becomes** the verdict card (no duplicate). **Be thorough — a shallow review is worse than none.** Read the actual code paths, not just the diff hunks; trace how the change behaves at runtime; and back every claim with a concrete file:line and the real values involved.
+**showcase does NOT define how to review — it renders what a review found.** The analysis is delegated to your **`code-review` skill** (a generic, showcase-agnostic reviewer): run it to do the actual review — it owns depth, criteria, reading the real code paths at runtime, and dispatch to any language-specific hygiene skills for the diff. This recipe is the **rendering contract**: how to turn `code-review`'s findings into a standardized visual review. (No `code-review` skill? Review carefully by hand against the same bar, then render the same way.) The dependency is one-way — showcase knows about `code-review`; `code-review` knows nothing about showcase.
 
-**Break the PR into its critical pieces** — the entity, the wiring, the test coverage — not file-by-file. Read the actual code paths, not just the diff hunks.
+**Start from a scaffold:** `showcase review <branch> [--base <base>]` creates a "Review: <branch>" session seeded with a verdict-placeholder card (the diffstat + file list) and prints the session id + a ready-to-paste prompt that wires the `code-review` → showcase handoff. Render into that session — when you call `publish_review` with it, the placeholder **becomes** the verdict card (no duplicate).
 
-**Publish the whole review in ONE `publish_review` call.** Do NOT write it as a single markdown surface — that wall of text is the exact failure this replaces. You hand over the **overview** (`intent`, `risk`, `budget`, `manifest`), a `verdict`, a `summary`/`coverage`, a `changeMap`, and a `findings[]` array (one entry per piece); showcase explodes it into a verdict card + one card per finding. It's the same effort as writing the review, but it can't become a wall — the structure is the API.
+**Group the findings into the PR's critical pieces** — the entity, the wiring, the test coverage — not file-by-file.
+
+**Render the whole review in ONE `publish_review` call.** Do NOT write it as a single markdown surface — that wall of text is the exact failure this replaces. You hand over the **overview** (`intent`, `risk`, `budget`, `manifest`), a `verdict`, a `summary`/`coverage`, a `changeMap`, and a `findings[]` array (one entry per piece); showcase explodes it into a verdict card + one card per finding. This step is formatting, not re-reviewing — the structure is the API, so it can't become a wall.
 
 **The product is attention routing.** A diff browser scales with the size of the change; a review scales with the size of the _risk_. So lead with a map the reviewer reads _before_ the diff, and let them confidently skip the rest.
 
@@ -179,7 +181,7 @@ This is showcase's flagship workflow — _"the future of code review is multimod
 
 **`confidence` + `coverage` are REQUIRED on every finding — a finding missing either is rejected.** The most dangerous LLM output is a confident-looking change in an unchecked area, so every finding must declare how sure you are and what you did vs didn't verify. Be honest: "did not run the migration" is more useful than false certainty. Add `verified: true` only when you actually ran/reproduced it, `scope` to say how far you had to look, and a `blastRadius: {nodes, edges}` call-graph when a finding's reach (callers / tests that do or don't cover it) is the point.
 
-**Be thorough, and back every claim.** Each `problem` names the symbol + `file:line` and the concrete impact (who hits it, how bad, under what input — quantify when you can). Add a `diagram` to a finding when its own control/data flow matters. Findings aren't only problems — use `praise` for genuinely good work and `question` for what you couldn't judge. (To add a single finding later, `review_finding` takes the same fields — including the required `confidence`/`coverage` — for one card.)
+**Carry `code-review`'s evidence through to the render.** Each `problem` names the symbol + `file:line` and the concrete impact (who hits it, how bad, under what input — quantify when you can); don't flatten the analysis's specifics into vague prose. Add a `diagram` to a finding when its own control/data flow matters. Findings aren't only problems — use `praise` for genuinely good work and `question` for what you couldn't judge. (To add a single finding later, `review_finding` takes the same fields — including the required `confidence`/`coverage` — for one card.)
 
 **The verdict card is built for you** from `publish_review`'s `verdict` + `summary` + `coverage` + `architecture` + the `findings[]` (the tally, severity table, and diagram). The session header **also** rolls every finding badge into a live count summary — "1 Bug · 1 Nit · 1 Praise" — each chip jumping to its finding, and it **burns down** as the user Approves/Dismisses cards. So write a real `summary` and an honest `coverage` note (what you reviewed and deliberately skipped), and the verdict reads as a verdict, not a sentence.
 
