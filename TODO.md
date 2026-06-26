@@ -194,8 +194,9 @@ workflows compose.
       that rides through to the agent. _(Point anchor; line/element anchor is R4.)_
 - [x] **Structured feedback** — one-tap **Approve** (👍) posts a recognizable
       `author:"user"` signal; the composer is "request a change."
-- [~] **Pinned Library** — _cut_ (see UX_VISION.md). The pin/Library wiring was
-      removed end-to-end; a "save for later" almost nobody revisits.
+- [~] **Pinned Library** — _cut_ (the daily-use razor: not used most sessions).
+      The pin/Library wiring was removed end-to-end; a "save for later" almost
+      nobody revisits.
 - [x] **Hardened oracle** — `render-smoke.spec.ts` (every part kind renders at a
       real size) + an opt-in real-Chrome Playwright lane.
 
@@ -225,11 +226,14 @@ workflows compose.
       verdict word + table + coverage on top. Oracle-guarded. **Decisions roll in
       too:** a finding the user **Approves** (👍) or **Dismisses** (⊘, new action)
       resolves and its chip strikes through, so you watch the review burn down.
-- **R3 — `showcase review` ingestion.** One command turns a PR/diff into a review
-  session: read `gh pr diff <n>` / `git diff <range>`, create a session titled
-  after the PR, and seed a verdict placeholder — so the agent starts from a
-  scaffold instead of hand-building. _Acceptance:_ `showcase review 123` opens a
-  ready review session. _Effort:_ ~2–3h.
+- [x] **R3 — `showcase review` ingestion (shipped).** `showcase review <branch>
+      [--base]` reads the branch diff, computes per-file churn + a churn-seeded
+      manifest + risk, creates a "Review: <branch>" session, and seeds an "In
+      review" verdict placeholder that `publish_review` later revises in place — so
+      the agent starts from a scaffold instead of hand-building. The printed prompt
+      **delegates the analysis to the agent's `code-review` skill** (which dispatches
+      to language-specific hygiene skills) and then renders its findings via
+      `publish_review`; showcase owns the rendering, not the review methodology.
 - [x] **R4 — Line-anchored diff comments (shipped).** Click a diff line and a
       "Comment on line N" composer opens; the comment carries a line `anchor`
       (`{line, lineType}`) so the agent knows exactly what to fix. The in-frame
@@ -241,6 +245,37 @@ workflows compose.
 _(A GitHub round-trip — `gh pr review` with line comments — was considered and
 **dropped**: showcase is its own surface, not a GitHub front-end. Sharing a
 review with others is the static-export path under Supporting capabilities.)_
+
+#### Review depth (deferred — earned per PR, not always-on)
+
+Migrated from the original PR-review design doc (now removed — its design is
+shipped: R1–R4 plus the opinionated overview, risk treemap, confidence×coverage
+quadrant, edge-status change map, live burndown, and keyboard traversal). What's
+left is _depth_ to add when a specific review needs it — don't build speculatively.
+
+- **Sandboxed D3 charting kit** _(the unlock)_ — the `chart` part is React-rendered
+  and capped at bar/line/area/pie/treemap/scatter. A sandbox-iframe charting kit
+  (server inlines the data + a vetted D3 / Observable-Plot bundle, served through
+  `renderHtmlPage`) buys any chart D3 can draw and gates the depth visuals below.
+  Data still flows as structured fields the server inlines — never agent-authored
+  script. _Effort:_ large.
+- **Chart-cell → navigate bridge** — make a chart cell clickable → jump to that
+  file's hunks / finding → comment in place (extend the existing diff-line
+  `postMessage` bridge). Without it the review charts are pictures, not the
+  review's index. _Effort:_ ~2–3h.
+- **In-file moved-code detection** — `@pierre/diffs` detects file-level renames but
+  not in-file block moves; label "moved, unchanged" instead of delete+add. Spike
+  the renderer first. _Effort:_ unknown (renderer-gated).
+- **Opt-in depth visuals** _(need the charting kit)_ — file minimap / heat-strip,
+  churn×complexity hotspot bubble, layered arc diagram, adjacency / co-change
+  matrix, coupling-delta bar, overview-scale blast radius. Swap in per PR (a big
+  refactor wants the matrix; a one-file fix wants the minimap) — never all at once.
+- **Tour surface** — an optional `slides` / `animate` walkthrough for a complex
+  PR's narrative ("added the column → backfilled → flipped the read path").
+  Deferred polish; the overview is the win. _Effort:_ ~2–3h.
+
+_Explicitly **not** doing:_ large-diff row virtualization — the per-file SSR diff
+render is adequate; revisit only if one huge file's hunk count bites.
 
 ### Workflow 2 ⭐ — Learning & explainers
 
