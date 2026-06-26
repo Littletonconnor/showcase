@@ -28,9 +28,9 @@ export const DEMO_REVIEW: Review = {
             {
               filename: "server/auth/token.ts",
               before:
-                "function refresh(t) {\n  if (cache.has(t)) return cache.get(t);\n  validateExp(t);\n  return store(t);\n}",
+                "function refresh(t) {\n  if (cache.has(t)) return cache.get(t);\n  validateExp(t);\n  return store(t);\n}\n",
               after:
-                "function refresh(t) {\n  if (cache.has(t)) return cache.get(t); // exp check skipped\n  validateExp(t);\n  return store(t);\n}",
+                "function refresh(t) {\n  if (cache.has(t)) return cache.get(t); // exp check skipped\n  validateExp(t);\n  return store(t);\n}\n",
             },
           ],
         },
@@ -59,7 +59,7 @@ export const DEMO_REVIEW: Review = {
             {
               filename: "migrations/014_add_max_bytes.sql",
               before: "",
-              after: "ALTER TABLE uploads\n  ADD COLUMN max_bytes BIGINT NULL DEFAULT 52428800;",
+              after: "ALTER TABLE uploads\n  ADD COLUMN max_bytes BIGINT NULL DEFAULT 52428800;\n",
             },
           ],
         },
@@ -90,8 +90,8 @@ export const DEMO_REVIEW: Review = {
           files: [
             {
               filename: "server/app.ts",
-              before: "const mime = ct.split(';')[0].trim().toLowerCase();",
-              after: "const mime = parseMime(ct);",
+              before: "const mime = ct.split(';')[0].trim().toLowerCase();\n",
+              after: "const mime = parseMime(ct);\n",
             },
           ],
         },

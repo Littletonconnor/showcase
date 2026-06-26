@@ -257,7 +257,9 @@ export function ReviewView(props: { review: Review }) {
 
         {/* The decision region: left scrolls, right is sticky and snaps to active. */}
         <div className="mt-6 grid gap-x-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
-          <ol className="-ml-5">
+          {/* Trailing space so the LAST decisions can still scroll up into the
+              active band (otherwise the snap traps you before reaching them). */}
+          <ol className="-ml-5 pb-[55vh]">
             {r.decisions.map((d, i) => (
               <DecisionSection
                 key={i}
