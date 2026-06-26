@@ -51,8 +51,7 @@ const d = {
   findingSeverity:
     "bug | nit | question | praise | note — picks the severity badge (bug→red, nit→amber, question→blue, praise→green, note→gray)",
   findingTitle: "One-line finding/piece title (the issue itself, not the filename)",
-  findingFile:
-    "File the finding is about — rides the card title (e.g. 'FinancialChatFeedback.java')",
+  findingFile: "File the finding is about — rides the card title (e.g. 'server/app.ts')",
   findingLine: "Line number — rides the title as :N",
   findingProblem: "What's wrong, or what this critical piece does and why it matters — markdown",
   findingFix:
@@ -91,7 +90,7 @@ const d = {
   reviewManifest:
     "Priority-ranked file manifest (replaces the alphabetical list) as [{file, added, removed, priority, note}]. priority is sensitive|logic|mechanical (sensitive first, mechanical collapses into a low-attention bucket); note is a one-line 'why it matters'. added/removed are the file's churn. Order is yours; showcase renders the rows with a priority dot, a churn sparkline, the note, and a reviewed checkbox.",
   reviewVerdict: "request_changes | approve | comment — the verdict badge on the lead card",
-  reviewBranch: "Branch under review (shows in the verdict header, e.g. 'cl/ALLM-116')",
+  reviewBranch: "Branch under review (shows in the verdict header, e.g. 'feat/stream-uploads')",
   reviewBase: "Base branch the review is against (e.g. 'master')",
   reviewSummary: "One-paragraph verdict summary for the lead card — markdown",
   reviewCoverage: "What you reviewed and deliberately skipped, so the user can trust the depth",

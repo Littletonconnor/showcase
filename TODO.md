@@ -118,8 +118,8 @@ The agent receives it when it next touches showcase:
   (node + viewer tsc), `npm run lint` (oxlint, warnings = errors),
   `npm run build:viewer`, `npx playwright test`. For UI, screenshot via a headless
   Playwright script and look at it. `npm run format` last.
-- **Node:** prefix shells with
-  `export PATH=/Users/connorlittleton/.nvm/versions/node/v24.14.1/bin:/usr/bin:/bin:/usr/local/bin`.
+- **Node:** prefix shells with a pinned v24 on PATH, e.g.
+  `export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:/usr/bin:/bin:/usr/local/bin"`.
   This shell aliases `cat`→a missing tool (use Read/`sed`) and lacks `lsof`
   (kill servers via `ps ax | grep server/index.ts | awk | xargs kill`).
 - **Styling:** Tailwind utilities + shadcn on the JSX — do NOT add rules to
@@ -217,7 +217,7 @@ workflows compose.
       The finding-card recipe (`[badge, prose, mermaid, diff]`, lead with a verdict
       card, revise in place) lives in `PLAYBOOK`, and `bin/demoData.js` seeds a
       review session reproducing the product screenshot. Store-contract + API + a
-      real-DOM oracle cover it. _Proven live_ reviewing a real santafe branch.
+      real-DOM oracle cover it. _Proven live_ reviewing a real PR branch.
 - [x] **R2 — Review summary / verdict surface (shipped).** The session header now
       carries a **live verdict bar** derived from the finding-card badges — scannable
       per-label chips ("1 Bug · 1 Request changes · 1 Nit"), worst-severity first,

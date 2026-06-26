@@ -93,85 +93,83 @@ This is showcase's flagship workflow — _"the future of code review is multimod
 ```jsonc
 // publish_review — one call → a verdict card + a card per finding
 {
-  "branch": "cl/ALLM-116",
-  "base": "master",
-  "verdict": "comment", // request_changes | approve | comment
+  "branch": "feat/stream-asset-uploads",
+  "base": "main",
+  "verdict": "request_changes", // request_changes | approve | comment
   // OVERVIEW — read before any hunk. intent + risk + budget + manifest.
-  "intent": "Adds a FinancialChatFeedback entity and wires the cipher + persistence so chat feedback is stored encrypted.",
+  "intent": "Stream-caps asset uploads so an oversized request is rejected before the whole body is buffered into memory.",
   "risk": {
     "size": 1, // total churn, 0–3
-    "surfaceArea": 2, // distinct files/modules/exports touched, 0–3
-    "sensitivity": 2, // auth/data-model/migration/money/config weight, 0–3
-    "testDelta": 1, // did tests move with the logic (untouched = riskier), 0–3
+    "surfaceArea": 1, // distinct files/modules/exports touched, 0–3
+    "sensitivity": 3, // auth/data-model/migration/money/config weight, 0–3
+    "testDelta": 2, // did tests move with the logic (untouched = riskier), 0–3
     "band": "elevated", // low | elevated | high
   },
-  "budget": "~7 min · 2 files need real eyes · 1 mechanical",
+  "budget": "~6 min · 1 file needs real eyes · 1 mechanical",
   "manifest": [
     // priority: sensitive | logic | mechanical (sensitive first; mechanical collapses)
     {
-      "file": "FinancialChatFeedback.java",
-      "added": 64,
-      "removed": 0,
-      "priority": "sensitive",
-      "note": "new entity — persists user feedback",
-    },
-    {
-      "file": "ChatController.java",
-      "added": 22,
+      "file": "server/app.ts",
+      "added": 24,
       "removed": 6,
-      "priority": "logic",
-      "note": "save path",
+      "priority": "sensitive",
+      "note": "upload path — unbounded buffer",
     },
     {
-      "file": "feedback.hbm.xml",
+      "file": "test/assets.test.ts",
       "added": 18,
       "removed": 0,
+      "priority": "logic",
+      "note": "covers the new size guard",
+    },
+    {
+      "file": "package-lock.json",
+      "added": 40,
+      "removed": 6,
       "priority": "mechanical",
-      "note": "generated mapping",
+      "note": "dependency bump",
     },
   ],
-  "summary": "Adds the FinancialChatFeedback entity + cipher wiring + persistence tests. No P1s.",
-  "coverage": "Read the entity + mapping + cipher wiring; did not exercise the sql-schema repo changes.",
+  "summary": "Adds a content-length size guard + a streaming cap to the upload path, with tests. One blocker.",
+  "coverage": "Read the upload + size-check paths; did not test chunked uploads that omit content-length.",
   // The headline visual: the changed pieces and how they interact. One node per
   // changed file/symbol (status → color, kind → shape); one edge per interaction
   // (edge status → new/severed/unchanged coupling).
   "changeMap": {
     "nodes": [
-      { "id": "ctrl", "label": "ChatController", "status": "modified", "kind": "class" },
-      { "id": "fb", "label": "FinancialChatFeedback", "status": "new", "kind": "class" },
-      { "id": "map", "label": "feedback.hbm.xml", "status": "new", "kind": "table" },
-      { "id": "worker", "label": "LembasWorker", "status": "modified", "kind": "class" },
+      { "id": "ctrl", "label": "uploadAsset", "status": "modified", "kind": "function" },
+      { "id": "guard", "label": "sizeGuard", "status": "new", "kind": "function" },
+      { "id": "store", "label": "putAsset", "status": "touched", "kind": "function" },
     ],
     "edges": [
-      { "from": "ctrl", "to": "fb", "label": "saves", "status": "new" }, // new coupling
-      { "from": "fb", "to": "map", "label": "persists", "status": "new" },
-      { "from": "worker", "to": "fb", "label": "installs cipher", "status": "existing" },
+      { "from": "ctrl", "to": "guard", "label": "checks", "status": "new" }, // new coupling
+      { "from": "ctrl", "to": "store", "label": "writes", "status": "existing" },
     ],
   },
   "findings": [
     {
-      "severity": "nit", // bug|nit|question|praise|note → the badge
-      "title": "Constructor doesn't fail-fast on required fields",
-      "file": "FinancialChatFeedback.java",
-      "line": 38,
+      "severity": "bug", // bug|nit|question|praise|note → the badge
+      "title": "Unbounded buffer before the size check",
+      "file": "server/app.ts",
+      "line": 747,
       "confidence": "high", // REQUIRED — high|medium|low
-      "coverage": "Read the constructor + the .hbm.xml not-null constraints; did not run the persistence suite.", // REQUIRED — what you did/didn't check
-      "scope": "whole-file", // changed-lines | whole-file | codebase (optional)
-      "problem": "`createdAt`/`userId` are assigned without null checks; the `.hbm.xml` enforces not-null at the DB layer, so a null surfaces at flush, not construction.",
+      "coverage": "Reproduced a 2 GB upload against a local board; did not test chunked uploads that omit content-length.", // REQUIRED — what you did/didn't check
+      "scope": "changed-lines", // changed-lines | whole-file | codebase (optional)
+      "problem": "`uploadAsset` calls `req.arrayBuffer()` to buffer the ENTIRE request body into memory before the `MAX_ASSET_BYTES` check, so an oversized request can exhaust heap before the 413 is ever returned.",
       // The fix as a before→after pair — showcase computes the diff so it ALWAYS renders.
       "suggestion": {
-        "before": "this.createdAt = createdAt;\nthis.userId = userId;",
-        "after": "this.createdAt = checkNotNull(createdAt);\nthis.userId = checkNotNull(userId);",
+        "before": "const buf = new Uint8Array(await req.arrayBuffer());\nif (buf.byteLength > MAX_ASSET_BYTES) return tooLarge();",
+        "after": "if (Number(req.headers.get('content-length')) > MAX_ASSET_BYTES) return tooLarge();\nconst buf = new Uint8Array(await req.arrayBuffer());",
       },
-      "fix": "Fails fast at construction (WF convention, used in `InMemoryDocFileReaderImpl`) instead of at DB flush.",
+      "fix": "Reject on the content-length header before reading the body; a streaming cap can follow for chunked uploads that omit the header.",
     },
     {
       "severity": "praise",
-      "title": "Worker cipher split is clean",
-      "file": "LembasWorker.java",
+      "title": "Size guard is well covered",
+      "file": "test/assets.test.ts",
       "confidence": "medium",
-      "coverage": "Compared the SHARED_CIPHER_INFOS vs CIPHER_INFOS scoping; did not audit every call site.",
-      "problem": "Worker installs SHARED_CIPHER_INFOS while Lembas installs CIPHER_INFOS — correctly scopes the new cipher.",
+      "coverage": "Read the new cases; did not run the full suite.",
+      "problem": "The new test exercises both the under-limit and over-limit paths and asserts the 413 body — a clean guard against regressions.",
     },
   ],
 }

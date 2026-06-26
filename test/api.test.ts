@@ -108,30 +108,30 @@ test("publish_review explodes one call into a verdict card + a card per finding"
   const res = await app.request(
     "/api/reviews",
     json({
-      branch: "cl/ALLM-116",
-      base: "master",
+      branch: "feat/upload-guard",
+      base: "main",
       verdict: "request_changes",
-      summary: "Adds the entity + cipher wiring.",
-      coverage: "Read the entity; skipped the schema repo.",
+      summary: "Adds a size guard to the upload path.",
+      coverage: "Read the upload path; skipped the integration suite.",
       architecture: "flowchart LR; A-->B",
       findings: [
         {
           severity: "bug",
           title: "Null check missing",
-          file: "Foo.java",
+          file: "server/app.ts",
           line: 12,
-          problem: "no checkNotNull",
+          problem: "no null guard before use",
           confidence: "high",
-          coverage: "read the constructor; did not run the suite",
-          suggestion: { before: "this.a = a;", after: "this.a = checkNotNull(a);" },
-          fix: "fails fast at construction",
+          coverage: "read the handler; did not run the suite",
+          suggestion: { before: "const a = input.a;", after: "const a = required(input.a);" },
+          fix: "fails fast at the boundary",
         },
         {
           severity: "praise",
-          title: "Clean cipher split",
-          problem: "scopes the new cipher",
+          title: "Clean guard placement",
+          problem: "checks the size before buffering the body",
           confidence: "medium",
-          coverage: "skimmed the cipher wiring",
+          coverage: "skimmed the guard placement",
         },
         { title: "", problem: "" }, // malformed entries are skipped, not cards
       ],
@@ -175,12 +175,16 @@ test("publish_review explodes one call into a verdict card + a card per finding"
     ["markdown", "diff", "markdown"],
   );
   assert.deepEqual(bug.parts[1].files, [
-    { filename: "Foo.java", before: "this.a = a;", after: "this.a = checkNotNull(a);" },
+    {
+      filename: "server/app.ts",
+      before: "const a = input.a;",
+      after: "const a = required(input.a);",
+    },
   ]);
   assert.match(bug.parts[2].markdown, /\*\*Why it's better\*\* — fails fast/);
   // The honesty signal rides the head of the leading markdown part.
   assert.match(bug.parts[0].markdown, /High confidence/);
-  assert.match(bug.parts[0].markdown, /\*\*Coverage\*\* — read the constructor/);
+  assert.match(bug.parts[0].markdown, /\*\*Coverage\*\* — read the handler/);
 
   assert.equal((await app.request("/api/reviews", json({ verdict: "approve" }))).status, 400);
 });
@@ -323,9 +327,9 @@ test("publish_review renders a changeMap as a styled, color-coded mermaid on the
         verdict: "comment",
         changeMap: {
           nodes: [
-            { id: "ctrl", label: "ChatController", status: "modified", kind: "class" },
-            { id: "ent", label: "FinancialChatFeedback", status: "new", kind: "class" },
-            { id: "db", label: "feedback.hbm.xml", status: "new", kind: "table" },
+            { id: "ctrl", label: "uploadAsset", status: "modified", kind: "class" },
+            { id: "ent", label: "sizeGuard", status: "new", kind: "class" },
+            { id: "db", label: "assets", status: "new", kind: "table" },
             { id: "junk", status: "new" }, // no label → dropped
           ],
           edges: [
@@ -348,9 +352,9 @@ test("publish_review renders a changeMap as a styled, color-coded mermaid on the
   const src = verdict.parts[1].mermaid as string;
   assert.match(src, /^flowchart LR/);
   // Labels carried, statuses applied, table → cylinder shape.
-  assert.match(src, /\["ChatController"\]:::modified/);
-  assert.match(src, /\["FinancialChatFeedback"\]:::new/);
-  assert.match(src, /\[\("feedback\.hbm\.xml"\)\]:::new/);
+  assert.match(src, /\["uploadAsset"\]:::modified/);
+  assert.match(src, /\["sizeGuard"\]:::new/);
+  assert.match(src, /\[\("assets"\)\]:::new/);
   // Edges with labels; the edge to an unknown node is dropped.
   assert.match(src, /-->\|"saves"\|/);
   assert.match(src, /-->\|"persists"\|/);
@@ -540,7 +544,7 @@ test("review_finding composes a multimodal card from structured fields", async (
       fix: "checkNotNull each required arg",
       patch: "@@ -1 +1 @@\n-a\n+b",
       diagram: "flowchart LR; A-->B",
-      sessionTitle: "ALLM-116 review",
+      sessionTitle: "Upload guard review",
     }),
   );
   assert.equal(res.status, 201);
@@ -1476,6 +1480,43 @@ test("auth token guards mutating routes when configured", async () => {
     headers: { cookie: "showcase_key=secret" },
   });
   assert.equal(viaCookie.status, 200);
+});
+
+test("blocks cross-origin state-changing requests (CSRF guard)", async () => {
+  const app = makeApp(); // token-less default — every request is otherwise authorized
+  const body = JSON.stringify({ text: "hi", author: "user" });
+  const ct = { "content-type": "application/json" };
+
+  // A cross-origin POST (a malicious page forging author:"user") is rejected.
+  const evil = await app.request("http://localhost/api/comments", {
+    method: "POST",
+    headers: { ...ct, origin: "http://evil.example", host: "localhost" },
+    body,
+  });
+  assert.equal(evil.status, 403);
+
+  // The same-origin viewer (Origin host == request host) is allowed through the
+  // guard (it 404s on the missing session, not 403 from the CSRF check).
+  const same = await app.request("http://localhost/api/comments", {
+    method: "POST",
+    headers: { ...ct, origin: "http://localhost", host: "localhost" },
+    body,
+  });
+  assert.notEqual(same.status, 403);
+
+  // A non-browser client (CLI / MCP) sends no Origin and is not blocked.
+  const cli = await app.request("http://localhost/api/comments", {
+    method: "POST",
+    headers: ct,
+    body,
+  });
+  assert.notEqual(cli.status, 403);
+
+  // Cross-origin reads are NOT blocked — only state-changing requests.
+  const read = await app.request("http://localhost/api/sessions", {
+    headers: { origin: "http://evil.example", host: "localhost" },
+  });
+  assert.equal(read.status, 200);
 });
 
 async function readSseUntil(res: Response, needle: string, abort?: () => void): Promise<string> {

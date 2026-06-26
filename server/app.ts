@@ -1456,6 +1456,33 @@ export function createApp({
   const isUnauthenticatedSessionRead = (c: Context): boolean =>
     publicRead === "session" && !isAuthenticated(c);
 
+  // CSRF / forged-feedback guard. The token-less local default authorizes every
+  // request, so a malicious web page the user happens to also have open could
+  // POST writes to localhost (a "simple" cross-origin request needs no preflight)
+  // — forging the reserved author:"user" feedback signal to the agent, injecting,
+  // or deleting surfaces. Block any state-changing /api or /mcp request whose
+  // Origin is cross-origin. Browsers always send Origin on these; the CLI/MCP
+  // clients send none (not a browser, no CSRF surface), and the viewer is
+  // same-origin — so only the cross-origin attacker is turned away.
+  const STATE_CHANGING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+  app.use("*", async (c, next) => {
+    if (!STATE_CHANGING.has(c.req.method)) return next();
+    const path = new URL(c.req.url).pathname;
+    if (!path.startsWith("/api") && path !== "/mcp") return next();
+    const origin = c.req.header("origin");
+    if (!origin) return next(); // non-browser client (CLI / MCP) — no CSRF surface
+    let originHost: string | null = null;
+    try {
+      originHost = new URL(origin).host;
+    } catch {
+      /* malformed Origin → treat as cross-origin below */
+    }
+    if (originHost !== c.req.header("host")) {
+      return c.json({ error: "cross-origin request blocked" }, 403);
+    }
+    return next();
+  });
+
   app.use("*", async (c, next) => {
     const path = new URL(c.req.url).pathname;
 
