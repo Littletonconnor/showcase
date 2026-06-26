@@ -1,7 +1,7 @@
 // Theme registry — the single source of truth for the board's palette, shared
 // by the server (html-part token injection in surfacePage) and the viewer
-// (chrome palette + shiki theme for markdown/diff). Runtime-agnostic: no node
-// imports, so it bundles into the viewer (vite) and typechecks against workers.
+// (chrome palette + shiki theme for markdown/diff). Runtime-agnostic: no
+// `node:` imports, so it bundles into the viewer (vite) build unchanged.
 //
 // A theme is authored as ONE palette object per color scheme; the viewer-var
 // set (--bg, --accent, …) and the html-token set (--color-* injected into the

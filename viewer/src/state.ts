@@ -3,9 +3,8 @@
 // theme) plus the version-update notice. SSE (/api/events)
 // and the API helpers mutate it; components subscribe via selector hooks.
 //
-// Reconcile-by-id semantics from the Solid version are preserved by hand: list
-// updates merge into existing rows so React keys stay stable across refetches
-// (cards/iframes persist, drafts and focus survive).
+// Reconcile-by-id: list updates merge into existing rows so React keys stay
+// stable across refetches (cards/iframes persist, drafts and focus survive).
 import { create } from "zustand";
 import { toast as sonnerToast } from "sonner";
 import {
@@ -107,8 +106,8 @@ export function readingStep(dir: 1 | -1) {
   if (next) useBoard.setState({ readingId: next.id });
 }
 
-// Non-reactive snapshot accessors — mirror the Solid signal getters so the flow
-// functions below read state the same way regardless of render context.
+// Non-reactive snapshot accessors over the zustand store, so the flow functions
+// below read/write state the same way regardless of render context.
 const get = useBoard.getState;
 const set = useBoard.setState;
 export const sessionsNow = () => get().sessions;

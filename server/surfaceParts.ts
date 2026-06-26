@@ -206,9 +206,10 @@ const looseTerminalPart = z.object({
   title: optionalLooseString,
 });
 
-// A json part carries a pre-parsed JSON value (`data: unknown`). Strict mode
-// rejects a missing `data` key (null is valid — it's a JSON value); loose mode
-// drops the part if `data` is absent. The transform fixes zod's inference:
+// A json part carries a pre-parsed JSON value (`data: unknown`). Any JSON value
+// is valid (null included — it's a value); only a missing `data` key is
+// rejected, so strict and loose share one schema (loose drops the part on that
+// rejection, strict surfaces the error). The transform fixes zod's inference:
 // z.unknown() marks the key optional, but data is always present after the
 // refine, so the output type must be { kind: "json"; data: unknown }.
 const strictJsonPart = z
@@ -220,15 +221,7 @@ const strictJsonPart = z
     message: 'json part requires "data"',
   })
   .transform((p) => ({ kind: "json" as const, data: p.data }));
-const looseJsonPart = z
-  .object({
-    kind: z.literal("json"),
-    data: z.unknown(),
-  })
-  .refine((p) => p.data !== undefined, {
-    message: 'json part requires "data"',
-  })
-  .transform((p) => ({ kind: "json" as const, data: p.data }));
+const looseJsonPart = strictJsonPart;
 
 const strictCodePart = z.object({
   kind: z.literal("code"),

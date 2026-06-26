@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { coerceParts } from "../server/mcpHttp.ts";
+import { coerceSurfaceParts as coerceParts } from "../server/surfaceParts.ts";
 import {
   collectAssetIds,
   type EvictionCandidate,

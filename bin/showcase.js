@@ -118,7 +118,7 @@ usage:
 
 environment:
   SHOWCASE_URL      server base URL (default http://localhost:8229; set to a
-                    deployed instance, e.g. https://showcase.you.workers.dev)
+                    deployed instance, e.g. https://showcase.example.com)
   SHOWCASE_TOKEN    bearer token for a deployed instance
   SHOWCASE_SESSION  fixed session id (overrides auto-detection)
   SHOWCASE_AGENT    agent name used when creating sessions

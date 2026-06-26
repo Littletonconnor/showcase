@@ -268,6 +268,9 @@ export interface Comment {
 // encoding (HTTP/MCP request bodies, JsonFileStore's on-disk JSON).
 export type AssetKind = "image" | "trace" | "file";
 
+export const isAssetKind = (v: unknown): v is AssetKind =>
+  v === "image" || v === "trace" || v === "file";
+
 export interface Asset {
   id: string;
   sessionId: string;
@@ -323,8 +326,9 @@ export interface CommentQuery {
   afterSeq?: number;
 }
 
-// Storage interface — implementations: JsonFileStore (local Node),
-// SqlStore (Cloudflare Durable Object SQLite).
+// Storage interface — implemented by JsonFileStore (the only store in this
+// local fork). Kept as an interface so the store-contract test can hold a
+// future second implementation honest.
 export interface Store {
   listSessions(): Promise<Session[]>;
   getSession(id: string): Promise<Session | null>;
@@ -361,8 +365,9 @@ export interface Store {
 export const HISTORY_LIMIT = 20;
 
 // Per-asset upload cap (enforced at the HTTP/MCP edge → 413) and the board-wide
-// budget the store evicts down to. One Durable Object holds the whole board, so
-// the budget sits well under its ~10 GB SQLite ceiling.
+// budget the store evicts down to. The whole board lives in memory and is
+// rewritten to one JSON file per mutation (see JsonFileStore), so the budget
+// bounds resident size, not just disk.
 export const MAX_ASSET_BYTES = 5 * 1024 * 1024;
 export const MAX_BOARD_ASSET_BYTES = 2 * 1024 * 1024 * 1024;
 
@@ -372,8 +377,8 @@ export const MAX_BOARD_ASSET_BYTES = 2 * 1024 * 1024 * 1024;
 // board token, so the id IS the share secret and must resist enumeration. 64
 // bits (~1.8e19) is far past sweepable; the old `randomUUID().split("-")[0]`
 // kept only the first 32-bit segment (~4e9), brute-forceable in about an hour.
-// (Assets use a separate content-hash id, not this.) btoa is a global in both
-// Node and Workers, same as the atob the asset path already relies on.
+// (Assets use a separate content-hash id, not this.) btoa/crypto are Web
+// platform globals — no `node:` import, per the runtime-agnostic invariant.
 export const newId = () =>
   btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(8))))
     .replace(/\+/g, "-")
@@ -384,7 +389,7 @@ export const newId = () =>
 // it depends only on the content, an agent can derive `/a/:id` from the bytes
 // alone — no upload round-trip — and write the URL into a surface before (or
 // while) the upload lands. Identical uploads collapse to one stored blob.
-// Uses Web Crypto (a global on Node ≥20 and Workers) to stay runtime-agnostic.
+// Uses Web Crypto (a platform global, no `node:` import) to stay runtime-agnostic.
 export async function hashAssetId(data: Uint8Array): Promise<string> {
   // Copy into a fresh ArrayBuffer-backed view: digest wants a definite
   // ArrayBuffer, and this also avoids the SharedArrayBuffer-backed lib type.

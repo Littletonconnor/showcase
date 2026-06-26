@@ -6,8 +6,8 @@ the local-only engine. `CLAUDE.md` symlinks here.
 ## What this is
 
 A live visual surface for terminal coding agents: agents publish surfaces
-(multi-part cards — html, markdown, diff, terminal, image, mermaid, json, code)
-over CLI/MCP/HTTP; the user watches them render in a browser and comments back.
+(multi-part cards — html, markdown, diff, terminal, image, mermaid, json, code,
+chart, trace) over CLI/MCP/HTTP; the user watches them render and comments back.
 The two-way loop — publish → live render → comment → revise/reply — is the
 product. When in doubt, optimize for the loop.
 
@@ -24,8 +24,8 @@ product. When in doubt, optimize for the loop.
   stdio MCP server (a thin client over the HTTP API).
 - `server/surfacePage.ts` / `server/themes.ts` / `server/kits.ts` — sandboxed
   rendering, theme registry, opt-in html-part style bundles (`issues`, `slides`).
-- `viewer/` — Solid + TypeScript, Vite-built into a single self-contained
-  `viewer/dist/index.html`.
+- `viewer/` — React + TypeScript (zustand store, Tailwind, vendored shadcn/ui),
+  Vite-built into a single self-contained `viewer/dist/index.html`.
 - `bin/showcase.js` — zero-dependency CLI. `guide/` — runtime agent instructions.
 
 ## Invariants worth keeping
@@ -35,7 +35,7 @@ product. When in doubt, optimize for the loop.
   viewer shares an origin with the authenticated API and the comment→agent
   channel. Two safe paths: build a STRING and hand it to a sandbox iframe
   (`SandboxedPart` for viewer-rendered parts, `renderHtmlPage` at `/s/:id` for
-  html parts), or keep it as data and render with Solid text nodes / attributes
+  html parts), or keep it as data and render with React text nodes / attributes
   (image, trace). Never a third way.
 - `server/{app,events,mcpHttp,surfacePage,types}.ts` stay runtime-agnostic (no
   `node:` imports). Node wiring lives in `server/index.ts` / `server/storage.ts`.
