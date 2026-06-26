@@ -598,3 +598,51 @@ test("an edge-status changeMap renders as a real mermaid SVG, not a parse error"
   });
   await expect(map.getByText(/Parse error|Couldn't render/)).toHaveCount(0);
 });
+
+test("a surface landing live on the open session shows the 'Working…' indicator + ticker", async ({
+  page,
+  request,
+}) => {
+  // The agent-activity signal: while output lands on the open session, the header
+  // shows a pulsing "Working…" pill and a one-line ticker of the latest action —
+  // distinct from the connection ("Auto-replies") pill, and driven by the live
+  // surface-created SSE event. After a few seconds of silence the pill decays but
+  // the ticker keeps the last action visible.
+  const session = await (
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "activity" } })
+  ).json();
+  const first = await (
+    await request.post("/api/surfaces", {
+      data: {
+        session: session.id,
+        title: "First surface",
+        parts: [{ kind: "markdown", markdown: "hello" }],
+      },
+    })
+  ).json();
+  // Open the session; the first surface predates the page's SSE connection, so
+  // the board starts quiet — no working indicator.
+  await page.goto(`/?surface=${first.id}`);
+  await expect(page.locator(`.card[data-id="${first.id}"]`)).toBeVisible();
+  const header = page.locator("#sessionView > div").first();
+  await expect(header.getByText(/Working/)).toBeHidden();
+
+  // A new surface lands live on the open session → working pill + ticker appear.
+  const second = await (
+    await request.post("/api/surfaces", {
+      data: {
+        session: session.id,
+        title: "Second surface",
+        parts: [{ kind: "markdown", markdown: "more" }],
+      },
+    })
+  ).json();
+  expect(second.id).toBeTruthy();
+
+  await expect(header.getByText(/Working/)).toBeVisible({ timeout: 10_000 });
+  await expect(header.getByText(/published .*Second surface/)).toBeVisible({ timeout: 10_000 });
+
+  // The pill decays after the silence window; the ticker retains the last action.
+  await expect(header.getByText(/Working/)).toBeHidden({ timeout: 15_000 });
+  await expect(header.getByText(/published .*Second surface/)).toBeVisible();
+});

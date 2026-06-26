@@ -1350,6 +1350,7 @@ export function createApp({
       sessionId: comment.sessionId,
       surfaceId: comment.surfaceId,
       seq: comment.seq,
+      author: comment.author,
     });
     // agent replies are writes too — piggyback pending feedback on them, but
     // never on the user's own comments
