@@ -244,7 +244,8 @@ const looseCodePart = z.object({
 // mode rejects an unknown chartType, empty data, or a missing x/y; loose mode
 // coerces a bad chartType to "bar", drops non-object data rows, and drops the
 // whole part only when data/x/y can't yield a plottable chart.
-const chartTypeEnum = z.enum(["bar", "line", "area", "pie"]);
+const chartTypeEnum = z.enum(["bar", "line", "area", "pie", "treemap", "scatter"]);
+const CHART_TYPES = ["bar", "line", "area", "pie", "treemap", "scatter"];
 const strictChartDatum = z.record(z.union([z.string(), z.number(), z.null()]));
 const strictChartY = z.union([z.string().min(1), z.array(z.string().min(1)).nonempty()]);
 // A safe CSS color token: hex, an rgb/hsl function with only numeric content, or
@@ -268,7 +269,7 @@ const looseChartPart = z
   .object({
     kind: z.literal("chart"),
     chartType: z.preprocess(
-      (v) => (v === "bar" || v === "line" || v === "area" || v === "pie" ? v : "bar"),
+      (v) => (typeof v === "string" && CHART_TYPES.includes(v) ? v : "bar"),
       chartTypeEnum,
     ),
     data: z.preprocess(

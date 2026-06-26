@@ -24,6 +24,66 @@ const VERDICT_LABELS = new Set(["request changes", "approved", "approve", "looks
 const scrollToCard = (id: string) =>
   cardEls.get(id)?.card.scrollIntoView({ behavior: "smooth", block: "start" });
 
+// A compact burndown sparkline — open findings falling toward zero (§8.3). Drawn
+// as hand-rolled SVG (no chart lib) over the resolve/dismiss events the verdict
+// bar already tracks: the review's visible terminal state, not just PR
+// statistics. A linear decline from the finding count down to what's still open;
+// the area + line turn emerald once it reaches zero (review complete).
+function BurndownSparkline(props: { series: number[] }) {
+  const series = props.series;
+  const total = Math.max(series[0] ?? 0, 1);
+  const W = 260;
+  const H = 34;
+  const pad = 3;
+  const n = series.length;
+  const xAt = (i: number) => (n <= 1 ? W - pad : pad + (i / (n - 1)) * (W - 2 * pad));
+  const yAt = (v: number) => pad + (1 - v / total) * (H - 2 * pad);
+  // A single point (no resolutions yet) draws a flat line at the ceiling so the
+  // sparkline still reads as "0 of m done — here's the goal".
+  const pts: Array<[number, number]> =
+    n <= 1
+      ? [
+          [pad, yAt(series[0] ?? 0)],
+          [W - pad, yAt(series[0] ?? 0)],
+        ]
+      : series.map((v, i) => [xAt(i), yAt(v)]);
+  const path = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+  const first = pts[0];
+  const last = pts[pts.length - 1];
+  const area = `${path} L${last[0].toFixed(1)} ${H - pad} L${first[0].toFixed(1)} ${H - pad} Z`;
+  const done = series[series.length - 1] === 0;
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
+      className={cx(
+        "h-[34px] w-full",
+        done ? "text-emerald-600 dark:text-emerald-400" : "text-brand",
+      )}
+      aria-hidden="true"
+    >
+      <line
+        x1={pad}
+        y1={H - pad}
+        x2={W - pad}
+        y2={H - pad}
+        stroke="currentColor"
+        strokeOpacity={0.15}
+        vectorEffect="non-scaling-stroke"
+      />
+      <path d={area} fill="currentColor" fillOpacity={0.12} />
+      <path
+        d={path}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
+  );
+}
+
 // A live verdict for a review session: rolls up the finding-card badges into
 // scannable count chips ("2 Bug · 1 Nit"), worst-severity first, so the review
 // reads as one artifact instead of a scattered pile. Derived from the cards the
@@ -77,6 +137,27 @@ export function ReviewSummary(props: { surfaces: Surface[] }) {
     (s) => s.badge && VERDICT_LABELS.has(s.badge.label.toLowerCase()),
   )?.badge?.label;
 
+  // The burndown series: open findings over the resolution timeline — starts at
+  // the finding count and steps down once per finding resolved, in the order the
+  // user approved/dismissed them (comment seq). Feeds BurndownSparkline.
+  const burndown = useMemo(() => {
+    const findingIds = new Set(findings.map((s) => s.id));
+    const counted = new Set<string>();
+    const series = [findings.length];
+    let open = findings.length;
+    for (const c of [...comments].sort((a, b) => a.seq - b.seq)) {
+      if (!c.surfaceId || !findingIds.has(c.surfaceId) || counted.has(c.surfaceId)) continue;
+      if (!isResolutionComment(c)) continue;
+      counted.add(c.surfaceId);
+      open -= 1;
+      series.push(open);
+    }
+    return series;
+    // findings is derived from props.surfaces each render; key the memo on the
+    // stable inputs (the surface set and comments) it's computed from.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.surfaces, comments]);
+
   // Keyboard-driven review traversal (§ P5): fly through the open findings and
   // resolve them without the mouse, so the review has a visible terminal state.
   //   j / k — next / previous open finding (worst first, wrapping)
@@ -123,16 +204,33 @@ export function ReviewSummary(props: { surfaces: Surface[] }) {
     );
     btn?.click();
   };
+  // 'x' — mark the next unreviewed file in the overview manifest reviewed. The
+  // manifest (and its checkboxes) live inside the sandboxed overview iframe, so
+  // we broadcast a command into every embedded frame; only the review kit acts,
+  // ticks the next box, and posts progress back for a toast (see onBridgeMessage).
+  const markNextReviewed = () => {
+    for (const f of root().querySelectorAll("iframe")) {
+      f.contentWindow?.postMessage({ __showcase: true, type: "review-cmd", cmd: "mark-next" }, "*");
+    }
+  };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-      if (!["j", "k", "n", "a", "d", "c"].includes(e.key)) return;
+      if (!["j", "k", "n", "a", "d", "c", "x"].includes(e.key)) return;
       const el = root().activeElement as HTMLElement | null;
       const tag = el?.tagName;
       // Don't hijack typing in the composer, an editable title, or a focused part.
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "IFRAME" || el?.isContentEditable)
         return;
-      if (useBoard.getState().readingId || !openRef.current.length) return;
+      if (useBoard.getState().readingId) return;
+      // 'x' drives the file-manifest burn-down, independent of the finding cursor,
+      // so it works even once every finding is resolved.
+      if (e.key === "x") {
+        e.preventDefault();
+        markNextReviewed();
+        return;
+      }
+      if (!openRef.current.length) return;
       e.preventDefault();
       if (e.key === "j" || e.key === "n") jumpToOpen(1);
       else if (e.key === "k") jumpToOpen(-1);
@@ -186,6 +284,17 @@ export function ReviewSummary(props: { surfaces: Surface[] }) {
           );
         })}
       </div>
+      {/* The burndown sparkline: open findings falling toward zero — the review's
+          terminal state made visual. Shown once there's more than one finding to
+          burn down. */}
+      {findingsTotal >= 2 ? (
+        <div
+          className="max-w-[280px] pl-0.5"
+          title={`${findingsTotal - openCount} of ${findingsTotal} findings resolved`}
+        >
+          <BurndownSparkline series={burndown} />
+        </div>
+      ) : null}
       {/* The burndown row: an open/resolved tally and a pager while findings are
           open, an explicit terminal verdict once they're all resolved. */}
       {findingsTotal > 0 ? (
@@ -204,7 +313,7 @@ export function ReviewSummary(props: { surfaces: Surface[] }) {
                 <ArrowDown className="size-3" />
               </button>
               <span className="text-faint/70 max-[700px]:hidden">
-                j/k move · a approve · d dismiss · c comment
+                j/k move · a approve · d dismiss · c comment · x file done
               </span>
             </>
           ) : (

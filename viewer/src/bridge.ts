@@ -13,6 +13,9 @@ export async function onBridgeMessage(ev: MessageEvent) {
     text?: unknown;
     url?: string;
     key?: string;
+    file?: string;
+    done?: number;
+    total?: number;
   } | null;
   if (!d || !d.__showcase) return;
   // Every host-affecting message must come from a frame the viewer actually
@@ -69,6 +72,11 @@ export async function onBridgeMessage(ev: MessageEvent) {
       window.open(link.href, "_blank", "noopener");
   } else if (d.type === "copy" && isOwnFrame(ev.source)) {
     void navigator.clipboard?.writeText(String(d.text)).catch(() => {});
+  } else if (d.type === "review-reviewed" && isOwnFrame(ev.source)) {
+    // The overview kit ticked a manifest file reviewed (driven by the 'x' key);
+    // confirm it with the running file burn-down count.
+    const file = typeof d.file === "string" && d.file.trim() ? d.file.trim() : "file";
+    toast(`Marked ${file} reviewed — ${d.done ?? 0}/${d.total ?? 0} files`);
   }
 }
 

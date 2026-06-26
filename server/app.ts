@@ -718,6 +718,87 @@ function buildChurnChart(
   };
 }
 
+// Risk-weighted treemap (§8.1): area = churn, color = the agent's priority tier
+// (sensitive → hot red, logic → amber, mechanical → gray). The reviewer's eye is
+// pulled to the big hot rectangle — attention routing as a visual reflex. Built
+// from the SAME manifest the overview renders, so it's the file manifest made
+// visual, and it supersedes the churn bar (§8.4). Skipped on a trivial review
+// (fewer than two churned files), where a treemap adds nothing.
+function buildRiskTreemap(manifest: ManifestRowInput[] | undefined): SurfacePart | undefined {
+  const rows = (Array.isArray(manifest) ? manifest : [])
+    .map((m) => ({
+      file: typeof m?.file === "string" ? m.file.trim() : "",
+      size:
+        (Number.isFinite(m?.added) ? Math.max(0, Number(m?.added)) : 0) +
+        (Number.isFinite(m?.removed) ? Math.max(0, Number(m?.removed)) : 0),
+      tone:
+        typeof m?.priority === "string" && Object.hasOwn(PRIORITY_RANK, m.priority)
+          ? m.priority
+          : "logic",
+    }))
+    .filter((r) => r.file && r.size > 0);
+  if (rows.length < 2) return undefined;
+  // Label by basename (the full path won't fit a cell); disambiguate collisions.
+  const seen = new Map<string, number>();
+  const data = rows.map((r) => {
+    let name = r.file.split("/").pop() || r.file;
+    const n = seen.get(name) ?? 0;
+    seen.set(name, n + 1);
+    if (n > 0) name = `${name} (${n + 1})`;
+    return { name, size: r.size, tone: r.tone };
+  });
+  return {
+    kind: "chart",
+    chartType: "treemap",
+    data,
+    x: "name",
+    y: "size",
+    caption: "Risk-weighted — area = churn, color = sensitivity (red) → mechanical (gray)",
+  };
+}
+
+// Confidence × coverage quadrant (§8.3): each finding placed by how sure the
+// agent was (x) vs how much it verified (y). The bottom-right — high confidence,
+// low coverage — is the danger zone (a confident change in unchecked code, the
+// single most dangerous LLM output). x is the confidence level; y is derived
+// from `verified` + the coverage note (an explicit "did not"/"untested" reads as
+// low coverage), so the quadrant needs no field the finding doesn't already
+// carry. Points jitter deterministically so coincident findings don't hide.
+const CONFIDENCE_LEVEL: Record<string, number> = { high: 3, medium: 2, low: 1 };
+const COVERAGE_GAP_RE =
+  /\bdid\s?n['’]?t\b|\bdid not\b|\bnot\b|\bun(?:verified|tested|checked)\b|\bcould\s?n['’]?t\b|\bno tests?\b|\bwithout\b|\bhaven['’]?t\b|\bunable\b/i;
+function coverageLevelOf(f: FindingInput): number {
+  if (f.verified === true) return 3;
+  if (f.coverage && COVERAGE_GAP_RE.test(f.coverage)) return 1;
+  return 2;
+}
+function buildQuadrant(findings: FindingInput[]): SurfacePart | undefined {
+  const real = findings.filter(isRealFinding);
+  if (real.length < 2) return undefined;
+  const data = real.map((f, i) => {
+    const conf = CONFIDENCE_LEVEL[f.confidence ?? ""] ?? 2;
+    const cov = coverageLevelOf(f);
+    const jx = ((i % 5) - 2) * 0.05;
+    const jy = ((Math.floor(i / 5) % 5) - 2) * 0.05;
+    return {
+      conf: conf + jx,
+      cov: cov + jy,
+      label: f.title.trim().slice(0, 80),
+      tone: conf === 3 && cov === 1 ? "danger" : "normal",
+    };
+  });
+  return {
+    kind: "chart",
+    chartType: "scatter",
+    data,
+    x: "conf",
+    y: "cov",
+    xLabel: "confidence",
+    yLabel: "coverage",
+    caption: "Confidence × coverage — bottom-right (sure but unverified) is the danger zone",
+  };
+}
+
 // The opinionated overview (§ P1/P2): the agent declares intent, a composite
 // risk band over four sub-signals, a review budget, and a priority-ranked file
 // manifest; showcase renders them the same way every time as a single `review`-
@@ -1103,12 +1184,21 @@ export function createApp({
     const overviewPart = buildOverview(input);
     if (overviewPart) verdictParts.push(overviewPart);
     verdictParts.push({ kind: "markdown", markdown: buildVerdictMarkdown(input) });
+    // Where to look: the risk treemap (the manifest made visual). It supersedes
+    // the churn bar (§8.4), so the bar only renders when there's no treemap.
+    const treemap = buildRiskTreemap(input.manifest);
+    if (treemap) verdictParts.push(treemap);
+    // Can I trust it: the confidence × coverage quadrant over the findings.
+    const quadrant = buildQuadrant(input.findings);
+    if (quadrant) verdictParts.push(quadrant);
+    // How it's wired: the change map (or a raw architecture mermaid escape hatch).
     const changeMapPart = input.changeMap ? buildChangeMap(input.changeMap) : undefined;
     if (changeMapPart) verdictParts.push(changeMapPart);
     else if (input.architecture?.trim()) {
       verdictParts.push({ kind: "mermaid", mermaid: input.architecture.trim() });
     }
-    const churnChart = Array.isArray(input.churn) ? buildChurnChart(input.churn) : undefined;
+    const churnChart =
+      !treemap && Array.isArray(input.churn) ? buildChurnChart(input.churn) : undefined;
     if (churnChart) verdictParts.push(churnChart);
     const verdictTitle = input.branch ? `Review — ${input.branch}` : "Review verdict";
 

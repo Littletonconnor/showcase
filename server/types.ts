@@ -160,9 +160,16 @@ export interface CodePart {
 // `data` is row-oriented (an array of objects). `x` names the category field
 // (the x axis for bar/line/area, the slice label for pie); `y` names the numeric
 // series — one field, or several to plot multiple series / a stacked chart.
+//
+// Two review-oriented forms carry a second visual dimension (§8): a `treemap`
+// (area = `y` value, e.g. churn; `x` = the cell label) and a `scatter` (a
+// confidence×coverage quadrant; `x`/`y` are the two numeric axis fields). Both
+// read an optional per-row `tone` field ("sensitive"/"logic"/"mechanical" for a
+// treemap; "danger"/"normal" for a scatter point) to color the cell/point from a
+// fixed palette — no agent-supplied color, so nothing to sanitize.
 export interface ChartPart {
   kind: "chart";
-  chartType: "bar" | "line" | "area" | "pie";
+  chartType: "bar" | "line" | "area" | "pie" | "treemap" | "scatter";
   data: Array<Record<string, string | number | null>>;
   x: string;
   y: string | string[];
