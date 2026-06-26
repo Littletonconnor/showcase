@@ -5,8 +5,11 @@ import {
   coerceChurn,
   type CommentWait,
   coerceFinding,
+  coerceOverview,
   type Feedback,
   type FindingInput,
+  type ManifestRowInput,
+  type RiskInput,
 } from "./app.ts";
 import { decodeBase64 } from "./base64.ts";
 import {
@@ -56,6 +59,10 @@ export interface McpDeps {
     summary?: string;
     coverage?: string;
     architecture?: string;
+    intent?: string;
+    risk?: RiskInput;
+    budget?: string;
+    manifest?: ManifestRowInput[];
     changeMap?: ChangeMapInput;
     churn?: Array<{ file?: string; added?: number; removed?: number }>;
     findings: FindingInput[];
@@ -128,6 +135,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
       case "publish_review": {
         const str = (v: unknown) => (typeof v === "string" ? v : undefined);
         const findings = Array.isArray(args.findings) ? args.findings.map(coerceFinding) : [];
+        const overview = coerceOverview(args);
         const result = await deps.publishReview({
           verdict: str(args.verdict),
           branch: str(args.branch),
@@ -135,6 +143,10 @@ export function registerMcp(app: Hono, deps: McpDeps) {
           summary: str(args.summary),
           coverage: str(args.coverage),
           architecture: str(args.architecture),
+          intent: overview.intent,
+          risk: overview.risk,
+          budget: overview.budget,
+          manifest: overview.manifest,
           changeMap: coerceChangeMap(args.changeMap),
           churn: coerceChurn(args.churn),
           findings,

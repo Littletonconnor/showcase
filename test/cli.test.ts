@@ -310,6 +310,10 @@ test("finding composes a structured review card", async () => {
       "Null check missing",
       "--problem",
       "args not checked",
+      "--confidence",
+      "high",
+      "--coverage",
+      "read the constructor",
       "--file",
       "Foo.java",
       "--line",
@@ -334,6 +338,10 @@ test("finding composes a structured review card", async () => {
       "Use a constant",
       "--problem",
       "magic number",
+      "--confidence",
+      "medium",
+      "--coverage",
+      "grepped call sites",
       "--before",
       before,
       "--after",
@@ -376,6 +384,22 @@ test("review scaffolds a session from a branch diff", async () => {
     assert.equal(out.files, 2, "counts the two changed files");
     assert.match(out.url, /\/session\//);
     assert.match(out.prompt, /Review the branch feature against main/);
+
+    // The churn-seeded overview heuristics: a manifest row per file (both plain
+    // logic here) + a composite risk the agent refines.
+    assert.equal(out.manifest.length, 2, "one manifest row per changed file");
+    assert.deepEqual(out.manifest.map((m: any) => m.priority).sort(), ["logic", "logic"]);
+    assert.ok(out.manifest.every((m: any) => typeof m.note === "string" && m.note));
+    assert.ok(["low", "elevated", "high"].includes(out.risk.band), "risk carries a band");
+    for (const k of ["size", "surfaceArea", "sensitivity", "testDelta"]) {
+      assert.ok(out.risk[k] >= 0 && out.risk[k] <= 3, `risk.${k} is a 0–3 weight`);
+    }
+    // Logic changed but no tests moved → the dangerous gap → testDelta pegged high.
+    assert.equal(out.risk.testDelta, 3);
+    // The prompt teaches the new overview + honesty-signal fields.
+    assert.match(out.prompt, /intent/);
+    assert.match(out.prompt, /confidence/);
+    assert.match(out.prompt, /coverage/);
 
     // The scaffolded card carries the In-review badge + the diffstat + files.
     const full = (await (await fetch(`${server.url}/api/surfaces/${out.surface}`)).json()) as any;

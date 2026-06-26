@@ -154,6 +154,100 @@ const ANIMATE_JS = `
 })();
 `;
 
+// review: the standardized PR-review overview. A `.risk` band over four
+// `.signal` sub-bars (size / area / sensitivity / tests), a one-line `.budget`,
+// and a priority-ranked `.manifest` whose rows carry a priority `.pri` dot, a
+// two-tone churn `.spark`, a "why it matters" note, and a reviewed checkbox.
+// `.finding-head` styles the severity + confidence + verified chip row. Every
+// color resolves against the theme tokens, so the overview re-themes with the
+// board. The JS wires the reviewed-checkbox burn-down (a live "n/m reviewed"
+// counter) and collapses the low-attention (mechanical) bucket behind a toggle.
+const REVIEW_CSS = `
+.risk{display:flex;flex-direction:column;gap:10px;padding:12px 14px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-lg);background:var(--color-background-secondary)}
+.risk-band{display:inline-flex;align-items:center;gap:7px;font:600 14px/1.3 var(--font-sans);color:var(--color-text-primary)}
+.risk-band .lvl{width:9px;height:9px;border-radius:999px;background:var(--color-text-tertiary);flex:none}
+.risk-band.low .lvl{background:var(--color-text-success)}
+.risk-band.elevated .lvl{background:var(--color-text-warning)}
+.risk-band.high .lvl{background:var(--color-text-danger)}
+.signals{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center}
+.signals .sig-label{font:500 12px/1.3 var(--font-sans);color:var(--color-text-secondary);white-space:nowrap}
+.signals .sig-label .num{margin-left:4px;color:var(--color-text-tertiary)}
+.signal{height:6px;border-radius:999px;background:var(--color-background-primary);overflow:hidden}
+.signal>i{display:block;height:100%;border-radius:inherit;background:var(--color-text-secondary)}
+.signal.hot>i{background:var(--color-text-danger)}
+.signal.warm>i{background:var(--color-text-warning)}
+.signal.cool>i{background:var(--color-text-success)}
+.budget{font:500 13px/1.4 var(--font-sans);color:var(--color-text-secondary)}
+.budget b{color:var(--color-text-primary);font-weight:600}
+.manifest{display:flex;flex-direction:column;gap:1px;margin:0;padding:0;list-style:none}
+.manifest-row{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:var(--border-radius-md)}
+.manifest-row:hover{background:var(--color-background-secondary)}
+.manifest-row.reviewed .file{text-decoration:line-through;color:var(--color-text-tertiary)}
+.manifest-row .pri{width:8px;height:8px;border-radius:999px;background:var(--color-text-tertiary);flex:none}
+.manifest-row.sensitive .pri{background:var(--color-text-danger)}
+.manifest-row.logic .pri{background:var(--color-text-warning)}
+.manifest-row.mechanical .pri{background:var(--color-text-tertiary)}
+.manifest-row .file{font:400 13px/1.4 var(--font-mono);color:var(--color-text-primary)}
+.manifest-row .note{font:400 12px/1.4 var(--font-sans);color:var(--color-text-tertiary);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spark{display:inline-flex;height:9px;width:60px;border-radius:3px;overflow:hidden;background:var(--color-background-secondary);flex:none}
+.spark>span{display:block;height:100%}
+.spark>.add{background:#2f9e44}.spark>.del{background:#e03131}
+.manifest-row .churn{font:400 11px/1 var(--font-mono);color:var(--color-text-tertiary);min-width:60px;text-align:right}
+.manifest-row .rev{flex:none;width:15px;height:15px;cursor:pointer;accent-color:var(--color-text-info)}
+.cold-toggle{display:flex;align-items:center;gap:7px;width:100%;padding:6px 8px;margin-top:2px;border:0;border-radius:var(--border-radius-md);background:transparent;color:var(--color-text-tertiary);font:500 12px/1.3 var(--font-sans);cursor:pointer;text-align:left}
+.cold-toggle:hover{background:var(--color-background-secondary)}
+.cold-toggle .caret{transition:transform .15s}
+.cold-toggle[aria-expanded="true"] .caret{transform:rotate(90deg)}
+.cold-bucket[hidden]{display:none}
+.review-progress{font:500 12px/1.3 var(--font-sans);color:var(--color-text-secondary)}
+.review-progress.done{color:var(--color-text-success)}
+.finding-head{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.finding-head .sev{display:inline-flex;align-items:center;font:600 12px/1.4 var(--font-sans);padding:2px 9px;border-radius:999px;background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.finding-head .sev.bug{background:var(--color-background-danger);color:var(--color-text-danger)}
+.finding-head .sev.nit{background:var(--color-background-warning);color:var(--color-text-warning)}
+.finding-head .sev.question{background:var(--color-background-info);color:var(--color-text-info)}
+.finding-head .conf{display:inline-flex;align-items:center;gap:4px;font:500 12px/1.4 var(--font-sans);color:var(--color-text-secondary)}
+.finding-head .conf .lvl{width:7px;height:7px;border-radius:999px;background:var(--color-text-tertiary)}
+.finding-head .conf.high .lvl{background:var(--color-text-success)}
+.finding-head .conf.medium .lvl{background:var(--color-text-warning)}
+.finding-head .conf.low .lvl{background:var(--color-text-danger)}
+.finding-head .verified{display:inline-flex;align-items:center;gap:4px;font:500 12px/1.4 var(--font-sans);color:var(--color-text-success)}
+`;
+
+// Live reviewed-checkbox burn-down + collapsible mechanical bucket. Self-
+// contained inside the sandbox iframe: it updates a local "n/m reviewed"
+// counter and toggles the cold bucket — no host round-trip needed. (The
+// session-level burn-down the keyboard layer drives lives in the trusted viewer.)
+const REVIEW_JS = `
+(function(){
+  var rows=[].slice.call(document.querySelectorAll('.manifest-row'));
+  var prog=document.querySelector('.review-progress');
+  function paint(){
+    if(!prog)return;
+    var boxes=rows.map(function(r){return r.querySelector('.rev');}).filter(Boolean);
+    var done=boxes.filter(function(b){return b.checked;}).length;
+    prog.textContent=done+' / '+boxes.length+' reviewed';
+    prog.classList.toggle('done',boxes.length>0&&done===boxes.length);
+  }
+  rows.forEach(function(r){
+    var box=r.querySelector('.rev');
+    if(!box)return;
+    r.classList.toggle('reviewed',box.checked);
+    box.addEventListener('change',function(){r.classList.toggle('reviewed',box.checked);paint();});
+  });
+  var toggle=document.querySelector('.cold-toggle');
+  var bucket=document.querySelector('.cold-bucket');
+  if(toggle&&bucket){
+    toggle.addEventListener('click',function(){
+      var open=toggle.getAttribute('aria-expanded')==='true';
+      toggle.setAttribute('aria-expanded',String(!open));
+      bucket.hidden=open;
+    });
+  }
+  paint();
+})();
+`;
+
 export const KITS: Kit[] = [
   {
     id: "issues",
@@ -177,6 +271,14 @@ export const KITS: Kit[] = [
     classes: "anim · step · cue (+ injected play/scrub controls)",
     css: ANIMATE_CSS,
     js: ANIMATE_JS,
+  },
+  {
+    id: "review",
+    label: "Review",
+    summary: "PR-review overview — risk band, signal bars, review budget, priority manifest",
+    classes: "risk · signal · budget · manifest · spark · finding-head",
+    css: REVIEW_CSS,
+    js: REVIEW_JS,
   },
 ];
 

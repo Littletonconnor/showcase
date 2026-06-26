@@ -77,12 +77,16 @@ This is showcase's flagship workflow — _"the future of code review is multimod
 
 **Break the PR into its critical pieces** — the entity, the wiring, the test coverage — not file-by-file. Read the actual code paths, not just the diff hunks.
 
-**Publish the whole review in ONE `publish_review` call.** Do NOT write it as a single markdown surface — that wall of text is the exact failure this replaces. You hand over a `verdict`, a `summary`/`coverage`, an `architecture` diagram, and a `findings[]` array (one entry per piece); showcase explodes it into a verdict card + one card per finding. It's the same effort as writing the review, but it can't become a wall — the structure is the API.
+**Publish the whole review in ONE `publish_review` call.** Do NOT write it as a single markdown surface — that wall of text is the exact failure this replaces. You hand over the **overview** (`intent`, `risk`, `budget`, `manifest`), a `verdict`, a `summary`/`coverage`, a `changeMap`, and a `findings[]` array (one entry per piece); showcase explodes it into a verdict card + one card per finding. It's the same effort as writing the review, but it can't become a wall — the structure is the API.
+
+**The product is attention routing.** A diff browser scales with the size of the change; a review scales with the size of the _risk_. So lead with a map the reviewer reads _before_ the diff, and let them confidently skip the rest.
 
 **The structure is fixed, so every review reads the same** no matter how big or small the PR:
 
-- **Verdict card** (the map) — the verdict badge, your `summary`, a finding **tally** + **severity table**, your `coverage` note, and the **change map** (`changeMap`) — the headline visual: the changed pieces and how they interact, color-coded new/modified/touched/removed. Read this first and you know the shape of the PR.
-- **One card per finding** (top-to-bottom: what's wrong → the change → why) — a severity badge + `file:line`, the **Problem**, a **before→after `suggestion`** rendered as an inline diff, and **Why it's better** (`fix`).
+- **Verdict card** (the map) — it LEADS with your **overview**: `intent` (1–2 sentences on what the PR is trying to do), a composite **risk** band over four sub-signals (`size`, `surfaceArea`, `sensitivity`, `testDelta` — each 0–3 — plus a `band`), a **budget** line ("~8 min · 3 files need real eyes · 9 mechanical"), and a priority-ranked **manifest** (`[{file, added, removed, priority, note}]` — `sensitive` first, `mechanical` collapses into a low-attention bucket). Then your `summary`, a finding **tally** + **severity table**, your `coverage` note, and the **change map** (`changeMap`) — the changed pieces and how they interact, color-coded new/modified/touched/removed, with edge `status` marking new/severed coupling.
+- **One card per finding** (top-to-bottom: trust signal → what's wrong → the change → why) — its head carries **confidence** + a **coverage** line (what you DID and did NOT check) + an optional **verified**/`scope` chip; then a severity badge + `file:line`, the **Problem**, a **before→after `suggestion`** rendered as an inline diff, **Why it's better** (`fix`), and an optional **blast radius** mini call-graph.
+
+**Risk & priority are yours to judge.** You have the semantic context a path regex never will — a 30-line auth-token change outranks a 900-line lockfile bump. `showcase review` seeds a churn-based manifest + risk as a _starting point_; refine them from your actual read.
 
 ```jsonc
 // publish_review — one call → a verdict card + a card per finding
@@ -90,10 +94,27 @@ This is showcase's flagship workflow — _"the future of code review is multimod
   "branch": "cl/ALLM-116",
   "base": "master",
   "verdict": "comment", // request_changes | approve | comment
+  // OVERVIEW — read before any hunk. intent + risk + budget + manifest.
+  "intent": "Adds a FinancialChatFeedback entity and wires the cipher + persistence so chat feedback is stored encrypted.",
+  "risk": {
+    "size": 1, // total churn, 0–3
+    "surfaceArea": 2, // distinct files/modules/exports touched, 0–3
+    "sensitivity": 2, // auth/data-model/migration/money/config weight, 0–3
+    "testDelta": 1, // did tests move with the logic (untouched = riskier), 0–3
+    "band": "elevated", // low | elevated | high
+  },
+  "budget": "~7 min · 2 files need real eyes · 1 mechanical",
+  "manifest": [
+    // priority: sensitive | logic | mechanical (sensitive first; mechanical collapses)
+    { "file": "FinancialChatFeedback.java", "added": 64, "removed": 0, "priority": "sensitive", "note": "new entity — persists user feedback" },
+    { "file": "ChatController.java", "added": 22, "removed": 6, "priority": "logic", "note": "save path" },
+    { "file": "feedback.hbm.xml", "added": 18, "removed": 0, "priority": "mechanical", "note": "generated mapping" },
+  ],
   "summary": "Adds the FinancialChatFeedback entity + cipher wiring + persistence tests. No P1s.",
   "coverage": "Read the entity + mapping + cipher wiring; did not exercise the sql-schema repo changes.",
   // The headline visual: the changed pieces and how they interact. One node per
-  // changed file/symbol (status → color, kind → shape); one edge per interaction.
+  // changed file/symbol (status → color, kind → shape); one edge per interaction
+  // (edge status → new/severed/unchanged coupling).
   "changeMap": {
     "nodes": [
       { "id": "ctrl", "label": "ChatController", "status": "modified", "kind": "class" },
@@ -102,9 +123,9 @@ This is showcase's flagship workflow — _"the future of code review is multimod
       { "id": "worker", "label": "LembasWorker", "status": "modified", "kind": "class" },
     ],
     "edges": [
-      { "from": "ctrl", "to": "fb", "label": "saves" },
-      { "from": "fb", "to": "map", "label": "persists" },
-      { "from": "worker", "to": "fb", "label": "installs cipher" },
+      { "from": "ctrl", "to": "fb", "label": "saves", "status": "new" }, // new coupling
+      { "from": "fb", "to": "map", "label": "persists", "status": "new" },
+      { "from": "worker", "to": "fb", "label": "installs cipher", "status": "existing" },
     ],
   },
   "findings": [
@@ -113,6 +134,9 @@ This is showcase's flagship workflow — _"the future of code review is multimod
       "title": "Constructor doesn't fail-fast on required fields",
       "file": "FinancialChatFeedback.java",
       "line": 38,
+      "confidence": "high", // REQUIRED — high|medium|low
+      "coverage": "Read the constructor + the .hbm.xml not-null constraints; did not run the persistence suite.", // REQUIRED — what you did/didn't check
+      "scope": "whole-file", // changed-lines | whole-file | codebase (optional)
       "problem": "`createdAt`/`userId` are assigned without null checks; the `.hbm.xml` enforces not-null at the DB layer, so a null surfaces at flush, not construction.",
       // The fix as a before→after pair — showcase computes the diff so it ALWAYS renders.
       "suggestion": {
@@ -125,6 +149,8 @@ This is showcase's flagship workflow — _"the future of code review is multimod
       "severity": "praise",
       "title": "Worker cipher split is clean",
       "file": "LembasWorker.java",
+      "confidence": "medium",
+      "coverage": "Compared the SHARED_CIPHER_INFOS vs CIPHER_INFOS scoping; did not audit every call site.",
       "problem": "Worker installs SHARED_CIPHER_INFOS while Lembas installs CIPHER_INFOS — correctly scopes the new cipher.",
     },
   ],
@@ -133,7 +159,9 @@ This is showcase's flagship workflow — _"the future of code review is multimod
 
 **Always use `suggestion:{before,after}` for a fix, not `patch`.** showcase builds the diff from the two contents, so the change always renders; a hand-written `patch` shows an empty "−0 +0" diff the moment it isn't a valid unified diff. Reserve `patch` for showing the PR's _actual_ change in context. Put **why** the change is better in `fix` — it renders under the diff as "Why it's better."
 
-**Be thorough, and back every claim.** Each `problem` names the symbol + `file:line` and the concrete impact (who hits it, how bad, under what input — quantify when you can). Add a `diagram` to a finding when its own control/data flow matters. Findings aren't only problems — use `praise` for genuinely good work and `question` for what you couldn't judge. (To add a single finding later, `review_finding` takes the same fields for one card.)
+**`confidence` + `coverage` are REQUIRED on every finding — a finding missing either is rejected.** The most dangerous LLM output is a confident-looking change in an unchecked area, so every finding must declare how sure you are and what you did vs didn't verify. Be honest: "did not run the migration" is more useful than false certainty. Add `verified: true` only when you actually ran/reproduced it, `scope` to say how far you had to look, and a `blastRadius: {nodes, edges}` call-graph when a finding's reach (callers / tests that do or don't cover it) is the point.
+
+**Be thorough, and back every claim.** Each `problem` names the symbol + `file:line` and the concrete impact (who hits it, how bad, under what input — quantify when you can). Add a `diagram` to a finding when its own control/data flow matters. Findings aren't only problems — use `praise` for genuinely good work and `question` for what you couldn't judge. (To add a single finding later, `review_finding` takes the same fields — including the required `confidence`/`coverage` — for one card.)
 
 **The verdict card is built for you** from `publish_review`'s `verdict` + `summary` + `coverage` + `architecture` + the `findings[]` (the tally, severity table, and diagram). The session header **also** rolls every finding badge into a live count summary — "1 Bug · 1 Nit · 1 Praise" — each chip jumping to its finding, and it **burns down** as the user Approves/Dismisses cards. So write a real `summary` and an honest `coverage` note (what you reviewed and deliberately skipped), and the verdict reads as a verdict, not a sentence.
 

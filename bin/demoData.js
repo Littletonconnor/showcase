@@ -182,7 +182,11 @@ const DRILLDOWN = `
 // A review finding card — the flagship "visual PR review" composition: a tone
 // badge ("Bug") + prose naming the problem + a mermaid control-flow of the buggy
 // path + the fix diff, all in one surface. This is the screenshot, reproduced.
-const REVIEW_BUG_PROSE = `**What** — \`uploadAsset\` (server/app.ts:747) calls \`c.req.arrayBuffer()\` to buffer the **entire request body into memory** before the \`MAX_ASSET_BYTES\` check on line 759.
+const REVIEW_BUG_PROSE = `_High confidence · scope: changed lines · ✓ verified_
+
+**Coverage** — reproduced the OOM with a 2 GB upload against a local board; did not test chunked uploads that omit content-length.
+
+**What** — \`uploadAsset\` (server/app.ts:747) calls \`c.req.arrayBuffer()\` to buffer the **entire request body into memory** before the \`MAX_ASSET_BYTES\` check on line 759.
 
 **Why it matters** — the size guard never runs for an oversized request: a 2 GB upload allocates ~2 GB of heap and can OOM \`showcase serve\` before the 413 is ever returned. Local boards ship with no auth token, so any client on the network can trigger it.
 
@@ -195,8 +199,34 @@ const REVIEW_BUG_FLOW = `flowchart LR
   size -- no --> store[store]
   read -. OOM .-> heap[heap exhausted]`;
 
+// The opinionated overview (the review-kit html part buildOverview emits):
+// intent + a composite risk band over four signal sub-bars + a review budget +
+// a priority-ranked manifest (sensitive first; the mechanical row collapses).
+// Hand-built here to match the server's output so the demo shows the real shape.
+const REVIEW_OVERVIEW = `<div class="stack lg">
+  <p class="title">Stream-cap asset uploads so an oversized request is rejected before the whole body is buffered into memory.</p>
+  <div class="risk">
+    <div class="between"><span class="risk-band elevated"><span class="lvl"></span>Risk: Elevated</span><span class="review-progress"></span></div>
+    <div class="signals">
+      <span class="sig-label">Size<span class="num">1/3</span></span><div class="signal cool"><i style="width:33%"></i></div>
+      <span class="sig-label">Surface<span class="num">1/3</span></span><div class="signal cool"><i style="width:33%"></i></div>
+      <span class="sig-label">Sensitivity<span class="num">3/3</span></span><div class="signal hot"><i style="width:100%"></i></div>
+      <span class="sig-label">Tests<span class="num">2/3</span></span><div class="signal warm"><i style="width:67%"></i></div>
+    </div>
+    <div class="budget">~6 min · <b>1 file</b> needs real eyes · 1 mechanical</div>
+  </div>
+  <ul class="manifest">
+    <li class="manifest-row sensitive"><span class="pri"></span><span class="file">server/app.ts</span><span class="spark"><span class="add" style="width:80%"></span><span class="del" style="width:20%"></span></span><span class="churn">+24 −6</span><span class="note">upload path — unbounded buffer</span><input class="rev" type="checkbox" aria-label="Mark server/app.ts reviewed"></li>
+    <li class="manifest-row logic"><span class="pri"></span><span class="file">test/assets.test.ts</span><span class="spark"><span class="add" style="width:100%"></span><span class="del" style="width:0%"></span></span><span class="churn">+18 −0</span><span class="note">covers the new size guard</span><input class="rev" type="checkbox" aria-label="Mark test/assets.test.ts reviewed"></li>
+  </ul>
+  <button class="cold-toggle" aria-expanded="false" type="button"><span class="caret">▸</span> 1 mechanical file (low attention)</button>
+  <div class="cold-bucket" hidden><ul class="manifest"><li class="manifest-row mechanical"><span class="pri"></span><span class="file">package-lock.json</span><span class="spark"><span class="add" style="width:70%"></span><span class="del" style="width:30%"></span></span><span class="churn">+210 −90</span><span class="note">generated / vendored — glance only</span><input class="rev" type="checkbox" aria-label="Mark package-lock.json reviewed"></li></ul></div>
+</div>`;
+
 // The verdict card's change map: the changed pieces and how they interact,
 // color-coded new/modified/touched (the shape buildChangeMap emits server-side).
+// Edges carry status too (§8.2): the size-guard + parseMime edges are NEW
+// coupling (green), the client call is unchanged context (gray).
 const REVIEW_CHANGEMAP = `flowchart LR
   n0(["Client"]):::touched
   n1["uploadAsset"]:::modified
@@ -209,7 +239,11 @@ const REVIEW_CHANGEMAP = `flowchart LR
   n3 -->|"used by"| n4
   classDef new stroke:#2f9e44,color:#2f9e44,stroke-width:1.5px;
   classDef modified stroke:#d9870a,color:#d9870a,stroke-width:1.5px;
-  classDef touched stroke:#9aa0a6,color:#9aa0a6;`;
+  classDef touched stroke:#9aa0a6,color:#9aa0a6;
+  linkStyle 0 stroke:#9aa0a6,stroke-width:1px;
+  linkStyle 1 stroke:#2f9e44,stroke-width:1.5px;
+  linkStyle 2 stroke:#2f9e44,stroke-width:1.5px;
+  linkStyle 3 stroke:#2f9e44,stroke-width:1.5px;`;
 
 // A nit's suggested fix as a before→after pair — the viewer computes the diff.
 const REVIEW_NIT_BEFORE = `const mime = (c.req.header('content-type') ?? '').split(';')[0].trim().toLowerCase();`;
@@ -250,6 +284,10 @@ export const DEMO_SESSIONS = [
         title: "Verdict — 1 blocker, 1 nit",
         badge: { tone: "warning", label: "Request changes" },
         parts: [
+          // The opinionated overview LEADS (intent + risk + budget + manifest),
+          // then the verdict markdown, then the change map — the standardized
+          // template the server composes from a publish_review call.
+          { kind: "html", html: REVIEW_OVERVIEW, kits: ["review"] },
           {
             kind: "markdown",
             markdown:
@@ -274,7 +312,7 @@ export const DEMO_SESSIONS = [
           {
             kind: "markdown",
             markdown:
-              "**Problem** — the `content-type` → mime split is copy-pasted in `uploadAsset`, `publishSurface`, and the snippet handler. Three copies drift: a future tweak (charset stripping, casing) has to be made in three places or they diverge.",
+              "_Medium confidence · scope: whole file_\n\n**Coverage** — grepped for the split across the three handlers; did not check callers outside server/app.ts.\n\n**Problem** — the `content-type` → mime split is copy-pasted in `uploadAsset`, `publishSurface`, and the snippet handler. Three copies drift: a future tweak (charset stripping, casing) has to be made in three places or they diverge.",
           },
           {
             kind: "diff",

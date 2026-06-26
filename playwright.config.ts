@@ -15,6 +15,12 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}`,
     trace: "on-first-retry",
+    // Allow pointing at a pre-installed browser when the bundled-chromium
+    // revision isn't downloaded (e.g. sandboxed CI). Unset on a normal machine
+    // → Playwright uses its bundled chromium as usual.
+    ...(process.env.PW_EXECUTABLE_PATH
+      ? { launchOptions: { executablePath: process.env.PW_EXECUTABLE_PATH } }
+      : {}),
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },

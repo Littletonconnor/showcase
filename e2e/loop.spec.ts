@@ -292,6 +292,8 @@ test("a finding's before/after suggestion renders real changed lines, not an emp
       data: {
         title: "Use the shared constant",
         problem: "magic number",
+        confidence: "medium",
+        coverage: "grepped for other call sites",
         file: "config.ts",
         suggestion: { before: "const timeout = 5000;", after: "const timeout = DEFAULT_MS;" },
         fix: "names the intent and avoids drift",
@@ -399,4 +401,156 @@ test("approving a finding strikes it through in the header verdict bar", async (
   await expect(chip).toHaveAttribute("title", "Bug — resolved", { timeout: 10_000 });
   // …and with no findings left open, the review reaches its terminal state.
   await expect(header.getByText("Review complete")).toBeVisible({ timeout: 10_000 });
+});
+
+test("publish_review renders the opinionated overview in a sandboxed review-kit frame", async ({
+  page,
+  request,
+}) => {
+  // The overview (intent + risk band + budget + priority manifest) ships as a
+  // `review`-kit html part — sandboxed like any agent html. This drives it
+  // through the real iframe so the kit CSS + burn-down JS are exercised end to
+  // end: the manifest ranks sensitive→logic, the mechanical row hides behind a
+  // toggle, and checking a row updates the live reviewed counter.
+  const review = await (
+    await request.post("/api/reviews", {
+      data: {
+        branch: "feature/auth",
+        verdict: "request_changes",
+        intent: "Tighten token validation and add a revocation check.",
+        risk: { size: 1, surfaceArea: 1, sensitivity: 3, testDelta: 1, band: "high" },
+        budget: "~8 min · 2 files need real eyes · 1 mechanical",
+        manifest: [
+          {
+            file: "pkg-lock.json",
+            added: 900,
+            removed: 200,
+            priority: "mechanical",
+            note: "generated",
+          },
+          {
+            file: "auth/token.ts",
+            added: 18,
+            removed: 4,
+            priority: "sensitive",
+            note: "token check",
+          },
+          { file: "api/routes.ts", added: 40, removed: 12, priority: "logic", note: "public API" },
+        ],
+        findings: [
+          {
+            severity: "bug",
+            title: "Revocation list not consulted on refresh",
+            problem: "the refresh path skips the new revocation check",
+            confidence: "high",
+            coverage: "reproduced with a unit test; did not run against prod tokens",
+          },
+        ],
+      },
+    })
+  ).json();
+
+  await page.goto(`/?surface=${review.verdict}`);
+  const card = page.locator(`.card[data-id="${review.verdict}"]`);
+  await expect(card).toBeVisible();
+
+  const overview = card.frameLocator("iframe").first();
+  // Intent, risk band, and budget all render.
+  await expect(
+    overview.getByText("Tighten token validation and add a revocation check."),
+  ).toBeVisible();
+  await expect(overview.locator(".risk-band.high")).toContainText("Risk: High");
+  await expect(overview.getByText("~8 min · 2 files need real eyes · 1 mechanical")).toBeVisible();
+
+  // Hot manifest shows the sensitive + logic rows; the mechanical row is hidden
+  // until its bucket is expanded.
+  await expect(overview.locator(".manifest-row.sensitive .file")).toHaveText("auth/token.ts");
+  await expect(overview.getByText("pkg-lock.json")).toBeHidden();
+  await overview.locator(".cold-toggle").click();
+  await expect(overview.getByText("pkg-lock.json")).toBeVisible();
+
+  // The reviewed-checkbox burn-down counter is live.
+  await expect(overview.locator(".review-progress")).toContainText("0 / 3 reviewed");
+  await overview.locator(".manifest-row.sensitive .rev").check();
+  await expect(overview.locator(".review-progress")).toContainText("1 / 3 reviewed");
+});
+
+test("a reviewer can traverse and resolve a whole review from the keyboard", async ({
+  page,
+  request,
+}) => {
+  // Step F: review is a traversal — j/k move through open findings, a/d resolve
+  // the one under the cursor, and the verdict bar burns down to a terminal
+  // state, all without the mouse.
+  const session = await (
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "keyboard review" } })
+  ).json();
+  const finding = (label: string, tone: string) =>
+    request.post("/api/surfaces", {
+      data: {
+        session: session.id,
+        title: `${label} finding`,
+        badge: { tone, label },
+        parts: [{ kind: "markdown", markdown: `a ${label.toLowerCase()}` }],
+      },
+    });
+  await finding("Bug", "critical");
+  const nit = await (await finding("Nit", "warning")).json();
+
+  await page.goto(`/?surface=${nit.id}`);
+  const header = page.locator("#sessionView > div").first();
+  await expect(header.getByText("2 open · 0 resolved")).toBeVisible();
+
+  // Focus the page chrome (not a composer) so the review keys are live.
+  await page.locator("body").click({ position: { x: 4, y: 4 } });
+
+  // `a` approves the top open finding (worst-severity first → the Bug).
+  await page.keyboard.press("a");
+  await expect(header.getByText("1 open · 1 resolved")).toBeVisible({ timeout: 10_000 });
+
+  // `d` dismisses the next open finding (the Nit) → the review is complete.
+  await page.keyboard.press("d");
+  await expect(header.getByText("Review complete")).toBeVisible({ timeout: 10_000 });
+});
+
+test("an edge-status changeMap renders as a real mermaid SVG, not a parse error", async ({
+  page,
+  request,
+}) => {
+  // Guards a browser-only regression: §8.2 emits `linkStyle` lines for edge
+  // status, and mermaid's flowchart grammar rejects a lone `stroke:#color` —
+  // so an `existing` edge must carry a stroke-width too. A string assertion
+  // can't see this; only rendering the diagram in a real browser does.
+  const review = await (
+    await request.post("/api/reviews", {
+      data: {
+        verdict: "comment",
+        changeMap: {
+          nodes: [
+            { id: "a", label: "authMiddleware", status: "touched" },
+            { id: "b", label: "validateToken", status: "modified" },
+            { id: "c", label: "revocationList", status: "new" },
+          ],
+          edges: [
+            { from: "a", to: "b", label: "calls", status: "existing" },
+            { from: "b", to: "c", label: "now checks", status: "new" },
+            { from: "a", to: "c", label: "dropped", status: "removed" },
+          ],
+        },
+        findings: [],
+      },
+    })
+  ).json();
+
+  await page.goto(`/?surface=${review.verdict}`);
+  const card = page.locator(`.card[data-id="${review.verdict}"]`);
+  await expect(card).toBeVisible();
+
+  // The change map is the verdict card's mermaid part. It must produce an SVG
+  // with edge paths and show no mermaid parse error.
+  const map = card.frameLocator("iframe").last();
+  await expect(map.locator("svg .edgePaths path, svg path.flowchart-link").first()).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(map.getByText(/Parse error|Couldn't render/)).toHaveCount(0);
 });

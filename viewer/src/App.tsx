@@ -73,11 +73,13 @@ import { applyFrameHeight } from "./SandboxedPart.tsx";
 import { renderNotes } from "./notes.ts";
 import { initTheme } from "./theme.ts";
 import {
+  APPROVAL_MARK,
   applyRoute,
   checkVersion,
   clearUnread,
   connect,
   dismissUpdate,
+  DISMISS_MARK,
   exitReading,
   goHome,
   groupSessions,
@@ -849,25 +851,58 @@ function ReviewSummary(props: { surfaces: Surface[] }) {
     (s) => s.badge && VERDICT_LABELS.has(s.badge.label.toLowerCase()),
   )?.badge?.label;
 
-  // `j` / `k` page through the open findings (worst first), wrapping. A ref holds
-  // the live list so the once-mounted key handler always sees the current set as
-  // findings resolve out from under the cursor.
+  // Keyboard-driven review traversal (§ P5): fly through the open findings and
+  // resolve them without the mouse, so the review has a visible terminal state.
+  //   j / k — next / previous open finding (worst first, wrapping)
+  //   n     — next open finding (skips resolved; alias of j for the unreviewed pass)
+  //   a / d — approve / dismiss the finding at the cursor (drives the burndown)
+  //   c     — comment on the finding at the cursor (opens its composer in place)
+  // A ref holds the live list so the once-mounted handler always sees the current
+  // set as findings resolve out from under the cursor.
   const openRef = useRef(openFindings);
   openRef.current = openFindings;
   const cursorRef = useRef(-1);
+  const scrollToCard = (id: string) =>
+    cardEls.get(id)?.card.scrollIntoView({ behavior: "smooth", block: "start" });
   const jumpToOpen = (dir: 1 | -1) => {
     const list = openRef.current;
     if (!list.length) return;
     cursorRef.current = (((cursorRef.current + dir) % list.length) + list.length) % list.length;
-    cardEls.get(list[cursorRef.current].id)?.card.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
+    scrollToCard(list[cursorRef.current].id);
+  };
+  // The finding "under the cursor" — defaults to the first open one before any
+  // j/k, so `a`/`d`/`c` act on the top of the burndown immediately.
+  const currentFinding = () => {
+    const list = openRef.current;
+    if (!list.length) return undefined;
+    const i = cursorRef.current < 0 ? 0 : Math.min(cursorRef.current, list.length - 1);
+    return list[i];
+  };
+  const resolveCurrent = (mark: string) => {
+    const f = currentFinding();
+    if (!f) return;
+    scrollToCard(f.id);
+    void sendComment({ surface: f.id, text: mark, author: "user" }, f.id, mark);
+    // The resolved finding drops out of openRef on the next render; clamp the
+    // cursor so it lands on what's now in its place (the next open finding).
+    cursorRef.current = Math.max(0, Math.min(cursorRef.current, openRef.current.length - 2));
+  };
+  const commentCurrent = () => {
+    const f = currentFinding();
+    if (!f) return;
+    const card = cardEls.get(f.id)?.card;
+    if (!card) return;
+    scrollToCard(f.id);
+    // Open the card's composer (the "Request change" verdict button toggles it).
+    const btn = [...card.querySelectorAll("button")].find(
+      (b) => b.textContent?.trim() === "Request change",
+    );
+    btn?.click();
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-      if (e.key !== "j" && e.key !== "k") return;
+      if (!["j", "k", "n", "a", "d", "c"].includes(e.key)) return;
       const el = root().activeElement as HTMLElement | null;
       const tag = el?.tagName;
       // Don't hijack typing in the composer, an editable title, or a focused part.
@@ -875,7 +910,11 @@ function ReviewSummary(props: { surfaces: Surface[] }) {
         return;
       if (useBoard.getState().readingId || !openRef.current.length) return;
       e.preventDefault();
-      jumpToOpen(e.key === "j" ? 1 : -1);
+      if (e.key === "j" || e.key === "n") jumpToOpen(1);
+      else if (e.key === "k") jumpToOpen(-1);
+      else if (e.key === "a") resolveCurrent(APPROVAL_MARK);
+      else if (e.key === "d") resolveCurrent(DISMISS_MARK);
+      else if (e.key === "c") commentCurrent();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -942,7 +981,9 @@ function ReviewSummary(props: { surfaces: Surface[] }) {
                 Next open finding
                 <ArrowDown className="size-3" />
               </button>
-              <span className="text-faint/70 max-[700px]:hidden">or press j / k</span>
+              <span className="text-faint/70 max-[700px]:hidden">
+                j/k move · a approve · d dismiss · c comment
+              </span>
             </>
           ) : (
             <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700 dark:text-emerald-300">
