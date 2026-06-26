@@ -151,9 +151,9 @@ annotation, and diff line-comment. That's two too many concepts to hold daily.
   Keep.
 - **General comment** — the catch-all. Keep.
 - **Point-pin annotations on arbitrary cards** (`annotateAction` + `AnnotationPin`
-  + `AnnotationComposer` in `Card.tsx`) — the odd one out. When would you _daily_
-  drop an (x,y) pin on a diagram instead of just commenting? **Fold into "comment
-  with an optional location," or cut.**
+  - `AnnotationComposer` in `Card.tsx`) — the odd one out. When would you _daily_
+    drop an (x,y) pin on a diagram instead of just commenting? **Fold into "comment
+    with an optional location," or cut.**
 
 **Acceptance:** one comment verb, optionally located — not three parallel ones.
 
@@ -164,14 +164,14 @@ annotation, and diff line-comment. That's two too many concepts to hold daily.
 _If it isn't used most sessions, it isn't worth its footprint._ Applied honestly,
 even to shipped features:
 
-| Affordance | Verdict | Why |
-| --- | --- | --- |
-| **Library** (pin surfaces into a cross-session knowledge base) | **Cut or hide** | A "save for later" almost nobody revisits, holding permanent top-nav real estate (`LibraryNavItem`) for a near-zero-daily action. |
-| **Reading mode** (one-at-a-time pager, `ReadingView`) | **Demote to explainers only** | Review wants density + progress, not a slideshow; overlaps with scrolling. Not daily-core. |
-| **Point annotations** (📍) | **Cut / fold into comment** | Third redundant comment path (Move 4). |
-| **Copy link / Open in new tab** | **Keep, stay hidden** | Sharing, not daily. Already demoted to the ⋯ menu. |
-| **Version `Select` per card** | **Keep, evolve** | The daily-valuable form is a **v1↔v2 visual compare** (already a `TODO.md` item), not a bare version number — that's what you reach for in the revise loop. |
-| **Approve/Dismiss on non-finding cards** | **Already cut** ✓ | They had no verdict to resolve there. |
+| Affordance                                                     | Verdict                       | Why                                                                                                                                                         |
+| -------------------------------------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Library** (pin surfaces into a cross-session knowledge base) | **Cut or hide**               | A "save for later" almost nobody revisits, holding permanent top-nav real estate (`LibraryNavItem`) for a near-zero-daily action.                           |
+| **Reading mode** (one-at-a-time pager, `ReadingView`)          | **Demote to explainers only** | Review wants density + progress, not a slideshow; overlaps with scrolling. Not daily-core.                                                                  |
+| **Point annotations** (📍)                                     | **Cut / fold into comment**   | Third redundant comment path (Move 4).                                                                                                                      |
+| **Copy link / Open in new tab**                                | **Keep, stay hidden**         | Sharing, not daily. Already demoted to the ⋯ menu.                                                                                                          |
+| **Version `Select` per card**                                  | **Keep, evolve**              | The daily-valuable form is a **v1↔v2 visual compare** (already a `TODO.md` item), not a bare version number — that's what you reach for in the revise loop. |
+| **Approve/Dismiss on non-finding cards**                       | **Already cut** ✓             | They had no verdict to resolve there.                                                                                                                       |
 
 Cutting Library and reading mode stings (both are wired and oracle-tested). But
 every always-present nav item and every icon taxes the clarity of the things that

@@ -42,13 +42,11 @@ import { DiffPart } from "./DiffPart.tsx";
 import {
   ArrowUp,
   BookOpen,
-  Bookmark,
   Check,
   CircleSlash,
   Code,
   ExternalLink,
   Link2,
-  MapPin,
   MessageSquare,
   MoreHorizontal,
   Sparkles,
@@ -77,7 +75,6 @@ import {
   sessionRespondKey,
   setScrollTarget,
   toast,
-  togglePin,
   useBoard,
   useResponding,
   type ViewComment,
@@ -304,28 +301,11 @@ function SurfaceBadgeChip(props: { badge: SurfaceBadge }) {
   );
 }
 
-// A pin over the parts region at a comment's anchor (a dot centered on the
-// point). Saved comments show a static dot with the note as a hover tooltip; the
-// draft pin pulses while the note is being typed.
-function AnnotationPin(props: { anchor: CommentAnchor; text?: string; draft?: boolean }) {
-  return (
-    <span
-      className={cx(
-        "pointer-events-auto absolute z-10 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-brand shadow-[0_1px_2px_rgba(0,0,0,0.35)] dark:border-card",
-        props.draft && "animate-pulse motion-reduce:animate-none",
-      )}
-      style={{
-        left: `${(props.anchor.xPct ?? 0) * 100}%`,
-        top: `${(props.anchor.yPct ?? 0) * 100}%`,
-      }}
-      title={props.text}
-    />
-  );
-}
-
-// A small note input pinned near a draft annotation. Enter sends, Escape cancels.
-// Left-clamped so it stays inside the card (which clips overflow).
-function AnnotationComposer(props: {
+// A small note input for a clicked diff line. Enter sends, Escape cancels.
+// Floats near the top of the parts region, centered. (Point-anchored
+// annotations were retired — line comments are the one anchored-feedback path,
+// since they point at exactly the code the agent must change.)
+function LineCommentComposer(props: {
   anchor: CommentAnchor;
   onSend: (text: string) => Promise<string | null>;
   onCancel: () => void;
@@ -334,39 +314,15 @@ function AnnotationComposer(props: {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
-  const isLine = props.anchor.line != null;
   return (
-    <div
-      className={cx(
-        "absolute z-30 w-60 max-w-[88%] rounded-lg border-[0.5px] border-border bg-card p-2 shadow-[0_8px_24px_rgba(0,0,0,0.14)]",
-        // A line comment has no pixel; float it near the top, centered. A point
-        // comment pins to its spot.
-        isLine && "top-2 left-1/2 -translate-x-1/2",
-      )}
-      style={
-        isLine
-          ? undefined
-          : {
-              left: `${Math.min(58, Math.max(2, (props.anchor.xPct ?? 0) * 100))}%`,
-              top: `${(props.anchor.yPct ?? 0) * 100}%`,
-            }
-      }
-    >
+    <div className="absolute top-2 left-1/2 z-30 w-60 max-w-[88%] -translate-x-1/2 rounded-lg border-[0.5px] border-border bg-card p-2 shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
       <div className="mb-1 flex items-center gap-1 text-[11px] font-medium text-faint">
-        {isLine ? (
-          <>
-            <Code className="size-3" /> Comment on line {props.anchor.line}
-          </>
-        ) : (
-          <>
-            <MapPin className="size-3" /> Note about this spot
-          </>
-        )}
+        <Code className="size-3" /> Comment on line {props.anchor.line}
       </div>
       <Input
         ref={inputRef}
-        placeholder={isLine ? "What about this line?" : "What about here?"}
-        aria-label="Annotation note"
+        placeholder="What about this line?"
+        aria-label="Line comment"
         className="h-8 text-[13px]"
         onKeyDown={(e) => {
           if (e.key === "Enter") {
@@ -382,6 +338,35 @@ function AnnotationComposer(props: {
   );
 }
 
+// A labeled verdict action for finding cards. The review's primary decisions —
+// Approve / Dismiss / Request change — read as real buttons with words, not
+// ghost icons, so the daily review verbs are unmistakable at a glance.
+function VerdictButton(props: {
+  label: string;
+  onClick: () => void;
+  tone: "approve" | "dismiss" | "change";
+  children: ReactNode;
+}) {
+  const toneCls = {
+    approve: "text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300",
+    dismiss: "text-muted-foreground hover:bg-hover",
+    change: "text-brand hover:bg-brand-subtle",
+  }[props.tone];
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      className={cx(
+        "inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium transition-colors [&_svg]:size-3.5",
+        toneCls,
+      )}
+    >
+      {props.children}
+      {props.label}
+    </button>
+  );
+}
+
 export function Card(props: { surface: Surface }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const iframesRef = useRef<Set<HTMLIFrameElement>>(new Set());
@@ -393,17 +378,9 @@ export function Card(props: { surface: Surface }) {
   const mode = useResolvedMode();
   const scrollTarget = useBoard((s) => s.scrollTarget);
 
-  // Annotations: `annotating` arms the click-capture overlay; clicking drops a
-  // pin (`draftAnchor`) and opens a note composer; on send the comment carries
-  // the anchor. Existing anchored comments render as pins over the parts region.
-  const partsRef = useRef<HTMLDivElement>(null);
-  const [annotating, setAnnotating] = useState(false);
+  // Line comments: clicking a diff line sets `draftAnchor` and opens a small
+  // composer; on send the comment carries the line anchor through to the agent.
   const [draftAnchor, setDraftAnchor] = useState<CommentAnchor | null>(null);
-  // Only POINT-anchored comments get a pixel pin over the parts; line-anchored
-  // (diff) comments show their reference in the thread instead.
-  const anchored = useBoard((s) => s.comments).filter(
-    (cm) => cm.surfaceId === props.surface.id && cm.anchor && cm.anchor.xPct != null,
-  );
 
   const surfaceId = props.surface.id;
   // Approve / Dismiss are review-verdict decisions: they only do anything on a
@@ -476,8 +453,9 @@ export function Card(props: { surface: Surface }) {
   // iteration, vs typing it out. The "Request a change" path is just the composer.
   const approveAction =
     !isReadonly() && isFinding ? (
-      <IconAction
-        label="Approve — looks good"
+      <VerdictButton
+        tone="approve"
+        label="Approve"
         onClick={() => {
           void sendComment(
             { surface: surfaceId, text: APPROVAL_MARK, author: "user" },
@@ -488,7 +466,7 @@ export function Card(props: { surface: Surface }) {
         }}
       >
         <ThumbsUp />
-      </IconAction>
+      </VerdictButton>
     ) : null;
 
   // Dismiss — the "won't change this" decision. Like Approve it posts a
@@ -496,8 +474,9 @@ export function Card(props: { surface: Surface }) {
   // strikes resolved findings); the agent reads it as "drop this one".
   const dismissAction =
     !isReadonly() && isFinding ? (
-      <IconAction
-        label="Dismiss — not changing this"
+      <VerdictButton
+        tone="dismiss"
+        label="Dismiss"
         onClick={() => {
           void sendComment(
             { surface: surfaceId, text: DISMISS_MARK, author: "user" },
@@ -508,23 +487,10 @@ export function Card(props: { surface: Surface }) {
         }}
       >
         <CircleSlash />
-      </IconAction>
+      </VerdictButton>
     ) : null;
 
-  // Annotate toggle: arm the click-capture overlay (or cancel an in-progress one).
-  const annotateAction = !isReadonly() ? (
-    <IconAction
-      label={annotating ? "Cancel — click the card to cancel" : "Pin a note to a spot"}
-      onClick={() => {
-        setDraftAnchor(null);
-        setAnnotating((v) => !v);
-      }}
-    >
-      <MapPin className={annotating ? "text-brand" : undefined} />
-    </IconAction>
-  ) : null;
-
-  // Post an anchored comment from the draft pin's note composer.
+  // Post a line comment from the draft line composer.
   const sendAnnotation = (text: string): Promise<string | null> => {
     const anchor = draftAnchor;
     if (!anchor) return Promise.resolve(null);
@@ -537,23 +503,16 @@ export function Card(props: { surface: Surface }) {
     );
   };
 
-  // Per-surface secondary actions (pin / copy link / open / delete) — shared by
-  // the collapsed footer bar and the persistent-composer footer (see Thread).
-  const pinned = !!props.surface.pinned;
+  // Per-surface secondary actions, shared by the collapsed footer bar and the
+  // persistent-composer footer (see Thread). "Read" (the focused one-at-a-time
+  // reader) is an explainer affordance, so it shows only on non-finding cards —
+  // a review card wants density and burndown, not a slideshow. Copy link / open
+  // / delete live in the ⋯ overflow.
   const surfaceActions = (
     <>
-      <IconAction label="Read — focused, one at a time" onClick={() => enterReading(surfaceId)}>
-        <BookOpen />
-      </IconAction>
-      {!isReadonly() ? (
-        <IconAction
-          label={pinned ? "Remove from Library" : "Pin to your Library"}
-          onClick={() => void togglePin(surfaceId, !pinned)}
-        >
-          <Bookmark
-            className={pinned ? "text-brand" : undefined}
-            fill={pinned ? "currentColor" : "none"}
-          />
+      {!isFinding ? (
+        <IconAction label="Read — focused, one at a time" onClick={() => enterReading(surfaceId)}>
+          <BookOpen />
         </IconAction>
       ) : null}
       <SurfaceOverflowMenu surfaceId={surfaceId} title={props.surface.title} />
@@ -614,9 +573,9 @@ export function Card(props: { surface: Surface }) {
           unknown part is not a broken diff), so it shows a neutral refresh hint
           instead. An html iframe src changes only when the version, the active
           theme, or the resolved light/dark mode does, so unrelated refetches
-          never reload it. The parts sit in a positioned wrapper so annotation
-          pins + the click-capture overlay can layer over them. */}
-      <div className="relative" ref={partsRef}>
+          never reload it. The parts sit in a positioned wrapper so the line
+          comment composer can layer over them. */}
+      <div className="relative">
         {props.surface.parts.map((part, i) => {
           switch (part.kind) {
             case "html":
@@ -671,31 +630,8 @@ export function Card(props: { surface: Surface }) {
               );
           }
         })}
-        {anchored.map((cm) => (
-          <AnnotationPin key={cm.id} text={cm.text} anchor={cm.anchor!} />
-        ))}
-        {draftAnchor && draftAnchor.xPct != null ? (
-          <AnnotationPin draft anchor={draftAnchor} />
-        ) : null}
-        {annotating ? (
-          <div
-            className="absolute inset-0 z-20 cursor-crosshair bg-brand/[0.04]"
-            title="Click a spot on the card to pin a note"
-            onClick={(e) => {
-              const el = partsRef.current;
-              if (!el) return;
-              const r = el.getBoundingClientRect();
-              const c01 = (n: number) => Math.min(1, Math.max(0, n));
-              setAnnotating(false);
-              setDraftAnchor({
-                xPct: c01((e.clientX - r.left) / r.width),
-                yPct: c01((e.clientY - r.top) / r.height),
-              });
-            }}
-          />
-        ) : null}
         {draftAnchor ? (
-          <AnnotationComposer
+          <LineCommentComposer
             anchor={draftAnchor}
             onSend={sendAnnotation}
             onCancel={() => setDraftAnchor(null)}
@@ -713,10 +649,13 @@ export function Card(props: { surface: Surface }) {
               <>
                 {approveAction}
                 {dismissAction}
-                {annotateAction}
-                <IconAction label="Request a change" onClick={startReply}>
+                <VerdictButton
+                  tone="change"
+                  label={isFinding ? "Request change" : "Comment"}
+                  onClick={startReply}
+                >
                   <MessageSquare />
-                </IconAction>
+                </VerdictButton>
               </>
             ) : null}
             <span className="flex-1" />
@@ -727,7 +666,6 @@ export function Card(props: { surface: Surface }) {
           <TooltipProvider delayDuration={300}>
             {approveAction}
             {dismissAction}
-            {annotateAction}
             {surfaceActions}
           </TooltipProvider>
         }
