@@ -69,9 +69,11 @@ a `kind`:
   array of fields to plot several series (set `stacked: true` to stack bars or
   areas). Optional `xLabel`/`yLabel` annotate the axes and `caption` sits below.
   Colors come from the live theme, so charts re-theme with the board; the first
-  series uses the board accent. Like image/json it is data, not markup — sent as
-  values, rendered with escaped text nodes, so no sandbox is needed. Reach for it
-  for metrics, distributions, and before/after comparisons.
+  series uses the board accent. Pass `colors` (an array of CSS colors, one per
+  series or per pie slice) to override — e.g. `["#2f9e44", "#e03131"]` for
+  green-added / red-removed churn. Like image/json it is data, not markup — sent
+  as values, rendered with escaped text nodes, so no sandbox is needed. Reach for
+  it for metrics, distributions, and before/after comparisons.
 
 For an issue/PR/CI tree, status board, or stepped deck, reach for an `html`
 part with a kit (see Kits below) rather than a dedicated part kind.

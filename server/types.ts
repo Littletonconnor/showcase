@@ -168,6 +168,10 @@ export interface ChartPart {
   y: string | string[];
   // Stack bars/areas instead of grouping them (ignored for line/pie).
   stacked?: boolean;
+  // Explicit series colors (per `y` series, or per slice for a pie), overriding
+  // the default accent→palette cycle — e.g. green/red for added/removed churn.
+  // Validated to safe CSS color tokens in surfaceParts.ts.
+  colors?: string[];
   xLabel?: string;
   yLabel?: string;
   caption?: string;

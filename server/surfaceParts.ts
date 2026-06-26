@@ -254,6 +254,11 @@ const looseCodePart = z.object({
 const chartTypeEnum = z.enum(["bar", "line", "area", "pie"]);
 const strictChartDatum = z.record(z.union([z.string(), z.number(), z.null()]));
 const strictChartY = z.union([z.string().min(1), z.array(z.string().min(1)).nonempty()]);
+// A safe CSS color token: hex, an rgb/hsl function with only numeric content, or
+// a bare color name. Anything with `;`, `}`, `url(`, etc. is rejected so an
+// agent-supplied color can't smuggle CSS into the chart's SVG attributes.
+const SAFE_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|(?:rgb|rgba|hsl|hsla)\([0-9.,%\s/]+\)|[a-zA-Z]{1,20})$/;
+const safeColor = z.string().regex(SAFE_COLOR_RE, "unsupported chart color");
 const strictChartPart = z.object({
   kind: z.literal("chart"),
   chartType: chartTypeEnum,
@@ -261,6 +266,7 @@ const strictChartPart = z.object({
   x: requiredString("x"),
   y: strictChartY,
   stacked: z.boolean().optional(),
+  colors: z.array(safeColor).optional(),
   xLabel: z.string().optional(),
   yLabel: z.string().optional(),
   caption: z.string().optional(),
@@ -279,6 +285,12 @@ const looseChartPart = z
     x: z.string(),
     y: z.union([z.string(), z.array(z.string())]),
     stacked: z.preprocess((v) => (typeof v === "boolean" ? v : undefined), z.boolean().optional()),
+    // Drop any unsafe/non-string color rather than reject the whole part.
+    colors: z.preprocess((v) => {
+      if (!Array.isArray(v)) return undefined;
+      const safe = v.filter((c) => typeof c === "string" && SAFE_COLOR_RE.test(c));
+      return safe.length > 0 ? safe : undefined;
+    }, z.array(z.string()).optional()),
     xLabel: optionalLooseString,
     yLabel: optionalLooseString,
     caption: optionalLooseString,

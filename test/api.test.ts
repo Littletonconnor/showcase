@@ -778,6 +778,61 @@ test("publish_surface MCP tool coerces a bad chartType to bar (loose)", async ()
   assert.equal(full.parts[0].chartType, "bar");
 });
 
+test("chart colors round-trip when safe and a bad one is rejected (strict REST)", async () => {
+  const app = makeApp();
+  const base = {
+    kind: "chart",
+    chartType: "bar",
+    x: "f",
+    y: ["added", "removed"],
+    data: [{ f: "a", added: 3, removed: 1 }],
+  };
+  // Safe colors (hex + rgb) round-trip verbatim.
+  const ok = await app.request(
+    "/api/surfaces",
+    json({ title: "Churn", parts: [{ ...base, colors: ["#2f9e44", "rgb(224, 49, 49)"] }] }),
+  );
+  assert.equal(ok.status, 201);
+  const surface = (await ok.json()) as any;
+  const full = (await (await app.request(`/api/surfaces/${surface.id}`)).json()) as any;
+  assert.deepEqual(full.parts[0].colors, ["#2f9e44", "rgb(224, 49, 49)"]);
+  // A CSS-injection attempt is rejected by strict REST validation.
+  const bad = await app.request(
+    "/api/surfaces",
+    json({ title: "Bad", parts: [{ ...base, colors: ["red; } body{}"] }] }),
+  );
+  assert.equal(bad.status, 400);
+});
+
+test("chart colors: the loose MCP path drops unsafe colors but keeps the part", async () => {
+  const app = makeApp();
+  const published = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(1, "tools/call", {
+        name: "publish_surface",
+        arguments: {
+          title: "Churn",
+          parts: [
+            {
+              kind: "chart",
+              chartType: "bar",
+              x: "f",
+              y: ["added", "removed"],
+              data: [{ f: "a", added: 3, removed: 1 }],
+              colors: ["#2f9e44", "url(#evil)", "rgb(224,49,49)"],
+            },
+          ],
+        },
+      }),
+    )
+  ).json()) as any;
+  const payload = JSON.parse(published.result.content[0].text);
+  const full = (await (await app.request(`/api/surfaces/${payload.id}`)).json()) as any;
+  // Unsafe url(...) dropped; the two safe colors survive.
+  assert.deepEqual(full.parts[0].colors, ["#2f9e44", "rgb(224,49,49)"]);
+});
+
 test("code part with lineStart round-trips", async () => {
   const app = makeApp();
   const res = await app.request(

@@ -61,8 +61,10 @@ export function ChartPart(props: { part: ChartPartData }) {
 
   const { part } = props;
   const series = Array.isArray(part.y) ? part.y : [part.y];
+  // Explicit per-series/per-slice colors win; otherwise the first series uses the
+  // board accent and the rest cycle the fixed palette.
   const colorFor = (i: number) =>
-    i === 0 ? c.accent : REST_PALETTE[(i - 1) % REST_PALETTE.length];
+    part.colors?.[i] ?? (i === 0 ? c.accent : REST_PALETTE[(i - 1) % REST_PALETTE.length]);
 
   const axisProps = { tick: { fontSize: 11, fill: c.muted }, stroke: c.border, tickLine: false };
   const xLabel = part.xLabel
