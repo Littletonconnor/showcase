@@ -151,10 +151,21 @@ test("publish_review explodes one call into a verdict card + a card per finding"
   assert.match(verdict.parts[0].markdown, /Coverage/);
   assert.match(verdict.parts[0].markdown, /Null check missing/); // the findings table
   assert.match(verdict.parts[0].markdown, /\*\*2 findings\*\* — 1 Bug · 1 Praise/); // the tally
-  // architecture diagram rides the verdict card as a trailing mermaid part.
+  // The verdict card carries the markdown, the confidence × coverage quadrant
+  // (two findings → a scatter), then the architecture diagram as a trailing
+  // mermaid. No treemap here (no manifest), so the churn-style chart is the quadrant.
   assert.deepEqual(
     verdict.parts.map((p: any) => p.kind),
-    ["markdown", "mermaid"],
+    ["markdown", "chart", "mermaid"],
+  );
+  assert.equal(verdict.parts[1].chartType, "scatter");
+  assert.equal(verdict.parts[1].x, "conf");
+  assert.equal(verdict.parts[1].y, "cov");
+  // The high-confidence finding whose coverage says "did not run" lands in the
+  // danger zone (high confidence, low coverage).
+  assert.ok(
+    verdict.parts[1].data.some((d: any) => d.tone === "danger"),
+    "the sure-but-unverified bug is flagged danger",
   );
   // The bug finding's suggestion → a before/after diff; fix → "Why it's better".
   const bug = surfaces.find((s) => s.title.startsWith("Null check missing"));
@@ -253,6 +264,40 @@ test("publish_review leads the verdict card with the opinionated overview (inten
   assert.match(html, /1 mechanical file/);
   // The mechanical row lives inside the collapsed bucket.
   assert.ok(html.indexOf("cold-bucket") < html.indexOf("pkg-lock.json"));
+});
+
+test("publish_review renders a risk-weighted treemap from the manifest and drops the churn bar", async () => {
+  const app = makeApp();
+  const review = (await (
+    await app.request(
+      "/api/reviews",
+      json({
+        branch: "feature/auth",
+        verdict: "comment",
+        manifest: [
+          { file: "auth/token.ts", added: 18, removed: 4, priority: "sensitive" },
+          { file: "api/routes.ts", added: 40, removed: 12, priority: "logic" },
+          { file: "pkg-lock.json", added: 900, removed: 200, priority: "mechanical" },
+        ],
+        // churn is also supplied, but the treemap supersedes the bar (§8.4).
+        churn: [{ file: "auth/token.ts", added: 18, removed: 4 }],
+        findings: [],
+      }),
+    )
+  ).json()) as any;
+  const verdict = (await (await app.request(`/api/surfaces/${review.verdict}`)).json()) as any;
+  const charts = verdict.parts.filter((p: any) => p.kind === "chart");
+  assert.equal(charts.length, 1, "exactly one chart — the treemap, not also the churn bar");
+  const treemap = charts[0];
+  assert.equal(treemap.chartType, "treemap");
+  assert.equal(treemap.x, "name");
+  assert.equal(treemap.y, "size");
+  // area = total churn; color tone = the agent's priority tier.
+  const token = treemap.data.find((d: any) => d.name === "token.ts");
+  assert.equal(token.size, 22);
+  assert.equal(token.tone, "sensitive");
+  assert.equal(treemap.data.find((d: any) => d.name === "pkg-lock.json").tone, "mechanical");
+  assert.ok(!verdict.parts.some((p: any) => p.chartType === "bar"), "no churn bar");
 });
 
 test("publish_review without overview structure stays back-compatible (no html part)", async () => {
@@ -1009,6 +1054,31 @@ test("chart part with an unknown chartType is rejected (strict REST)", async () 
     }),
   );
   assert.equal(res.status, 400);
+});
+
+test("treemap and scatter chart types are accepted (strict REST)", async () => {
+  const app = makeApp();
+  for (const chartType of ["treemap", "scatter"]) {
+    const res = await app.request(
+      "/api/surfaces",
+      json({
+        title: chartType,
+        parts: [
+          {
+            kind: "chart",
+            chartType,
+            x: "name",
+            y: "size",
+            data: [
+              { name: "a.ts", size: 10, tone: "sensitive" },
+              { name: "b.ts", size: 4, tone: "logic" },
+            ],
+          },
+        ],
+      }),
+    );
+    assert.equal(res.status, 201, `${chartType} should validate`);
+  }
 });
 
 test("chart part with empty data is rejected (strict REST)", async () => {

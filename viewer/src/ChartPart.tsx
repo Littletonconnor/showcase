@@ -10,13 +10,34 @@ import {
   LineChart,
   Pie,
   PieChart,
+  ReferenceArea,
+  ReferenceLine,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
+  Treemap,
   XAxis,
   YAxis,
 } from "recharts";
 import type { ChartPart as ChartPartData } from "./api.ts";
 import { useActiveTheme, useResolvedMode } from "./theme.ts";
+
+// Tone → fixed hue for the review charts (treemap cells, scatter points). These
+// match the diff/severity palette (sensitive=red, logic=amber, mechanical=gray)
+// so the charts read with the rest of the review; an unknown tone falls back to
+// the board accent. Tones are a closed set the server emits — never an
+// agent-supplied color string — so there's nothing to sanitize.
+const TONE_HUE: Record<string, string> = {
+  sensitive: "#e03131",
+  danger: "#e03131",
+  logic: "#d9870a",
+  warn: "#d9870a",
+  mechanical: "#9aa0a6",
+  cool: "#9aa0a6",
+  normal: "#2f9e44",
+};
+const QUADRANT_TICKS = ["", "Low", "Med", "High"];
 
 // Categorical series palette. The first series uses the board accent so a
 // single-series chart matches the chrome; the rest are fixed hues chosen to read
@@ -104,6 +125,79 @@ export function ChartPart(props: { part: ChartPartData }) {
   );
   const grid = <CartesianGrid stroke={c.border} strokeOpacity={0.5} vertical={false} />;
 
+  // Treemap cell: a tinted rectangle (area = value) with a colored edge keyed to
+  // the row's `tone`, labeled when it's big enough to read. Recharts clones this
+  // with the laid-out node geometry (x/y/width/height) and the row's fields.
+  const renderTreemapCell = (node: {
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    name?: string;
+    tone?: string;
+  }) => {
+    const { x = 0, y = 0, width = 0, height = 0, name = "", tone } = node;
+    if (width <= 0 || height <= 0) return <g />;
+    const hue = TONE_HUE[String(tone ?? "")] ?? c.accent;
+    const maxChars = Math.floor((width - 12) / 6.5);
+    const label = name.length > maxChars ? `${name.slice(0, Math.max(1, maxChars - 1))}…` : name;
+    return (
+      <g>
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          fill={hue}
+          fillOpacity={0.18}
+          stroke={c.surface}
+          strokeWidth={1}
+        />
+        <rect x={x} y={y} width={Math.min(3, width)} height={height} fill={hue} />
+        {width > 46 && height > 18 ? (
+          <text x={x + 8} y={y + 15} fontSize={11} fill={c.text} style={{ pointerEvents: "none" }}>
+            {label}
+          </text>
+        ) : null}
+      </g>
+    );
+  };
+
+  // Scatter (quadrant) tooltip: the point's label + its confidence/coverage band,
+  // read from the hovered datum. A custom renderer because the generic axis
+  // tooltip would show bare 1–3 numbers, not the Low/Med/High the axes use.
+  const renderScatterTip = (tip: {
+    active?: boolean;
+    payload?: Array<{ payload?: Record<string, unknown> }>;
+  }) => {
+    if (!tip.active || !tip.payload?.length) return null;
+    const row = tip.payload[0]?.payload ?? {};
+    const label =
+      typeof row.label === "string" ? row.label : typeof row.name === "string" ? row.name : "";
+    const xv = Math.round(Number(row[part.x]));
+    const yv = Math.round(Number(row[Array.isArray(part.y) ? part.y[0] : part.y]));
+    return (
+      <div
+        style={{
+          background: c.surface,
+          border: `1px solid ${c.border}`,
+          borderRadius: 8,
+          padding: "6px 9px",
+          fontSize: 12,
+          color: c.text,
+          maxWidth: 240,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+        }}
+      >
+        {label ? <div style={{ marginBottom: 2 }}>{label}</div> : null}
+        <div style={{ color: c.muted }}>
+          {part.xLabel ?? "confidence"}: {QUADRANT_TICKS[xv] ?? xv} · {part.yLabel ?? "coverage"}:{" "}
+          {QUADRANT_TICKS[yv] ?? yv}
+        </div>
+      </div>
+    );
+  };
+
   // Custom legend rendered below the chart (Recharts' built-in legend reverses
   // order and its `payload` prop isn't typed). For a pie the items are the data
   // categories; for a multi-series cartesian chart they're the series. A single
@@ -185,6 +279,73 @@ export function ChartPart(props: { part: ChartPartData }) {
             </Pie>
           </PieChart>
         );
+      case "treemap":
+        // Risk-weighted treemap (§8.1): area = the `y` value (e.g. churn), color
+        // = the row's `tone` (sensitivity). The eye is pulled to the big hot
+        // rectangle — attention routing as a visual reflex. The custom content
+        // tints each cell from TONE_HUE and labels it when it's big enough to read.
+        return (
+          <Treemap
+            data={part.data as never}
+            dataKey={series[0]}
+            nameKey={part.x}
+            stroke={c.surface}
+            isAnimationActive={false}
+            content={renderTreemapCell as never}
+          />
+        );
+      case "scatter": {
+        // Confidence × coverage quadrant (§8.3): x = confidence, y = coverage,
+        // both 1–3. The bottom-right (high confidence, low coverage) is the
+        // danger zone — a confident change in unverified code — shaded so the eye
+        // lands there. Points are tinted by `tone` (the server flags danger-zone
+        // findings). Axes read Low/Med/High, not bare numbers.
+        const yKey = series[0];
+        return (
+          <ScatterChart margin={{ top: 10, right: 16, bottom: part.xLabel ? 24 : 10, left: 4 }}>
+            {grid}
+            <ReferenceArea
+              x1={2.5}
+              x2={3.5}
+              y1={0.5}
+              y2={1.5}
+              fill="#e03131"
+              fillOpacity={0.08}
+              stroke="none"
+            />
+            <ReferenceLine x={2} stroke={c.border} strokeDasharray="3 3" />
+            <ReferenceLine y={2} stroke={c.border} strokeDasharray="3 3" />
+            <XAxis
+              type="number"
+              dataKey={part.x}
+              domain={[0.5, 3.5]}
+              ticks={[1, 2, 3]}
+              tickFormatter={(v: number) => QUADRANT_TICKS[v] ?? ""}
+              {...axisProps}
+              label={xLabel}
+            />
+            <YAxis
+              type="number"
+              dataKey={yKey}
+              domain={[0.5, 3.5]}
+              ticks={[1, 2, 3]}
+              tickFormatter={(v: number) => QUADRANT_TICKS[v] ?? ""}
+              width={44}
+              {...axisProps}
+              label={yLabel}
+            />
+            <Tooltip
+              cursor={{ stroke: c.faint, strokeOpacity: 0.2 }}
+              content={renderScatterTip as never}
+            />
+            <Scatter data={part.data} fill={c.accent}>
+              {part.data.map((d, i) => (
+                <Cell key={i} fill={TONE_HUE[String(d.tone ?? "")] ?? c.accent} />
+              ))}
+            </Scatter>
+          </ScatterChart>
+        );
+      }
       default:
         return (
           <BarChart data={part.data} margin={margin}>
