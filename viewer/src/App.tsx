@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowDown,
   ArrowRight,
-  Bookmark,
   BookOpen,
   Check,
   ChevronLeft,
@@ -89,7 +88,6 @@ import {
   refreshSessionsQuiet,
   select,
   selectAdjacent,
-  selectLibrary,
   selectedNow,
   sessionsNow,
   sendComment,
@@ -347,11 +345,6 @@ export default function App() {
             <UpdateBanner />
           </SidebarHeader>
           <SidebarContent id="sessionList" className="gap-0 px-1.5">
-            <SidebarGroup className="pt-1.5 pb-0">
-              <SidebarMenu>
-                <LibraryNavItem />
-              </SidebarMenu>
-            </SidebarGroup>
             {sessionsLoading ? (
               <SidebarGroup className="pt-2">
                 <SidebarMenu className="gap-0.5">
@@ -420,7 +413,7 @@ export default function App() {
             }}
           >
             <Onboard onConnect={() => setConnectOpen(true)} />
-            <SessionView />
+            <SessionView onConnect={() => setConnectOpen(true)} />
           </main>
         </SidebarInset>
       </SidebarProvider>
@@ -608,46 +601,6 @@ function isOwnFrame(source: unknown): boolean {
   return false;
 }
 
-// The Library: one always-present nav row above the session groups. It's the
-// home for surfaces you've pinned, so it lives apart from the per-session list.
-function LibraryNavItem() {
-  const library = useBoard((s) => s.library);
-  const { setOpenMobile } = useSidebar();
-  const open = () => {
-    void selectLibrary();
-    setOpenMobile(false);
-  };
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton
-        isActive={library}
-        tooltip="Library"
-        aria-current={library ? "true" : undefined}
-        onClick={open}
-        className={cx(
-          "h-9 gap-2 rounded-lg transition-colors duration-150",
-          library
-            ? "bg-brand-subtle hover:bg-brand-subtle data-[active=true]:bg-brand-subtle"
-            : "hover:bg-hover/60 data-[active=true]:bg-brand-subtle",
-        )}
-      >
-        <Bookmark
-          className={cx("size-4 flex-none", library ? "text-brand" : "text-muted-foreground")}
-          fill={library ? "currentColor" : "none"}
-        />
-        <span
-          className={cx(
-            "truncate text-[13px] group-data-[collapsible=icon]:hidden",
-            library ? "font-medium text-brand" : "font-medium text-foreground",
-          )}
-        >
-          Library
-        </span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  );
-}
-
 function SessionItem(props: { session: SessionRow }) {
   const selected = useBoard((s) => s.selected);
   const unread = useBoard((s) => s.unread);
@@ -764,7 +717,7 @@ function SessionItem(props: { session: SessionRow }) {
           </span>
           <span
             className={cx(
-              "flex items-center gap-1 truncate text-[11px] leading-snug",
+              "flex items-center gap-1 text-[11px] leading-snug",
               isSel ? "text-brand/60" : isVacant ? "text-faint/70" : "text-faint/90",
             )}
           >
@@ -774,9 +727,21 @@ function SessionItem(props: { session: SessionRow }) {
                 title="Agent is listening"
               />
             ) : null}
-            <span className="truncate">
+            <span className="min-w-0 flex-1 truncate">
               {props.session.agent} · {relTime(props.session.lastActiveAt)}
             </span>
+            {/* Open review findings — the resume signal. Hidden on hover so it
+                never collides with the ⋯ action, like the surface count. */}
+            {props.session.openFindings ? (
+              <span
+                className="flex-none rounded-full bg-amber-500/15 px-1.5 font-medium tabular-nums text-amber-700 group-hover/menu-item:opacity-0 dark:text-amber-300"
+                title={`${props.session.openFindings} open finding${
+                  props.session.openFindings === 1 ? "" : "s"
+                }`}
+              >
+                {props.session.openFindings} open
+              </span>
+            ) : null}
           </span>
         </span>
       </SidebarMenuButton>
@@ -829,6 +794,15 @@ function SessionItem(props: { session: SessionRow }) {
 // first finding of that label. A finding the user has Approved or Dismissed is
 // "resolved"; once every finding under a label is resolved the chip strikes
 // through and dims, so you watch the review burn down. Nothing for no badges.
+// Canonical review finding labels (R1: critical→Bug, warning→Nit, info→Question,
+// success→Praise). The burndown counts these and only these — a verdict card
+// ("Request changes") or an "Explainer" badge is not a finding to resolve, so it
+// never blocks the review from reaching "complete".
+const FINDING_LABELS = new Set(["Bug", "Nit", "Question", "Praise"]);
+// Verdict labels an agent's summary card might carry, matched case-insensitively
+// to name the terminal state ("Review complete — Request changes").
+const VERDICT_LABELS = new Set(["request changes", "approved", "approve", "looks good"]);
+
 function ReviewSummary(props: { surfaces: Surface[] }) {
   const comments = useBoard((s) => s.comments);
   const resolved = useMemo(() => {
@@ -855,51 +829,129 @@ function ReviewSummary(props: { surfaces: Surface[] }) {
     if (resolved.has(s.id)) g.done += 1;
     byLabel.set(s.badge.label, g);
   }
-  if (byLabel.size === 0) return null;
   const groups = [...byLabel.entries()].sort(
     (a, b) => BADGE_TONE_ORDER.indexOf(a[1].tone) - BADGE_TONE_ORDER.indexOf(b[1].tone),
   );
+
+  // The burndown: open (unresolved) findings, worst-severity first, drive the
+  // "Next open finding" pager and the open/resolved tally. Excludes verdict and
+  // explainer badges (see FINDING_LABELS) so "Review complete" means the findings
+  // are done, not that every badge has been touched.
+  const findings = props.surfaces.filter((s) => s.badge && FINDING_LABELS.has(s.badge.label));
+  const openFindings = findings
+    .filter((s) => !resolved.has(s.id))
+    .sort(
+      (a, b) => BADGE_TONE_ORDER.indexOf(a.badge!.tone) - BADGE_TONE_ORDER.indexOf(b.badge!.tone),
+    );
+  const findingsTotal = findings.length;
+  const openCount = openFindings.length;
+  const verdict = props.surfaces.find(
+    (s) => s.badge && VERDICT_LABELS.has(s.badge.label.toLowerCase()),
+  )?.badge?.label;
+
+  // `j` / `k` page through the open findings (worst first), wrapping. A ref holds
+  // the live list so the once-mounted key handler always sees the current set as
+  // findings resolve out from under the cursor.
+  const openRef = useRef(openFindings);
+  openRef.current = openFindings;
+  const cursorRef = useRef(-1);
+  const jumpToOpen = (dir: 1 | -1) => {
+    const list = openRef.current;
+    if (!list.length) return;
+    cursorRef.current = (((cursorRef.current + dir) % list.length) + list.length) % list.length;
+    cardEls.get(list[cursorRef.current].id)?.card.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if (e.key !== "j" && e.key !== "k") return;
+      const el = root().activeElement as HTMLElement | null;
+      const tag = el?.tagName;
+      // Don't hijack typing in the composer, an editable title, or a focused part.
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "IFRAME" || el?.isContentEditable)
+        return;
+      if (useBoard.getState().readingId || !openRef.current.length) return;
+      e.preventDefault();
+      jumpToOpen(e.key === "j" ? 1 : -1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (byLabel.size === 0) return null;
   const jumpTo = (id: string) =>
     cardEls.get(id)?.card.scrollIntoView({ behavior: "smooth", block: "start" });
-  // No "N findings" total — it would double-count the agent's own verdict card.
-  // The per-label chips are each an exact count and the verdict chip (e.g.
-  // "Request changes") surfaces the verdict on its own.
   return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-0.5">
-      {groups.map(([label, g]) => {
-        const allDone = g.done === g.total;
-        return (
-          <button
-            key={label}
-            type="button"
-            title={
-              allDone
-                ? `${label} — resolved`
-                : g.done > 0
-                  ? `Jump to ${label} (${g.done}/${g.total} resolved)`
-                  : `Jump to ${label}`
-            }
-            onClick={() => jumpTo(g.firstId)}
-            className={cx(
-              "inline-flex items-center gap-1.5 rounded-full py-[3px] pr-2 pl-[7px] text-[11px] leading-none font-semibold ring-1 ring-inset transition-all hover:opacity-80",
-              BADGE_TONE_CLASS[g.tone] ?? BADGE_TONE_CLASS.neutral,
-              allDone && "opacity-55 line-through",
-            )}
-          >
-            {allDone ? (
-              <Check className="size-2.5" strokeWidth={3} />
-            ) : (
-              <span
-                className={cx(
-                  "size-1.5 rounded-full",
-                  BADGE_DOT_CLASS[g.tone] ?? BADGE_DOT_CLASS.neutral,
-                )}
-              />
-            )}
-            {g.total} {label}
-          </button>
-        );
-      })}
+    <div className="mt-1.5 flex flex-col gap-1.5">
+      {/* Per-label chips: each an exact count, worst-severity first, jumping to
+          its first finding; struck through once every card under it resolves. */}
+      <div className="flex flex-wrap items-center gap-1.5 pl-0.5">
+        {groups.map(([label, g]) => {
+          const allDone = g.done === g.total;
+          return (
+            <button
+              key={label}
+              type="button"
+              title={
+                allDone
+                  ? `${label} — resolved`
+                  : g.done > 0
+                    ? `Jump to ${label} (${g.done}/${g.total} resolved)`
+                    : `Jump to ${label}`
+              }
+              onClick={() => jumpTo(g.firstId)}
+              className={cx(
+                "inline-flex items-center gap-1.5 rounded-full py-[3px] pr-2 pl-[7px] text-[11px] leading-none font-semibold ring-1 ring-inset transition-all hover:opacity-80",
+                BADGE_TONE_CLASS[g.tone] ?? BADGE_TONE_CLASS.neutral,
+                allDone && "opacity-55 line-through",
+              )}
+            >
+              {allDone ? (
+                <Check className="size-2.5" strokeWidth={3} />
+              ) : (
+                <span
+                  className={cx(
+                    "size-1.5 rounded-full",
+                    BADGE_DOT_CLASS[g.tone] ?? BADGE_DOT_CLASS.neutral,
+                  )}
+                />
+              )}
+              {g.total} {label}
+            </button>
+          );
+        })}
+      </div>
+      {/* The burndown row: an open/resolved tally and a pager while findings are
+          open, an explicit terminal verdict once they're all resolved. */}
+      {findingsTotal > 0 ? (
+        <div className="flex items-center gap-2 pl-0.5 text-[11px]">
+          {openCount > 0 ? (
+            <>
+              <span className="tabular-nums text-faint">
+                {openCount} open · {findingsTotal - openCount} resolved
+              </span>
+              <button
+                type="button"
+                onClick={() => jumpToOpen(1)}
+                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-brand transition-colors hover:bg-brand-subtle"
+              >
+                Next open finding
+                <ArrowDown className="size-3" />
+              </button>
+              <span className="text-faint/70 max-[700px]:hidden">or press j / k</span>
+            </>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700 dark:text-emerald-300">
+              <Check className="size-3" strokeWidth={3} />
+              Review complete{verdict ? ` — ${verdict}` : ""}
+            </span>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -985,94 +1037,60 @@ function ReadingView() {
   );
 }
 
-function SessionView() {
+function SessionView(props: { onConnect?: () => void }) {
   const sessions = useBoard((s) => s.sessions);
   const selected = useBoard((s) => s.selected);
   const surfaces = useBoard((s) => s.surfaces);
   const streamLoading = useBoard((s) => s.streamLoading);
-  const library = useBoard((s) => s.library);
   // While the reader is open it mounts the focused surface; unmount the stream's
   // copy so each surface (and its iframes) lives in exactly one place.
   const reading = useBoard((s) => s.readingId !== null);
   const current = sessions.find((x) => x.id === selected);
   const surfaceCount = current?.surfaceCount ?? 0;
   return (
-    <div id="sessionView" hidden={sessions.length === 0 && !library}>
+    <div id="sessionView" hidden={sessions.length === 0}>
       <div className="sticky top-0 z-[5] border-b-[0.5px] border-border bg-background/85 px-7 pt-3 pb-2.5 backdrop-blur-md max-[700px]:px-4 max-[700px]:pt-3 max-[700px]:pb-2.5">
         <div className="mx-auto flex max-w-[860px] flex-col gap-0.5">
-          {library ? (
-            <>
-              <div className="flex min-w-0 items-center gap-2">
-                <Bookmark className="size-4 flex-none text-brand" fill="currentColor" />
-                <span className="card-title truncate text-[15px] font-semibold tracking-[-0.01em] text-foreground">
-                  Library
-                </span>
-              </div>
-              <span className="pl-0.5 text-[12px] text-faint">
-                Pinned surfaces across every session — your visual knowledge base
+          <div className="flex min-w-0 items-center gap-2">
+            {current ? (
+              <span className="flex-none text-muted-foreground">
+                <AgentMark agent={current.agent} />
               </span>
-            </>
-          ) : (
-            <>
-              <div className="flex min-w-0 items-center gap-2">
-                {current ? (
-                  <span className="flex-none text-muted-foreground">
-                    <AgentMark agent={current.agent} />
-                  </span>
-                ) : null}
-                <SessionTitle current={current} />
-                <span className="flex-1" />
-                {current && !isReadonly() ? <AgentPresence agent={current.agent} /> : null}
-              </div>
-              <span className="pl-0.5 text-[12px] text-faint" id="sessMeta">
-                {current
-                  ? `${current.agent} · started ${relTime(current.createdAt)}${
-                      surfaceCount > 0
-                        ? ` · ${surfaceCount} surface${surfaceCount === 1 ? "" : "s"}`
-                        : ""
-                    }`
-                  : ""}
-              </span>
-              <ReviewSummary surfaces={surfaces} />
-            </>
-          )}
+            ) : null}
+            <SessionTitle current={current} />
+            <span className="flex-1" />
+            {current && !isReadonly() ? (
+              <AgentPresence agent={current.agent} onConnect={props.onConnect} />
+            ) : null}
+          </div>
+          <span className="pl-0.5 text-[12px] text-faint" id="sessMeta">
+            {current
+              ? `${current.agent} · started ${relTime(current.createdAt)}${
+                  surfaceCount > 0
+                    ? ` · ${surfaceCount} surface${surfaceCount === 1 ? "" : "s"}`
+                    : ""
+                }`
+              : ""}
+          </span>
+          <ReviewSummary surfaces={surfaces} />
         </div>
       </div>
       <div
         id="stream"
         className="mx-auto max-w-[860px] px-7 pt-[22px] pb-[120px] max-[700px]:px-3.5 max-[700px]:pt-4 max-[700px]:pb-[120px]"
       >
-        {!library ? <WhatsNewCard /> : null}
+        <WhatsNewCard />
         {streamLoading ? (
           <CardSkeletons />
         ) : surfaces.length === 0 ? (
-          library ? (
-            <EmptyLibrary />
-          ) : (
-            <EmptySession />
-          )
+          <EmptySession />
         ) : reading ? null : (
           surfaces.map((s) => <Card surface={s} key={s.id} />)
         )}
-        {selected && !library && !streamLoading && !isReadonly() ? (
-          <SessionChat sessionId={selected} />
+        {selected && !streamLoading && !isReadonly() ? (
+          <SessionChat sessionId={selected} onConnect={props.onConnect} />
         ) : null}
       </div>
-    </div>
-  );
-}
-
-// Empty-Library state: explains how to fill it.
-function EmptyLibrary() {
-  return (
-    <div className="px-6 py-24 text-center">
-      <div className="mx-auto flex size-11 items-center justify-center rounded-full bg-hover text-muted-foreground">
-        <Bookmark className="size-5" />
-      </div>
-      <p className="mt-4 text-[14px] font-medium text-foreground">Your Library is empty</p>
-      <p className="mt-1 text-[13px] text-faint">
-        Pin a surface (the bookmark in its footer) to keep it here across sessions.
-      </p>
     </div>
   );
 }
@@ -1080,7 +1098,7 @@ function EmptyLibrary() {
 // The session-level chat: talk to your agent about the whole session, not a
 // specific card. Posts surfaceless comments; the agent replies session-level
 // (reply_to_user with no surfaceId). Reuses the card Thread with surfaceId=null.
-function SessionChat(props: { sessionId: string }) {
+function SessionChat(props: { sessionId: string; onConnect?: () => void }) {
   const listening = useSessionListening();
   return (
     <div className="mt-4 overflow-hidden rounded-xl border-[0.5px] border-border bg-card">
@@ -1088,9 +1106,22 @@ function SessionChat(props: { sessionId: string }) {
         <MessageSquare className="size-4 text-muted-foreground" />
         <span className="text-[13px] font-semibold text-foreground">Chat with your agent</span>
         <span className="flex-1" />
-        <span className="text-[11px] text-faint">
-          {listening ? "listening" : "messages queue until your agent checks"}
-        </span>
+        {listening ? (
+          <span className="text-[11px] font-medium text-[#2e7d54] dark:text-[#5fd699]">
+            agent will see this
+          </span>
+        ) : (
+          // Carry the fix at the moment of friction: messages queue, and the way
+          // to make them land automatically is one click away.
+          <button
+            type="button"
+            onClick={() => props.onConnect?.()}
+            className="text-[11px] text-faint underline-offset-2 transition-colors hover:text-foreground hover:underline"
+            title="Comments queue until your agent checks. Click to turn on auto-replies so they land automatically."
+          >
+            queued — turn on auto-replies
+          </button>
+        )}
       </div>
       <Thread
         surfaceId={null}
@@ -1141,42 +1172,35 @@ function EmptySession() {
   );
 }
 
-// Live presence chip in the session header: green "Listening" while the agent
-// is parked in wait_for_feedback (messages reach it instantly), or a clickable
-// "Agent idle" that copies an instruction to arm the agent's chat loop. This is
-// the honest signal for the pull-based bridge — showcase can't push to the
-// editor, so the user needs to see whether a reply is even coming.
-function AgentPresence(props: { agent: string }) {
+// The single most important status in the app: will my next comment actually
+// reach the agent? Framed as a setting the user owns — "Auto-replies on" (green)
+// while the agent is connected (parked in a feedback wait, or kept there by the
+// `showcase watch` plugin), or a clickable "Auto-replies off" that opens Connect
+// — the durable fix — instead of leaving the user to hand-nudge their terminal.
+function AgentPresence(props: { agent: string; onConnect?: () => void }) {
   const listening = useSessionListening();
   const label = props.agent || "your agent";
   if (listening) {
     return (
       <span
         className="flex-none inline-flex items-center gap-1.5 rounded-full bg-[#4caf78]/12 px-2 py-0.5 text-[11px] font-medium text-[#2e7d54] dark:text-[#5fd699]"
-        title={`${label} is parked in wait_for_feedback — your messages reach it instantly.`}
+        title={`Auto-replies are on — ${label} is connected, so your comments reach it right away.`}
       >
         <span className="size-1.5 animate-pulse rounded-full bg-[#4caf78] motion-reduce:animate-none" />
-        Listening
+        Auto-replies on
       </span>
     );
   }
-  const armText = `Keep calling wait_for_feedback on showcase and reply to me with reply_to_user, looping, so I can chat with you from the browser.`;
   return (
     <button
       type="button"
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(armText);
-          toast(`Copied — paste it to ${label} to start the chat loop.`);
-        } catch {
-          toast("Couldn't copy the instruction");
-        }
-      }}
-      className="flex-none inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-faint transition-colors hover:bg-hover hover:text-muted-foreground"
-      title={`${label} isn't listening. Click to copy an instruction that arms it (it must call wait_for_feedback to receive your messages).`}
+      onClick={() => props.onConnect?.()}
+      className="flex-none inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-faint transition-colors hover:bg-hover hover:text-foreground"
+      title={`Auto-replies are off — ${label} isn't connected, so comments queue until it checks. Click to turn them on.`}
     >
       <span className="size-1.5 rounded-full bg-faint" />
-      Agent idle
+      Auto-replies off
+      <Plug className="size-3 opacity-70" />
     </button>
   );
 }
@@ -1238,32 +1262,37 @@ const TRY_SNIP =
 
 function Onboard(props: { onConnect: () => void }) {
   const sessions = useBoard((s) => s.sessions);
-  const library = useBoard((s) => s.library);
   return (
     <div
       id="onboard"
       className="mx-auto max-w-[660px] px-7 py-[72px] max-[700px]:px-[18px] max-[700px]:py-10 [&_h1]:mt-0 [&_h1]:mb-1.5 [&_h1]:text-[21px] [&_h1]:font-medium [&_h2]:mt-[26px] [&_h2]:mb-2 [&_h2]:text-[13px] [&_h2]:font-medium [&_h2]:tracking-[0.02em] [&_h2]:text-muted-foreground [&_h2]:lowercase"
-      hidden={sessions.length > 0 || library}
+      hidden={sessions.length > 0}
     >
       {!isReadonly() ? (
         <>
           <h1>The show hasn&rsquo;t started yet</h1>
           <p className="mb-8 text-[14px] text-muted-foreground">
-            showcase is a live surface where coding agents draw HTML snippets — diagrams, sketches,
-            explainers — while they work in your terminal.
+            showcase is a live surface where your coding agent draws diagrams, sketches, and code
+            reviews while it works in your terminal — and your comments flow straight back to it.
           </p>
-          <h2>teach your agent about it</h2>
-          <Snip text={SETUP_SNIP} />
-          <h2>or try it yourself</h2>
-          <Snip text={TRY_SNIP} />
-          <h2>using claude code?</h2>
+          {/* The hero is closing the loop: connect once so comments reach the
+              agent automatically. The snippets below are the manual fallback. */}
+          <h2>turn on auto-replies</h2>
+          <p className="mb-3 text-[13px]/[1.55] text-muted-foreground">
+            Install the showcase plugin once so your comments reach your agent on their own — no
+            copy-pasting into your terminal, no re-arming a watcher.
+          </p>
           <button
-            className="group inline-flex cursor-pointer items-center gap-1.5 rounded-lg border-[0.5px] border-border bg-card px-3.5 py-2 text-[13px] text-foreground transition-colors hover:border-muted-foreground"
+            className="group inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand px-3.5 py-2 text-[13px] font-medium text-primary-foreground transition-opacity hover:opacity-90"
             onClick={props.onConnect}
           >
             Connect Claude Code
             <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
           </button>
+          <h2>or teach any agent</h2>
+          <Snip text={SETUP_SNIP} />
+          <h2>or try it yourself</h2>
+          <Snip text={TRY_SNIP} />
         </>
       ) : (
         <>

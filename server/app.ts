@@ -50,6 +50,13 @@ const FEEDBACK_COMPOSING_TTL_MS = 3000;
 const FEEDBACK_MAX_BATCH_MS = 25000;
 const FEEDBACK_POLL_MS = 250;
 
+// Review burndown: which badge labels are findings (R1's severity set), and what
+// a user-posted resolution marker looks like (the viewer's Approve/Dismiss). A
+// finding is "open" until it carries one. Kept in sync with the viewer's
+// FINDING_LABELS / APPROVAL_MARK / DISMISS_MARK.
+const FINDING_LABELS = new Set(["Bug", "Nit", "Question", "Praise"]);
+const isResolutionText = (t: string) => t.startsWith("✓ Approved") || t.startsWith("⊘ Dismissed");
+
 // Asset serving policy: only raster images are served inline; everything else
 // (incl. svg, json, text, the octet-stream catch-all) is an attachment, so a
 // top-level open of /a/:id can never execute an uploaded document as a live
@@ -1209,13 +1216,31 @@ export function createApp({
   // --- sessions ---
 
   app.get("/api/sessions", async (c) => {
-    const [sessions, surfaces] = await Promise.all([store.listSessions(), store.listSurfaces()]);
+    const [sessions, surfaces, comments] = await Promise.all([
+      store.listSessions(),
+      store.listSurfaces(),
+      store.listComments({}),
+    ]);
     const counts = new Map<string, number>();
     for (const s of surfaces) counts.set(s.sessionId, (counts.get(s.sessionId) ?? 0) + 1);
+    // Open findings per session: a finding card (severity badge) with no
+    // Approve/Dismiss marker comment. Drives the sidebar's resume count.
+    const resolved = new Set<string>();
+    for (const cm of comments) {
+      if (cm.surfaceId && cm.author === "user" && isResolutionText(cm.text))
+        resolved.add(cm.surfaceId);
+    }
+    const open = new Map<string, number>();
+    for (const s of surfaces) {
+      if (s.badge && FINDING_LABELS.has(s.badge.label) && !resolved.has(s.id)) {
+        open.set(s.sessionId, (open.get(s.sessionId) ?? 0) + 1);
+      }
+    }
     return c.json(
       sessions.map((s) => ({
         ...s,
         surfaceCount: counts.get(s.id) ?? 0,
+        openFindings: open.get(s.id) ?? 0,
         // Current agent presence so a freshly-loaded viewer shows the right
         // listening state without waiting for the next transition event.
         listening: isListening(s.id),

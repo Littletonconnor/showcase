@@ -96,26 +96,19 @@ test("a user comment appears live in the surface thread", async ({ page, request
 });
 
 test("the Approve quick-action posts a user feedback signal", async ({ page, request }) => {
-  const { surfaceId } = await seedSurface(request);
-  await page.goto(`/?surface=${surfaceId}`);
-  const card = page.locator(`.card[data-id="${surfaceId}"]`);
-  await expect(card).toBeVisible();
-
-  // One tap on the card's Approve action posts a recognizable author=user signal.
-  await card.getByRole("button", { name: "Approve — looks good" }).click();
-  await expect(card.locator(".thread .cmt.user")).toContainText("Approved");
-});
-
-test("an annotation pins a note to a spot and stores the anchor", async ({ page, request }) => {
+  // Approve / Dismiss are review-verdict actions: they render only on a finding
+  // card (one carrying a severity badge), where they resolve the finding. Seed
+  // such a card so the quick-action is present.
   const session = await (
-    await request.post("/api/sessions", { data: { agent: "e2e", title: "annotate" } })
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "approve" } })
   ).json();
   const surface = await (
     await request.post("/api/surfaces", {
       data: {
-        title: "annotate",
+        title: "Nit: rename for clarity",
         session: session.id,
-        parts: [{ kind: "markdown", markdown: "# A\n\nline one\n\nline two\n\nline three" }],
+        badge: { tone: "warning", label: "Nit" },
+        parts: [{ kind: "markdown", markdown: "consider a clearer name here" }],
       },
     })
   ).json();
@@ -123,21 +116,9 @@ test("an annotation pins a note to a spot and stores the anchor", async ({ page,
   const card = page.locator(`.card[data-id="${surface.id}"]`);
   await expect(card).toBeVisible();
 
-  // Arm annotate mode, click a spot, type a note.
-  await card.getByRole("button", { name: "Pin a note to a spot" }).click();
-  await card.locator(".cursor-crosshair").click({ position: { x: 200, y: 60 } });
-  const note = card.getByRole("textbox", { name: "Annotation note" });
-  await note.fill("anchor here");
-  await note.press("Enter");
-
-  // The note posts as a user comment and a pin renders at the spot.
-  await expect(card.locator(".thread .cmt.user")).toContainText("anchor here");
-  await expect(card.locator('span[title="anchor here"]')).toBeVisible();
-
-  // The comment carries the anchor server-side (so it reaches the agent).
-  const all = await (await request.get(`/api/comments?surface=${surface.id}`)).json();
-  const anchored = all.comments.find((c: { text: string }) => c.text.includes("anchor here"));
-  expect(anchored?.anchor?.xPct, "the comment carries the anchor").toBeGreaterThanOrEqual(0);
+  // One tap on the card's Approve action posts a recognizable author=user signal.
+  await card.getByRole("button", { name: "Approve" }).click();
+  await expect(card.locator(".thread .cmt.user")).toContainText("Approved");
 });
 
 test("a review finding card renders its severity badge in the trusted header", async ({
@@ -288,7 +269,7 @@ test("clicking a diff line opens a line-anchored comment", async ({ page, reques
 
   // The trusted card opens a line composer; type a note and send.
   await expect(card.getByText(/Comment on line/)).toBeVisible({ timeout: 10_000 });
-  const note = card.getByRole("textbox", { name: "Annotation note" });
+  const note = card.getByRole("textbox", { name: "Line comment" });
   await note.fill("off-by-one here");
   await note.press("Enter");
 
@@ -406,33 +387,16 @@ test("approving a finding strikes it through in the header verdict bar", async (
   const chip = header.getByRole("button", { name: "1 Bug" });
   await expect(chip).toBeVisible();
   await expect(chip).not.toHaveAttribute("title", "Bug — resolved");
+  // The cockpit shows the open tally and the pager while findings are open.
+  await expect(header.getByText("1 open · 0 resolved")).toBeVisible();
+  await expect(header.getByRole("button", { name: /Next open finding/ })).toBeVisible();
 
   // Approve the finding from its card footer.
   const card = page.locator(`.card[data-id="${surface.id}"]`);
-  await card.getByRole("button", { name: "Approve — looks good" }).click();
+  await card.getByRole("button", { name: "Approve" }).click();
 
-  // The chip flips to resolved (title changes; line-through is applied).
+  // The chip flips to resolved (title changes; line-through is applied)…
   await expect(chip).toHaveAttribute("title", "Bug — resolved", { timeout: 10_000 });
-});
-
-test("pinning a surface collects it in the Library across sessions", async ({ page, request }) => {
-  const { surfaceId } = await seedSurface(request);
-  await page.goto(`/?surface=${surfaceId}`);
-  const card = page.locator(`.card[data-id="${surfaceId}"]`);
-  await expect(card).toBeVisible();
-
-  // Pin it from the card footer.
-  await card.getByRole("button", { name: "Pin to your Library" }).click();
-  // The action flips to the unpin label once it's pinned.
-  await expect(card.getByRole("button", { name: "Remove from Library" })).toBeVisible();
-
-  // Open the Library from the sidebar; the pinned surface is there.
-  await page.getByRole("button", { name: "Library" }).first().click();
-  const libCard = page.locator(`.card[data-id="${surfaceId}"]`);
-  await expect(libCard).toBeVisible({ timeout: 10_000 });
-  await expect(libCard.locator(".card-title")).toHaveText("Oracle surface");
-
-  // Unpinning from within the Library drops it out of the collection.
-  await libCard.getByRole("button", { name: "Remove from Library" }).click();
-  await expect(libCard).toHaveCount(0, { timeout: 10_000 });
+  // …and with no findings left open, the review reaches its terminal state.
+  await expect(header.getByText("Review complete")).toBeVisible({ timeout: 10_000 });
 });
