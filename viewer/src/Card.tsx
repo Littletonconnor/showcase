@@ -20,9 +20,15 @@ import {
 } from "./api.ts";
 import { ChartPart } from "./ChartPart.tsx";
 import { CodePart } from "./CodePart.tsx";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -44,6 +50,7 @@ import {
   Link2,
   MapPin,
   MessageSquare,
+  MoreHorizontal,
   Sparkles,
   ThumbsUp,
   Trash2,
@@ -182,6 +189,68 @@ function IconAction(props: {
       </TooltipTrigger>
       <TooltipContent>{props.label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+// Per-surface utility actions that aren't part of the comment loop — copy link,
+// open in a new tab, delete — collapsed behind a single ⋯ menu so the footer
+// toolbar stays scannable and every still-visible icon is a loop action. Mirrors
+// the session row's overflow menu in App.tsx, so the app has one pattern for
+// "secondary actions" instead of two.
+function SurfaceOverflowMenu(props: { surfaceId: string; title: string }) {
+  const [open, setOpen] = useState(false);
+  const link = surfaceLink(props.surfaceId);
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className={cx("text-faint", open && "text-foreground")}
+          aria-label="More actions"
+          title="More actions"
+        >
+          <MoreHorizontal />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuItem
+          onSelect={async () => {
+            try {
+              await navigator.clipboard.writeText(link);
+              toast("Link copied");
+            } catch {
+              toast("Couldn't copy the link");
+            }
+          }}
+        >
+          <Link2 />
+          Copy link
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <a href={link} target="_blank" rel="noreferrer">
+            <ExternalLink />
+            Open in new tab
+          </a>
+        </DropdownMenuItem>
+        {!isReadonly() ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              onSelect={async () => {
+                if (confirm(`Delete "${props.title}"?`)) {
+                  await api(`/api/surfaces/${props.surfaceId}`, { method: "DELETE" });
+                }
+              }}
+            >
+              <Trash2 />
+              Delete
+            </DropdownMenuItem>
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -337,6 +406,12 @@ export function Card(props: { surface: Surface }) {
   );
 
   const surfaceId = props.surface.id;
+  // Approve / Dismiss are review-verdict decisions: they only do anything on a
+  // finding card (one carrying a severity badge), where they resolve the finding
+  // and strike its chip in the header verdict bar. On a plain diagram/explainer
+  // there's no verdict to burn down, so they'd be two buttons with no effect —
+  // gate them on the badge so every visible action has a purpose on its card.
+  const isFinding = !!props.surface.badge;
 
   // Start the polling scroll when this card becomes the scrollTarget.
   useEffect(() => {
@@ -399,40 +474,42 @@ export function Card(props: { surface: Surface }) {
   // listening, queued otherwise). Lives in the trusted viewer chrome, so it's a
   // genuine author:"user" message — the fast path for "yes, this is right" during
   // iteration, vs typing it out. The "Request a change" path is just the composer.
-  const approveAction = !isReadonly() ? (
-    <IconAction
-      label="Approve — looks good"
-      onClick={() => {
-        void sendComment(
-          { surface: surfaceId, text: APPROVAL_MARK, author: "user" },
-          surfaceId,
-          APPROVAL_MARK,
-        );
-        toast("Sent approval to your agent");
-      }}
-    >
-      <ThumbsUp />
-    </IconAction>
-  ) : null;
+  const approveAction =
+    !isReadonly() && isFinding ? (
+      <IconAction
+        label="Approve — looks good"
+        onClick={() => {
+          void sendComment(
+            { surface: surfaceId, text: APPROVAL_MARK, author: "user" },
+            surfaceId,
+            APPROVAL_MARK,
+          );
+          toast("Sent approval to your agent");
+        }}
+      >
+        <ThumbsUp />
+      </IconAction>
+    ) : null;
 
   // Dismiss — the "won't change this" decision. Like Approve it posts a
   // recognizable user marker and resolves the finding (the header verdict bar
   // strikes resolved findings); the agent reads it as "drop this one".
-  const dismissAction = !isReadonly() ? (
-    <IconAction
-      label="Dismiss — not changing this"
-      onClick={() => {
-        void sendComment(
-          { surface: surfaceId, text: DISMISS_MARK, author: "user" },
-          surfaceId,
-          DISMISS_MARK,
-        );
-        toast("Dismissed — told your agent to drop it");
-      }}
-    >
-      <CircleSlash />
-    </IconAction>
-  ) : null;
+  const dismissAction =
+    !isReadonly() && isFinding ? (
+      <IconAction
+        label="Dismiss — not changing this"
+        onClick={() => {
+          void sendComment(
+            { surface: surfaceId, text: DISMISS_MARK, author: "user" },
+            surfaceId,
+            DISMISS_MARK,
+          );
+          toast("Dismissed — told your agent to drop it");
+        }}
+      >
+        <CircleSlash />
+      </IconAction>
+    ) : null;
 
   // Annotate toggle: arm the click-capture overlay (or cancel an in-progress one).
   const annotateAction = !isReadonly() ? (
@@ -479,38 +556,7 @@ export function Card(props: { surface: Surface }) {
           />
         </IconAction>
       ) : null}
-      <IconAction
-        label="Copy link to this surface"
-        onClick={async () => {
-          try {
-            await navigator.clipboard.writeText(surfaceLink(surfaceId));
-            toast("Link copied");
-          } catch {
-            toast("Couldn't copy the link");
-          }
-        }}
-      >
-        <Link2 />
-      </IconAction>
-      <IconAction label="Open in a new tab" href={surfaceLink(surfaceId)}>
-        <ExternalLink />
-      </IconAction>
-      {!isReadonly() ? (
-        <>
-          <span className="mx-1 h-4 w-px bg-border" />
-          <IconAction
-            label="Delete surface"
-            danger
-            onClick={async () => {
-              if (confirm(`Delete "${props.surface.title}"?`)) {
-                await api(`/api/surfaces/${surfaceId}`, { method: "DELETE" });
-              }
-            }}
-          >
-            <Trash2 />
-          </IconAction>
-        </>
-      ) : null}
+      <SurfaceOverflowMenu surfaceId={surfaceId} title={props.surface.title} />
     </>
   );
 
@@ -553,12 +599,9 @@ export function Card(props: { surface: Surface }) {
             </SelectContent>
           </Select>
         ) : (
-          <Badge
-            variant="outline"
-            className="flex-none rounded-full border-border px-2 py-0 text-[11px] font-normal text-faint"
-          >
-            v1
-          </Badge>
+          // v1 has no other versions to switch to, so it's plain text — not a
+          // pill that mimics the (interactive) version Select above.
+          <span className="flex-none text-[11px] font-normal text-faint tabular-nums">v1</span>
         )}
         <span className="flex-1"></span>
         <span className="flex-none text-[11px] text-faint tabular-nums">

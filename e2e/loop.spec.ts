@@ -96,9 +96,24 @@ test("a user comment appears live in the surface thread", async ({ page, request
 });
 
 test("the Approve quick-action posts a user feedback signal", async ({ page, request }) => {
-  const { surfaceId } = await seedSurface(request);
-  await page.goto(`/?surface=${surfaceId}`);
-  const card = page.locator(`.card[data-id="${surfaceId}"]`);
+  // Approve / Dismiss are review-verdict actions: they render only on a finding
+  // card (one carrying a severity badge), where they resolve the finding. Seed
+  // such a card so the quick-action is present.
+  const session = await (
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "approve" } })
+  ).json();
+  const surface = await (
+    await request.post("/api/surfaces", {
+      data: {
+        title: "Nit: rename for clarity",
+        session: session.id,
+        badge: { tone: "warning", label: "Nit" },
+        parts: [{ kind: "markdown", markdown: "consider a clearer name here" }],
+      },
+    })
+  ).json();
+  await page.goto(`/?surface=${surface.id}`);
+  const card = page.locator(`.card[data-id="${surface.id}"]`);
   await expect(card).toBeVisible();
 
   // One tap on the card's Approve action posts a recognizable author=user signal.

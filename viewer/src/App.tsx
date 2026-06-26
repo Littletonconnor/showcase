@@ -1089,7 +1089,7 @@ function SessionChat(props: { sessionId: string }) {
         <span className="text-[13px] font-semibold text-foreground">Chat with your agent</span>
         <span className="flex-1" />
         <span className="text-[11px] text-faint">
-          {listening ? "listening" : "messages queue until your agent checks"}
+          {listening ? "listening" : "agent idle — messages queue until it checks"}
         </span>
       </div>
       <Thread
@@ -1177,6 +1177,9 @@ function AgentPresence(props: { agent: string }) {
     >
       <span className="size-1.5 rounded-full bg-faint" />
       Agent idle
+      {/* The trailing copy glyph signals this status pill is also a button —
+          clicking copies the wake instruction (the title spells it out). */}
+      <Copy className="size-3 opacity-70" />
     </button>
   );
 }
