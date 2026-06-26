@@ -304,6 +304,17 @@ function outSurface(surface) {
   out({ ...surface, url: `${BASE}/session/${surface.sessionId}/s/${surface.id}` });
 }
 
+// Options shared by every publish-family command: card title plus the session
+// controls publishSurface/resolveSession read. Individual commands spread this
+// and add their own part-specific flags.
+const PUBLISH_OPTS = {
+  title: { type: "string" },
+  session: { type: "string" },
+  "session-title": { type: "string" },
+  agent: { type: "string" },
+  "new-session": { type: "boolean" },
+};
+
 const CONTENT_TYPES = {
   png: "image/png",
   jpg: "image/jpeg",
@@ -675,7 +686,7 @@ const commands = {
     const { values: flags, positionals } = parse({
       allowPositionals: true,
       options: {
-        title: { type: "string" },
+        ...PUBLISH_OPTS,
         md: { type: "string" },
         mermaid: { type: "string" },
         diff: { type: "string" },
@@ -685,10 +696,6 @@ const commands = {
         code: { type: "string" },
         kit: { type: "string", multiple: true },
         layout: { type: "string" },
-        session: { type: "string" },
-        "session-title": { type: "string" },
-        agent: { type: "string" },
-        "new-session": { type: "boolean" },
       },
     });
     const htmlPart = { kind: "html", html: readContent(positionals[0]) };
@@ -762,14 +769,7 @@ const commands = {
   async image() {
     const { values: flags, positionals } = parse({
       allowPositionals: true,
-      options: {
-        title: { type: "string" },
-        caption: { type: "string" },
-        session: { type: "string" },
-        "session-title": { type: "string" },
-        agent: { type: "string" },
-        "new-session": { type: "boolean" },
-      },
+      options: { ...PUBLISH_OPTS, caption: { type: "string" } },
     });
     const file = positionals[0];
     if (!file || file === "-") fail("usage: showcase image <file> [--title t]");
@@ -786,13 +786,7 @@ const commands = {
   async trace() {
     const { values: flags, positionals } = parse({
       allowPositionals: true,
-      options: {
-        title: { type: "string" },
-        session: { type: "string" },
-        "session-title": { type: "string" },
-        agent: { type: "string" },
-        "new-session": { type: "boolean" },
-      },
+      options: { ...PUBLISH_OPTS },
     });
     const file = positionals[0];
     if (!file || file === "-") fail("usage: showcase trace <file> [--title t]");
@@ -809,14 +803,7 @@ const commands = {
   async diff() {
     const { values: flags, positionals } = parse({
       allowPositionals: true,
-      options: {
-        title: { type: "string" },
-        layout: { type: "string" },
-        session: { type: "string" },
-        "session-title": { type: "string" },
-        agent: { type: "string" },
-        "new-session": { type: "boolean" },
-      },
+      options: { ...PUBLISH_OPTS, layout: { type: "string" } },
     });
     const parts = [
       {
@@ -831,31 +818,16 @@ const commands = {
   async markdown() {
     const { values: flags, positionals } = parse({
       allowPositionals: true,
-      options: {
-        title: { type: "string" },
-        session: { type: "string" },
-        "session-title": { type: "string" },
-        agent: { type: "string" },
-        "new-session": { type: "boolean" },
-      },
+      options: { ...PUBLISH_OPTS },
     });
     const parts = [{ kind: "markdown", markdown: readContent(positionals[0]) }];
-    const surface = await publishSurface(parts, flags);
-    out({ ...surface, url: `${BASE}/session/${surface.sessionId}/s/${surface.id}` });
+    outSurface(await publishSurface(parts, flags));
   },
 
   async terminal() {
     const { values: flags, positionals } = parse({
       allowPositionals: true,
-      options: {
-        title: { type: "string" },
-        "term-title": { type: "string" },
-        cols: { type: "string" },
-        session: { type: "string" },
-        "session-title": { type: "string" },
-        agent: { type: "string" },
-        "new-session": { type: "boolean" },
-      },
+      options: { ...PUBLISH_OPTS, "term-title": { type: "string" }, cols: { type: "string" } },
     });
     const cols = Number(flags.cols);
     const parts = [
@@ -866,20 +838,13 @@ const commands = {
         ...(flags["term-title"] && { title: flags["term-title"] }),
       },
     ];
-    const surface = await publishSurface(parts, flags);
-    out({ ...surface, url: `${BASE}/session/${surface.sessionId}/s/${surface.id}` });
+    outSurface(await publishSurface(parts, flags));
   },
 
   async mermaid() {
     const { values: flags, positionals } = parse({
       allowPositionals: true,
-      options: {
-        title: { type: "string" },
-        session: { type: "string" },
-        "session-title": { type: "string" },
-        agent: { type: "string" },
-        "new-session": { type: "boolean" },
-      },
+      options: { ...PUBLISH_OPTS },
     });
     const parts = [{ kind: "mermaid", mermaid: readContent(positionals[0]) }];
     outSurface(await publishSurface(parts, flags));
@@ -888,13 +853,7 @@ const commands = {
   async json() {
     const { values: flags, positionals } = parse({
       allowPositionals: true,
-      options: {
-        title: { type: "string" },
-        session: { type: "string" },
-        "session-title": { type: "string" },
-        agent: { type: "string" },
-        "new-session": { type: "boolean" },
-      },
+      options: { ...PUBLISH_OPTS },
     });
     if (!positionals[0]) fail("usage: showcase json <file|-> [--title t]");
     const text = readContent(positionals[0]);
@@ -910,13 +869,7 @@ const commands = {
   async chart() {
     const { values: flags, positionals } = parse({
       allowPositionals: true,
-      options: {
-        title: { type: "string" },
-        session: { type: "string" },
-        "session-title": { type: "string" },
-        agent: { type: "string" },
-        "new-session": { type: "boolean" },
-      },
+      options: { ...PUBLISH_OPTS },
     });
     if (!positionals[0]) fail("usage: showcase chart <file|-> [--title t]");
     // The file holds the chart spec object ({chartType, x, y, data, ...}); wrap
@@ -937,14 +890,10 @@ const commands = {
     const { values: flags, positionals } = parse({
       allowPositionals: true,
       options: {
-        title: { type: "string" },
+        ...PUBLISH_OPTS,
         filename: { type: "string" },
         language: { type: "string" },
         "line-start": { type: "string" },
-        session: { type: "string" },
-        "session-title": { type: "string" },
-        agent: { type: "string" },
-        "new-session": { type: "boolean" },
       },
     });
     if (!positionals[0])
