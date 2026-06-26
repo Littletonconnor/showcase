@@ -1,11 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
-  ArrowRight,
   BookOpen,
-  Check,
-  ChevronLeft,
-  ChevronRight,
   Copy,
   Link2,
   MessageSquare,
@@ -29,8 +25,6 @@ import {
   sessionLabel,
   sessionLink,
   type SessionRow,
-  type Surface,
-  type SurfaceBadge,
 } from "./api.ts";
 import {
   DropdownMenu,
@@ -39,16 +33,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { onBridgeMessage } from "./bridge.ts";
 import { routeGet, routeSubscribe, root } from "./host.ts";
-import {
-  BADGE_DOT_CLASS,
-  BADGE_TONE_CLASS,
-  BADGE_TONE_ORDER,
-  Card,
-  cardEls,
-  frameForSource,
-  Thread,
-} from "./Card.tsx";
+import { Card, cardEls, Thread } from "./Card.tsx";
 import { cx } from "./cx.ts";
 import {
   Sidebar,
@@ -69,23 +56,20 @@ import {
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "@/components/ui/sonner";
-import { applyFrameHeight } from "./SandboxedPart.tsx";
 import { renderNotes } from "./notes.ts";
+import { ConnectModal, Onboard } from "./Onboarding.tsx";
+import { ReadingView } from "./ReadingView.tsx";
+import { ReviewSummary } from "./ReviewSummary.tsx";
 import { initTheme } from "./theme.ts";
 import {
-  APPROVAL_MARK,
   applyRoute,
   checkVersion,
   clearUnread,
   connect,
   dismissUpdate,
-  DISMISS_MARK,
-  exitReading,
   goHome,
   groupSessions,
-  isResolutionComment,
   nearBottom,
-  readingStep,
   refreshSessions,
   refreshSessionsQuiet,
   select,
@@ -523,86 +507,6 @@ function WhatsNewCard() {
   );
 }
 
-// Messages from sandboxed surface iframes (see server/surfacePage.ts bridge).
-async function onBridgeMessage(ev: MessageEvent) {
-  const d = ev.data as {
-    __showcase?: boolean;
-    type?: string;
-    height?: number;
-    text?: unknown;
-    url?: string;
-    key?: string;
-  } | null;
-  if (!d || !d.__showcase) return;
-  // Every host-affecting message must come from a frame the viewer actually
-  // embedded — never an unexpected/nested frame. send-prompt and resize prove
-  // this implicitly (frameForSource resolves the exact html frame); the
-  // remaining types reach the host UI directly, so gate them on isOwnFrame.
-  // (frameForSource only knows html-part frames; switch-session is sent only by
-  // those, but open-link is sent by rich-part frames too, so use the broader
-  // check that recognizes any embedded iframe.)
-  if (d.type === "switch-session") {
-    if (!isOwnFrame(ev.source)) return;
-    if (streamMode()) return;
-    // A surface iframe forwarded the session-switch shortcut because focus was
-    // inside it (see server/surfacePage.ts). Mirror the parent keydown handler.
-    void selectAdjacent(d.key === "ArrowUp" ? -1 : 1);
-    return;
-  }
-  // Resolve the source surface + iframe by contentWindow — a surface may own
-  // several html-part iframes, so resize must target the exact one.
-  const src = frameForSource(ev.source);
-  if (d.type === "resize" && src) {
-    applyFrameHeight(src.iframe, d.height);
-  } else if (d.type === "send-prompt" && src) {
-    if (isReadonly()) return;
-    // sendPrompt is surface-originated: a script inside the sandbox can fire it
-    // (or post this message directly) with no user involvement. It must NEVER
-    // become an author:"user" comment — that label is reserved for the composer
-    // (genuine keystrokes in this trusted origin), so untrusted content rendered
-    // in a surface can't impersonate the user to the agent. We stamp it
-    // author:"surface": it shows in the surface's thread, but the feedback
-    // channel only delivers "user" comments, so it never reaches the agent on
-    // its own. The user can relay it deliberately if they choose.
-    await api("/api/comments", {
-      method: "POST",
-      body: JSON.stringify({ surface: src.id, text: String(d.text), author: "surface" }),
-    });
-    toast("Added to this surface’s thread");
-  } else if (d.type === "open-link" && isOwnFrame(ev.source)) {
-    // Only ever open real external links. The in-frame click handler forwards
-    // just http(s) hrefs, but a surface can call openLink() directly (or post
-    // this message raw) with any scheme — javascript:, data:, file: — so
-    // re-check host-side, where it can't be bypassed. Parse once and act on the
-    // parsed result: validate `protocol` and open the normalized `href` from the
-    // same parse, so there's no gap between what we check and what window.open
-    // re-parses (and a malformed string is rejected outright).
-    let link: URL;
-    try {
-      link = new URL(String(d.url));
-    } catch {
-      return;
-    }
-    if (link.protocol !== "http:" && link.protocol !== "https:") return;
-    if (confirm(`Open external link?\n\n${link.href}`))
-      window.open(link.href, "_blank", "noopener");
-  } else if (d.type === "copy" && isOwnFrame(ev.source)) {
-    void navigator.clipboard?.writeText(String(d.text)).catch(() => {});
-  }
-}
-
-// True when `source` is the contentWindow of an iframe the viewer embedded
-// (html or rich part). frameForSource only tracks html-part frames; this is the
-// broader gate for messages rich-part frames also send (open-link). Identity
-// comparison works across the opaque-origin boundary even though the frame's
-// document is unreadable.
-function isOwnFrame(source: unknown): boolean {
-  for (const f of root().querySelectorAll("iframe")) {
-    if (f.contentWindow === source) return true;
-  }
-  return false;
-}
-
 function SessionItem(props: { session: SessionRow }) {
   const selected = useBoard((s) => s.selected);
   const unread = useBoard((s) => s.unread);
@@ -786,295 +690,6 @@ function SessionItem(props: { session: SessionRow }) {
         </DropdownMenu>
       ) : null}
     </SidebarMenuItem>
-  );
-}
-
-// A live verdict for a review session: rolls up the finding-card badges into
-// scannable count chips ("2 Bug · 1 Nit"), worst-severity first, so the review
-// reads as one artifact instead of a scattered pile. Derived from the cards the
-// agent already publishes — no extra authoring — and each chip jumps to the
-// first finding of that label. A finding the user has Approved or Dismissed is
-// "resolved"; once every finding under a label is resolved the chip strikes
-// through and dims, so you watch the review burn down. Nothing for no badges.
-// Canonical review finding labels (R1: critical→Bug, warning→Nit, info→Question,
-// success→Praise). The burndown counts these and only these — a verdict card
-// ("Request changes") or an "Explainer" badge is not a finding to resolve, so it
-// never blocks the review from reaching "complete".
-const FINDING_LABELS = new Set(["Bug", "Nit", "Question", "Praise"]);
-// Verdict labels an agent's summary card might carry, matched case-insensitively
-// to name the terminal state ("Review complete — Request changes").
-const VERDICT_LABELS = new Set(["request changes", "approved", "approve", "looks good"]);
-
-function ReviewSummary(props: { surfaces: Surface[] }) {
-  const comments = useBoard((s) => s.comments);
-  const resolved = useMemo(() => {
-    const ids = new Set<string>();
-    for (const c of comments) {
-      if (c.surfaceId && isResolutionComment(c)) ids.add(c.surfaceId);
-    }
-    return ids;
-  }, [comments]);
-
-  const byLabel = new Map<
-    string,
-    { tone: SurfaceBadge["tone"]; total: number; done: number; firstId: string }
-  >();
-  for (const s of props.surfaces) {
-    if (!s.badge) continue;
-    const g = byLabel.get(s.badge.label) ?? {
-      tone: s.badge.tone,
-      total: 0,
-      done: 0,
-      firstId: s.id,
-    };
-    g.total += 1;
-    if (resolved.has(s.id)) g.done += 1;
-    byLabel.set(s.badge.label, g);
-  }
-  const groups = [...byLabel.entries()].sort(
-    (a, b) => BADGE_TONE_ORDER.indexOf(a[1].tone) - BADGE_TONE_ORDER.indexOf(b[1].tone),
-  );
-
-  // The burndown: open (unresolved) findings, worst-severity first, drive the
-  // "Next open finding" pager and the open/resolved tally. Excludes verdict and
-  // explainer badges (see FINDING_LABELS) so "Review complete" means the findings
-  // are done, not that every badge has been touched.
-  const findings = props.surfaces.filter((s) => s.badge && FINDING_LABELS.has(s.badge.label));
-  const openFindings = findings
-    .filter((s) => !resolved.has(s.id))
-    .sort(
-      (a, b) => BADGE_TONE_ORDER.indexOf(a.badge!.tone) - BADGE_TONE_ORDER.indexOf(b.badge!.tone),
-    );
-  const findingsTotal = findings.length;
-  const openCount = openFindings.length;
-  const verdict = props.surfaces.find(
-    (s) => s.badge && VERDICT_LABELS.has(s.badge.label.toLowerCase()),
-  )?.badge?.label;
-
-  // Keyboard-driven review traversal (§ P5): fly through the open findings and
-  // resolve them without the mouse, so the review has a visible terminal state.
-  //   j / k — next / previous open finding (worst first, wrapping)
-  //   n     — next open finding (skips resolved; alias of j for the unreviewed pass)
-  //   a / d — approve / dismiss the finding at the cursor (drives the burndown)
-  //   c     — comment on the finding at the cursor (opens its composer in place)
-  // A ref holds the live list so the once-mounted handler always sees the current
-  // set as findings resolve out from under the cursor.
-  const openRef = useRef(openFindings);
-  openRef.current = openFindings;
-  const cursorRef = useRef(-1);
-  const scrollToCard = (id: string) =>
-    cardEls.get(id)?.card.scrollIntoView({ behavior: "smooth", block: "start" });
-  const jumpToOpen = (dir: 1 | -1) => {
-    const list = openRef.current;
-    if (!list.length) return;
-    cursorRef.current = (((cursorRef.current + dir) % list.length) + list.length) % list.length;
-    scrollToCard(list[cursorRef.current].id);
-  };
-  // The finding "under the cursor" — defaults to the first open one before any
-  // j/k, so `a`/`d`/`c` act on the top of the burndown immediately.
-  const currentFinding = () => {
-    const list = openRef.current;
-    if (!list.length) return undefined;
-    const i = cursorRef.current < 0 ? 0 : Math.min(cursorRef.current, list.length - 1);
-    return list[i];
-  };
-  const resolveCurrent = (mark: string) => {
-    const f = currentFinding();
-    if (!f) return;
-    scrollToCard(f.id);
-    void sendComment({ surface: f.id, text: mark, author: "user" }, f.id, mark);
-    // The resolved finding drops out of openRef on the next render; clamp the
-    // cursor so it lands on what's now in its place (the next open finding).
-    cursorRef.current = Math.max(0, Math.min(cursorRef.current, openRef.current.length - 2));
-  };
-  const commentCurrent = () => {
-    const f = currentFinding();
-    if (!f) return;
-    const card = cardEls.get(f.id)?.card;
-    if (!card) return;
-    scrollToCard(f.id);
-    // Open the card's composer (the "Request change" verdict button toggles it).
-    const btn = [...card.querySelectorAll("button")].find(
-      (b) => b.textContent?.trim() === "Request change",
-    );
-    btn?.click();
-  };
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
-      if (!["j", "k", "n", "a", "d", "c"].includes(e.key)) return;
-      const el = root().activeElement as HTMLElement | null;
-      const tag = el?.tagName;
-      // Don't hijack typing in the composer, an editable title, or a focused part.
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "IFRAME" || el?.isContentEditable)
-        return;
-      if (useBoard.getState().readingId || !openRef.current.length) return;
-      e.preventDefault();
-      if (e.key === "j" || e.key === "n") jumpToOpen(1);
-      else if (e.key === "k") jumpToOpen(-1);
-      else if (e.key === "a") resolveCurrent(APPROVAL_MARK);
-      else if (e.key === "d") resolveCurrent(DISMISS_MARK);
-      else if (e.key === "c") commentCurrent();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  if (byLabel.size === 0) return null;
-  const jumpTo = (id: string) =>
-    cardEls.get(id)?.card.scrollIntoView({ behavior: "smooth", block: "start" });
-  return (
-    <div className="mt-1.5 flex flex-col gap-1.5">
-      {/* Per-label chips: each an exact count, worst-severity first, jumping to
-          its first finding; struck through once every card under it resolves. */}
-      <div className="flex flex-wrap items-center gap-1.5 pl-0.5">
-        {groups.map(([label, g]) => {
-          const allDone = g.done === g.total;
-          return (
-            <button
-              key={label}
-              type="button"
-              title={
-                allDone
-                  ? `${label} — resolved`
-                  : g.done > 0
-                    ? `Jump to ${label} (${g.done}/${g.total} resolved)`
-                    : `Jump to ${label}`
-              }
-              onClick={() => jumpTo(g.firstId)}
-              className={cx(
-                "inline-flex items-center gap-1.5 rounded-full py-[3px] pr-2 pl-[7px] text-[11px] leading-none font-semibold ring-1 ring-inset transition-all hover:opacity-80",
-                BADGE_TONE_CLASS[g.tone] ?? BADGE_TONE_CLASS.neutral,
-                allDone && "opacity-55 line-through",
-              )}
-            >
-              {allDone ? (
-                <Check className="size-2.5" strokeWidth={3} />
-              ) : (
-                <span
-                  className={cx(
-                    "size-1.5 rounded-full",
-                    BADGE_DOT_CLASS[g.tone] ?? BADGE_DOT_CLASS.neutral,
-                  )}
-                />
-              )}
-              {g.total} {label}
-            </button>
-          );
-        })}
-      </div>
-      {/* The burndown row: an open/resolved tally and a pager while findings are
-          open, an explicit terminal verdict once they're all resolved. */}
-      {findingsTotal > 0 ? (
-        <div className="flex items-center gap-2 pl-0.5 text-[11px]">
-          {openCount > 0 ? (
-            <>
-              <span className="tabular-nums text-faint">
-                {openCount} open · {findingsTotal - openCount} resolved
-              </span>
-              <button
-                type="button"
-                onClick={() => jumpToOpen(1)}
-                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-brand transition-colors hover:bg-brand-subtle"
-              >
-                Next open finding
-                <ArrowDown className="size-3" />
-              </button>
-              <span className="text-faint/70 max-[700px]:hidden">
-                j/k move · a approve · d dismiss · c comment
-              </span>
-            </>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700 dark:text-emerald-300">
-              <Check className="size-3" strokeWidth={3} />
-              Review complete{verdict ? ` — ${verdict}` : ""}
-            </span>
-          )}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-// Reading mode: a full-screen, distraction-free reader showing one surface at a
-// time, centered at a comfortable width, with prev/next paging through the
-// current stream (arrows + buttons, Escape closes). The stream's own cards are
-// unmounted while this is open (see SessionView), so each surface — and its
-// iframes — mounts in exactly one place.
-function ReadingView() {
-  const readingId = useBoard((s) => s.readingId);
-  const surfaces = useBoard((s) => s.surfaces);
-  useEffect(() => {
-    if (!readingId) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.altKey || e.ctrlKey) return;
-      if (e.key === "Escape") exitReading();
-      else if (e.key === "ArrowRight") readingStep(1);
-      else if (e.key === "ArrowLeft") readingStep(-1);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [readingId]);
-
-  if (!readingId) return null;
-  const i = surfaces.findIndex((s) => s.id === readingId);
-  const surface = surfaces[i];
-  if (!surface) return null;
-  const navBtn =
-    "flex size-9 flex-none items-center justify-center rounded-full border-[0.5px] border-border bg-card text-muted-foreground shadow-sm transition-colors hover:text-foreground disabled:opacity-0";
-  return (
-    <div
-      role="dialog"
-      aria-label="Reader"
-      className="fixed inset-0 z-50 flex flex-col bg-background/97 backdrop-blur-sm"
-    >
-      <div className="flex flex-none items-center gap-3 border-b-[0.5px] border-border px-5 py-3">
-        <BookOpen className="size-4 flex-none text-muted-foreground" />
-        <span className="truncate text-[13px] font-medium text-foreground">{surface.title}</span>
-        <span className="flex-1" />
-        <span className="flex-none text-[12px] text-faint tabular-nums">
-          {i + 1} / {surfaces.length}
-        </span>
-        <button
-          type="button"
-          aria-label="Close reader"
-          onClick={() => exitReading()}
-          className="flex size-7 flex-none items-center justify-center rounded-md text-faint transition-colors hover:bg-hover hover:text-foreground"
-        >
-          <X className="size-4" />
-        </button>
-      </div>
-      <div className="flex min-h-0 flex-1 items-stretch">
-        <div className="hidden flex-none items-center px-3 sm:flex">
-          <button
-            type="button"
-            aria-label="Previous"
-            disabled={i <= 0}
-            onClick={() => readingStep(-1)}
-            className={navBtn}
-          >
-            <ChevronLeft className="size-5" />
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-[780px] px-5 py-10">
-            <Card surface={surface} key={surface.id} />
-          </div>
-        </div>
-        <div className="hidden flex-none items-center px-3 sm:flex">
-          <button
-            type="button"
-            aria-label="Next"
-            disabled={i >= surfaces.length - 1}
-            onClick={() => readingStep(1)}
-            className={navBtn}
-          >
-            <ChevronRight className="size-5" />
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -1296,142 +911,3 @@ function SessionTitle(props: { current: SessionRow | undefined }) {
 
 // withOrigin on the server rewrites these localhost URLs to the deployed
 // origin when serving the built document — keep them as plain literals.
-const SETUP_SNIP = "curl -s http://localhost:8229/setup >> AGENTS.md";
-const TRY_SNIP =
-  "curl -s -X POST http://localhost:8229/api/snippets -H 'content-type: application/json' " +
-  `-d '{"agent": "me", "title": "Hello", "html": "<h2>It works</h2>"}'`;
-
-function Onboard(props: { onConnect: () => void }) {
-  const sessions = useBoard((s) => s.sessions);
-  return (
-    <div
-      id="onboard"
-      className="mx-auto max-w-[660px] px-7 py-[72px] max-[700px]:px-[18px] max-[700px]:py-10 [&_h1]:mt-0 [&_h1]:mb-1.5 [&_h1]:text-[21px] [&_h1]:font-medium [&_h2]:mt-[26px] [&_h2]:mb-2 [&_h2]:text-[13px] [&_h2]:font-medium [&_h2]:tracking-[0.02em] [&_h2]:text-muted-foreground [&_h2]:lowercase"
-      hidden={sessions.length > 0}
-    >
-      {!isReadonly() ? (
-        <>
-          <h1>The show hasn&rsquo;t started yet</h1>
-          <p className="mb-8 text-[14px] text-muted-foreground">
-            showcase is a live surface where your coding agent draws diagrams, sketches, and code
-            reviews while it works in your terminal — and your comments flow straight back to it.
-          </p>
-          {/* The hero is closing the loop: connect once so comments reach the
-              agent automatically. The snippets below are the manual fallback. */}
-          <h2>turn on auto-replies</h2>
-          <p className="mb-3 text-[13px]/[1.55] text-muted-foreground">
-            Install the showcase plugin once so your comments reach your agent on their own — no
-            copy-pasting into your terminal, no re-arming a watcher.
-          </p>
-          <button
-            className="group inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand px-3.5 py-2 text-[13px] font-medium text-primary-foreground transition-opacity hover:opacity-90"
-            onClick={props.onConnect}
-          >
-            Connect Claude Code
-            <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
-          </button>
-          <h2>or teach any agent</h2>
-          <Snip text={SETUP_SNIP} />
-          <h2>or try it yourself</h2>
-          <Snip text={TRY_SNIP} />
-        </>
-      ) : (
-        <>
-          <h1>Nothing here yet</h1>
-          <p className="mb-8 text-[14px] text-muted-foreground">
-            This showcase board does not have any sessions yet.
-          </p>
-        </>
-      )}
-    </div>
-  );
-}
-
-// Install instructions for the Claude Code plugin: a background monitor that
-// streams the user's comments to the agent as notifications, plus the showcase
-// MCP server. There is no browser→terminal handoff, so "connect" is two
-// copy-paste commands, stated honestly.
-const MARKETPLACE_CMD = "/plugin marketplace add modem-dev/showcase";
-const INSTALL_CMD = "/plugin install showcase@showcase";
-
-function ConnectModal(props: { onClose: () => void }) {
-  return (
-    <div
-      className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/[0.42] px-5 pt-[7vh] pb-5"
-      onClick={props.onClose}
-    >
-      <div
-        className="w-full max-w-[560px] rounded-[14px] border-[0.5px] border-border bg-background px-6 pt-[22px] pb-[26px] shadow-[0_16px_48px_rgba(0,0,0,0.35)] [&_code]:rounded [&_code]:bg-card [&_code]:px-[5px] [&_code]:py-px [&_code]:font-mono [&_code]:text-xs"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Connect Claude Code"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-2.5 flex items-center">
-          <h2 className="m-0 flex-1 text-[17px] font-semibold">Connect Claude Code</h2>
-          <button
-            className="flex size-7 cursor-pointer items-center justify-center rounded-md text-faint transition-colors hover:bg-hover hover:text-foreground"
-            aria-label="Close"
-            onClick={props.onClose}
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-        <p className="mb-[18px] text-sm/[1.55] text-muted-foreground">
-          Install the showcase plugin so your comments reach the agent on their own. A background
-          monitor streams each comment to Claude Code as a notification — no copy-pasting, no
-          re-arming a watcher.
-        </p>
-        <ModalSection>1 · add the marketplace</ModalSection>
-        <Snip text={MARKETPLACE_CMD} />
-        <ModalSection>2 · install the plugin</ModalSection>
-        <Snip text={INSTALL_CMD} />
-        <p className="mt-3 text-[13px]/[1.55] text-muted-foreground">
-          Run both inside Claude Code. On install it asks for your <strong>Showcase URL</strong>{" "}
-          (default <code>http://localhost:8229</code>, or your deployed instance) and an optional
-          token.
-        </p>
-        <ModalSection>what it runs</ModalSection>
-        <p className="mt-3 text-[13px]/[1.55] text-muted-foreground">
-          The plugin connects the showcase MCP server and runs <code>showcase watch</code> against
-          your board as a background process — unsandboxed, the same trust level as hooks, with no
-          per-comment prompt. Comments are delivered to the agent exactly once.
-        </p>
-        <p className="mt-[18px] border-t-[0.5px] border-border pt-3.5 text-[13px]/[1.55] text-faint">
-          Requires Claude Code ≥ 2.1.105. It&rsquo;s two commands, not a true one-click — Claude
-          Code has no browser-to-terminal handoff yet.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// The modal's lowercase section heading (was `.modal h3`).
-function ModalSection(props: { children: ReactNode }) {
-  return (
-    <h3 className="mt-[18px] mb-2 text-xs font-medium tracking-[0.02em] text-muted-foreground lowercase">
-      {props.children}
-    </h3>
-  );
-}
-
-function Snip(props: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="relative rounded-[10px] border-[0.5px] border-border bg-card py-3 pr-11 pl-3.5 font-mono text-[12px]/[1.6] break-all whitespace-pre-wrap text-foreground">
-      {props.text}
-      <button
-        className="absolute top-2 right-2 flex size-7 cursor-pointer items-center justify-center rounded-md border-[0.5px] border-border bg-background text-faint transition-colors hover:text-foreground"
-        aria-label={copied ? "Copied" : "Copy"}
-        title={copied ? "Copied" : "Copy"}
-        onClick={() => {
-          navigator.clipboard.writeText(props.text);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        }}
-      >
-        {copied ? <Check className="size-3.5 text-[#4caf78]" /> : <Copy className="size-3.5" />}
-      </button>
-    </div>
-  );
-}
