@@ -74,18 +74,35 @@ function showcaseTheme() {
     // Flat-and-clean to match the design language: rounded rects, hairline
     // strokes, no heavy borders. Plus agent-facing accent classes (see below).
     themeCSS: `
-      .node rect, .node polygon, rect.actor, .labelBox { rx: 8px; ry: 8px; }
+      .node rect, .node polygon, rect.actor, .labelBox { rx: 10px; ry: 10px; }
       .node rect, rect.actor { stroke-width: 1px; }
-      /* Lift nodes off the card with a soft shadow so the diagram reads as
-         designed rather than flat (no-op in dark, where the border carries it). */
+      /* Node labels read as UI text, not diagram filler: a touch of weight and
+         tighter tracking so boxes feel deliberate. */
+      .node .nodeLabel, .node span, .node text, rect.actor + text, .actor text {
+        font-weight: 500;
+        letter-spacing: -0.006em;
+      }
+      /* Lift nodes off the card with a soft layered shadow so the diagram reads
+         as designed rather than flat (no-op in dark, where the border carries
+         it). */
       .node rect, .node polygon, .node circle, rect.actor, .labelBox {
-        filter: drop-shadow(0 1px 1.5px rgba(20, 18, 10, 0.07));
+        filter: drop-shadow(0 1px 1px rgba(20, 18, 10, 0.05))
+          drop-shadow(0 2px 5px rgba(20, 18, 10, 0.06));
       }
       /* Subgraph containers: rounder + a warm hairline, so they frame without
          competing with the nodes. */
-      .cluster rect { rx: 10px; ry: 10px; }
+      .cluster rect { rx: 12px; ry: 12px; }
+      /* Edges: a hair softer than the nodes, with rounded joins so the basis
+         curves don't kink at the arrowhead. */
       .edgePath .path, .flowchart-link, .actor-line,
-      .messageLine0, .messageLine1 { stroke-width: 1px; }
+      .messageLine0, .messageLine1 {
+        stroke-width: 1.25px;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .marker, marker path { fill: ${muted}; stroke: ${muted}; }
+      /* Edge labels sit on a chip so they stay legible over a crossing edge. */
+      .edgeLabel .label, .edgeLabel foreignObject { border-radius: 6px; }
 
       /* Agent-applied highlight classes, colored from --accent. Apply in a
          flowchart with A:::accent (a node) or 'class A,B accent'. 'accent'
@@ -133,6 +150,16 @@ export function MermaidPart(props: { part: MermaidPartData }) {
           theme: "base",
           themeVariables,
           themeCSS,
+          // Layout polish: gentle curved edges and generous spacing so diagrams
+          // breathe and read as designed rather than cramped default mermaid.
+          flowchart: {
+            curve: "basis",
+            nodeSpacing: 54,
+            rankSpacing: 58,
+            padding: 16,
+            useMaxWidth: true,
+          },
+          sequence: { useMaxWidth: true, mirrorActors: false, boxMargin: 12 },
         });
         const { svg: out } = await mermaid.render(`mmd-${seq++}`, src);
         if (!disposed) {
