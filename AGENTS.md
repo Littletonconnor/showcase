@@ -42,8 +42,12 @@ product. When in doubt, optimize for the loop.
 - Server/CLI TypeScript runs directly on Node ≥22.18 via type stripping: erasable
   syntax only (no enums, no parameter properties), `.ts` extensions in relative
   imports, no build step. The viewer is the exception (Vite-built).
-- Rebuild the viewer (`npm run build:viewer`) and restart the server to see viewer
-  changes — the server reads `viewer/dist/index.html` at boot.
+- The server reads `viewer/dist/index.html` at boot, so viewer changes need a
+  rebuild + restart. **`npm run dev`** is the one command for this: it builds the
+  viewer, watches both halves, auto-restarts on every save, and shuts down cleanly
+  on Ctrl-C (frees the port, no orphaned watchers). `npm run stop` kills whatever
+  is on the port; `npm run restart` is a one-shot stop + build + start. For a
+  manual one-off, `npm run build:viewer` then restart the server.
 
 ## Validation
 
