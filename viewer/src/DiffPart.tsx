@@ -105,6 +105,12 @@ export function DiffPart(props: {
           theme: { dark: shiki.dark, light: shiki.light },
           themeType: dark ? "dark" : "light",
           preferredHighlighter: "shiki-js",
+          // Word-level intra-line highlighting (Step D / P4): mark the changed
+          // SPANS within a modified line, not just the whole line, so the eye
+          // lands on the exact edit. @pierre/diffs computes the sub-line diff;
+          // the line rows (and their data-line-type/data-column-number hooks the
+          // click bridge rides) are unchanged, so line-anchored comments still work.
+          lineDiffType: "word",
         } as const;
         const rendered = await Promise.all(
           diffs.map((fileDiff) => preloadFileDiff({ fileDiff, options })),
