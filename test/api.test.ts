@@ -214,6 +214,31 @@ test("publish_review reuses the `showcase review` scaffold placeholder as the ve
   assert.equal(freshSurfaces[0].id, fresh.verdict);
 });
 
+test("double-escaped newlines in review prose render as real paragraphs", async () => {
+  const app = makeApp();
+  // The wire carries the literal two characters "\n" (agents double-escape
+  // multi-paragraph prose); the card must show a paragraph break, not "\n".
+  const review = (await (
+    await app.request(
+      "/api/reviews",
+      json({
+        verdict: "comment",
+        summary: "First para.\\n\\nSecond para.",
+        coverage: "read x\\nand y",
+        findings: [{ severity: "nit", title: "t", problem: "line one\\n\\nline two" }],
+      }),
+    )
+  ).json()) as any;
+  const surfaces = (await (
+    await app.request(`/api/sessions/${review.session}/surfaces`)
+  ).json()) as any[];
+  const verdict = surfaces.find((s) => s.id === review.verdict);
+  assert.match(verdict.parts[0].markdown, /First para\.\n\nSecond para\./);
+  assert.doesNotMatch(verdict.parts[0].markdown, /\\n/); // no literal backslash-n survives
+  const finding = surfaces.find((s) => s.id === review.findings[0]);
+  assert.match(finding.parts[0].markdown, /line one\n\nline two/);
+});
+
 test("review_finding composes a multimodal card from structured fields", async () => {
   const app = makeApp();
   const res = await app.request(

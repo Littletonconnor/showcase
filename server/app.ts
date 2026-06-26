@@ -299,6 +299,18 @@ const FINDING_SEVERITY: Record<string, SurfaceBadge> = {
   note: { tone: "neutral", label: "Note" },
 };
 
+// Agents routinely double-escape multi-paragraph prose, so a `summary`/`problem`
+// arrives with the literal two characters "\n" where a newline was meant — which
+// markdown then renders as visible "\n" text instead of a paragraph break. Turn
+// those literal escapes back into real whitespace. Applied only to prose fields
+// (never to a `patch`/`suggestion`, where a backslash-n may be real content).
+function normalizeProse(s: string): string {
+  return s
+    .replace(/\\r\\n|\\n/g, "\n")
+    .replace(/\\t/g, "\t")
+    .trim();
+}
+
 export interface FindingInput {
   severity?: string;
   title: string;
@@ -329,7 +341,8 @@ function buildFinding(input: FindingInput): {
     ? ` — ${input.file}${Number.isInteger(input.line) ? `:${input.line}` : ""}`
     : "";
   const title = `${input.title.trim()}${loc}`.slice(0, MAX_TITLE);
-  const fix = input.fix?.trim();
+  const fix = input.fix ? normalizeProse(input.fix) : undefined;
+  const problem = normalizeProse(input.problem);
   const s = input.suggestion;
   const hasSuggestion = !!s && (!!s.before?.trim() || !!s.after?.trim());
 
@@ -341,8 +354,8 @@ function buildFinding(input: FindingInput): {
     kind: "markdown",
     markdown:
       fix && !hasSuggestion
-        ? `**Problem** — ${input.problem.trim()}\n\n**Fix** — ${fix}`
-        : `**Problem** — ${input.problem.trim()}`,
+        ? `**Problem** — ${problem}\n\n**Fix** — ${fix}`
+        : `**Problem** — ${problem}`,
   });
   if (hasSuggestion) {
     parts.push({
@@ -420,8 +433,13 @@ function buildVerdictMarkdown(input: {
   if (input.branch) {
     lines.push(`Reviewing **\`${input.branch}\`**${input.base ? ` vs \`${input.base}\`` : ""}.`);
   }
-  if (input.summary?.trim()) lines.push(input.summary.trim());
+  if (input.summary?.trim()) lines.push(normalizeProse(input.summary));
   const real = input.findings.filter((f) => f.title?.trim() && f.problem?.trim());
+  // A table cell can't hold newlines or unescaped pipes, so collapse them.
+  const cell = (s: string) =>
+    normalizeProse(s)
+      .replace(/\s*\n\s*/g, " ")
+      .replace(/\|/g, "\\|");
   if (real.length > 0) {
     // A one-line severity tally above the table, so the weight of the review is
     // legible at a glance even when the findings list is long.
@@ -442,12 +460,12 @@ function buildVerdictMarkdown(input: {
     for (const f of real) {
       const sev = FINDING_SEVERITY[f.severity ?? "note"]?.label ?? "Note";
       const loc = f.file ? `\`${f.file}${Number.isInteger(f.line) ? `:${f.line}` : ""}\`` : "—";
-      lines.push(`| ${sev} | ${f.title.trim()} | ${loc} |`);
+      lines.push(`| ${sev} | ${cell(f.title)} | ${loc} |`);
     }
   }
   if (input.coverage?.trim()) {
     lines.push("");
-    lines.push(`**Coverage** — ${input.coverage.trim()}`);
+    lines.push(`**Coverage** — ${normalizeProse(input.coverage)}`);
   }
   return lines.join("\n") || "_Review in progress._";
 }
