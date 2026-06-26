@@ -44,8 +44,8 @@ paragraph. Ideal for onboarding to an unfamiliar codebase or making sense of you
 own large branch before it ships.
 
 **Plus the everyday uses:** visualize data (native charts), render math (KaTeX),
-sketch UI ideas (sandboxed HTML), pin surfaces you want to keep into a
-cross-session **Library**, or compose a walk-through deck with the `slides` kit.
+sketch UI ideas (sandboxed HTML), or compose a walk-through deck with the
+`slides` kit.
 
 ---
 

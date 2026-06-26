@@ -194,8 +194,8 @@ workflows compose.
       that rides through to the agent. _(Point anchor; line/element anchor is R4.)_
 - [x] **Structured feedback** — one-tap **Approve** (👍) posts a recognizable
       `author:"user"` signal; the composer is "request a change."
-- [x] **Pinned Library** — a bookmark pins any surface into a cross-session
-      **Library** (`Surface.pinned`, `PUT /api/surfaces/:id/pin`, `GET /api/library`).
+- [~] **Pinned Library** — _cut_ (see UX_VISION.md). The pin/Library wiring was
+      removed end-to-end; a "save for later" almost nobody revisits.
 - [x] **Hardened oracle** — `render-smoke.spec.ts` (every part kind renders at a
       real size) + an opt-in real-Chrome Playwright lane.
 

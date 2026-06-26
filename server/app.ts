@@ -204,7 +204,6 @@ const surfaceMeta = (s: Surface) => ({
   version: s.version,
   parts: stripParts(s.parts),
   ...(s.badge ? { badge: s.badge } : {}),
-  ...(s.pinned ? { pinned: true } : {}),
 });
 
 function isPublicReadAllowed(path: string, mode: PublicReadMode): boolean {
@@ -1722,33 +1721,6 @@ export function createApp({
   };
   app.put("/api/surfaces/:id", revise);
   app.put("/api/snippets/:id", revise); // legacy alias
-
-  // Pin/unpin a surface to the cross-session Library. Doesn't bump the version
-  // (it's not a content edit); broadcasts surface-updated so an open Library
-  // view refreshes.
-  app.put("/api/surfaces/:id/pin", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
-    const pinned = body?.pinned !== false; // default to pinning
-    const surface = await store.setPinned(c.req.param("id"), pinned);
-    if (!surface) return c.json({ error: "surface not found" }, 404);
-    bus.broadcast({
-      type: "surface-updated",
-      id: surface.id,
-      sessionId: surface.sessionId,
-      version: surface.version,
-    });
-    return c.json(surface);
-  });
-
-  // The Library: every pinned surface across sessions, newest first (metas).
-  app.get("/api/library", async (c) => {
-    if (isUnauthenticatedSessionRead(c)) return c.json({ error: "unauthorized" }, 401);
-    const all = await store.listSurfaces();
-    const pinned = all
-      .filter((s) => s.pinned)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    return c.json(pinned.map(surfaceMeta));
-  });
 
   const remove = async (c: any) => {
     const surface = await store.getSurface(c.req.param("id"));
