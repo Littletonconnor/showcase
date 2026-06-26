@@ -475,6 +475,44 @@ test("publish_review renders the opinionated overview in a sandboxed review-kit 
   await expect(overview.locator(".review-progress")).toContainText("1 / 3 reviewed");
 });
 
+test("a reviewer can traverse and resolve a whole review from the keyboard", async ({
+  page,
+  request,
+}) => {
+  // Step F: review is a traversal — j/k move through open findings, a/d resolve
+  // the one under the cursor, and the verdict bar burns down to a terminal
+  // state, all without the mouse.
+  const session = await (
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "keyboard review" } })
+  ).json();
+  const finding = (label: string, tone: string) =>
+    request.post("/api/surfaces", {
+      data: {
+        session: session.id,
+        title: `${label} finding`,
+        badge: { tone, label },
+        parts: [{ kind: "markdown", markdown: `a ${label.toLowerCase()}` }],
+      },
+    });
+  await finding("Bug", "critical");
+  const nit = await (await finding("Nit", "warning")).json();
+
+  await page.goto(`/?surface=${nit.id}`);
+  const header = page.locator("#sessionView > div").first();
+  await expect(header.getByText("2 open · 0 resolved")).toBeVisible();
+
+  // Focus the page chrome (not a composer) so the review keys are live.
+  await page.locator("body").click({ position: { x: 4, y: 4 } });
+
+  // `a` approves the top open finding (worst-severity first → the Bug).
+  await page.keyboard.press("a");
+  await expect(header.getByText("1 open · 1 resolved")).toBeVisible({ timeout: 10_000 });
+
+  // `d` dismisses the next open finding (the Nit) → the review is complete.
+  await page.keyboard.press("d");
+  await expect(header.getByText("Review complete")).toBeVisible({ timeout: 10_000 });
+});
+
 test("an edge-status changeMap renders as a real mermaid SVG, not a parse error", async ({
   page,
   request,
