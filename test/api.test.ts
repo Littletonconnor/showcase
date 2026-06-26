@@ -1519,6 +1519,108 @@ test("blocks cross-origin state-changing requests (CSRF guard)", async () => {
   assert.equal(read.status, 200);
 });
 
+async function newSession(app: ReturnType<typeof makeApp>) {
+  return (await (await app.request("/api/sessions", json({ agent: "agent" }))).json()) as any;
+}
+
+test("publishes and round-trips a decision-queue review", async () => {
+  const app = makeApp();
+  const s = await newSession(app);
+  const review = {
+    brief: "Adds a per-request guard so one client can't overwhelm the server.",
+    verdict: "block",
+    decisions: [
+      {
+        call: "block",
+        kind: "bug",
+        scope: "whole-file",
+        assertion: "The limiter counts per-process.",
+        impact: "The real cap is N×workers.",
+        confidence: "high",
+        coverage: "Read the limiter; did not load-test.",
+        gaps: [{ what: "no shared store", proveScope: "wire a shared counter and re-test" }],
+        pivot: "flips to decide if single-worker",
+        evidence: [
+          { kind: "diff", files: [{ filename: "limit.ts", before: "a\n", after: "b\n" }] },
+        ],
+      },
+      {
+        call: "ship",
+        kind: "fix",
+        scope: "changed-line",
+        assertion: "Returns a clean 429.",
+        confidence: "high",
+        coverage: "Read the handler + a test.",
+      },
+    ],
+  };
+  const pub = await app.request(`/api/sessions/${s.id}/review`, json(review));
+  assert.equal(pub.status, 201);
+  const stored = (await pub.json()) as any;
+  assert.equal(stored.sessionId, s.id);
+  assert.equal(stored.verdict, "block");
+  assert.equal(stored.decisions.length, 2);
+  assert.equal(stored.decisions[0].evidence[0].kind, "diff");
+  assert.equal(stored.decisions[0].gaps[0].what, "no shared store");
+
+  // GET round-trips the same review.
+  const got = (await (await app.request(`/api/sessions/${s.id}/review`)).json()) as any;
+  assert.match(got.brief, /per-request guard/);
+
+  // Re-publishing replaces it (one review per session) and keeps createdAt.
+  const again = (await (
+    await app.request(
+      `/api/sessions/${s.id}/review`,
+      json({ ...review, decisions: [review.decisions[1]] }),
+    )
+  ).json()) as any;
+  assert.equal(again.decisions.length, 1);
+  assert.equal(again.createdAt, stored.createdAt);
+});
+
+test("review validation: the honesty ledger is required; bad targets 4xx", async () => {
+  const app = makeApp();
+  const s = await newSession(app);
+  const ok = {
+    call: "ship",
+    kind: "fix",
+    scope: "changed-line",
+    assertion: "x",
+    confidence: "high",
+    coverage: "read it",
+  };
+  // missing brief
+  assert.equal(
+    (await app.request(`/api/sessions/${s.id}/review`, json({ decisions: [ok] }))).status,
+    400,
+  );
+  // a decision missing coverage (the ledger) is rejected
+  const noCoverage = { ...ok, coverage: undefined };
+  assert.equal(
+    (
+      await app.request(
+        `/api/sessions/${s.id}/review`,
+        json({ brief: "b", decisions: [noCoverage] }),
+      )
+    ).status,
+    400,
+  );
+  // a bad call value is rejected
+  const badCall = { ...ok, call: "merge" };
+  assert.equal(
+    (await app.request(`/api/sessions/${s.id}/review`, json({ brief: "b", decisions: [badCall] })))
+      .status,
+    400,
+  );
+  // unknown session → 404
+  assert.equal(
+    (await app.request("/api/sessions/nope/review", json({ brief: "b", decisions: [ok] }))).status,
+    404,
+  );
+  // GET with no review yet → 404
+  assert.equal((await app.request(`/api/sessions/${s.id}/review`)).status, 404);
+});
+
 async function readSseUntil(res: Response, needle: string, abort?: () => void): Promise<string> {
   assert.ok(res.body);
   const reader = res.body.getReader();

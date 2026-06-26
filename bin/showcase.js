@@ -119,6 +119,8 @@ usage:
   showcase setup                          print the AGENTS.md integration block
   showcase export <session> [--out f]     write a self-contained, shareable .html of a session
       --pdf             render that HTML to a flat PDF via headless Chrome (set SHOWCASE_CHROME to override)
+  showcase decisions <session> <file|->   publish a decision-queue review (JSON) for a session
+                                          view it at <url>/?review=<session>
   showcase playbook                       print the agent publishing playbook
   showcase mcp                            run the stdio MCP server (for agent configs)
 
@@ -1320,6 +1322,31 @@ const commands = {
     }
     if (!existsSync(file)) fail("Chrome ran but produced no PDF");
     out({ session, file, format: "pdf" });
+  },
+
+  // Publish a decision-queue review (the agent-era form factor) for a session
+  // from a JSON file (or stdin). The agent normally builds this from its
+  // code-review analysis; this command is the plumbing to publish it.
+  async decisions() {
+    const { positionals } = parse({ allowPositionals: true });
+    const session = positionals[0];
+    const file = positionals[1];
+    if (!session || !file) fail("usage: showcase decisions <session> <file.json|->");
+    let body;
+    try {
+      body = readFileSync(file === "-" ? 0 : file, "utf8");
+    } catch (e) {
+      fail(`can't read ${file}: ${e.message}`);
+    }
+    const review = await api(`/api/sessions/${encodeURIComponent(session)}/review`, {
+      method: "POST",
+      body,
+    });
+    out({
+      session,
+      decisions: review.decisions.length,
+      url: `${BASE}/?review=${encodeURIComponent(session)}`,
+    });
   },
 
   // Publish ONE structured review finding — showcase composes the multimodal

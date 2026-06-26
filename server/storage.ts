@@ -7,6 +7,7 @@ import {
   type CommentQuery,
   type CreateAssetInput,
   type CreateCommentInput,
+  type CreateReviewInput,
   type CreateSessionInput,
   type CreateSurfaceInput,
   hashAssetId,
@@ -14,6 +15,7 @@ import {
   htmlPart,
   MAX_BOARD_ASSET_BYTES,
   newId,
+  type Review,
   selectEvictions,
   type Session,
   type Store,
@@ -36,6 +38,7 @@ interface FileShape {
   surfaces: Surface[];
   comments: Comment[];
   assets: StoredAsset[];
+  reviews: Review[];
   lastSeq: number;
 }
 
@@ -99,6 +102,7 @@ export class JsonFileStore implements Store {
   private surfaces = new Map<string, Surface>();
   private comments: Comment[] = [];
   private assets = new Map<string, Asset>();
+  private reviews = new Map<string, Review>();
   private lastSeq = 0;
   private loaded = false;
   private loadPromise: Promise<void> | null = null;
@@ -140,6 +144,7 @@ export class JsonFileStore implements Store {
           lastAccessedAt: a.lastAccessedAt ?? a.createdAt,
         });
       }
+      for (const r of data.reviews ?? []) this.reviews.set(r.sessionId, r);
       this.lastSeq = data.lastSeq ?? 0;
     } catch (err: any) {
       if (err?.code !== "ENOENT") throw err;
@@ -157,6 +162,7 @@ export class JsonFileStore implements Store {
           ...a,
           data: Buffer.from(a.data).toString("base64"),
         })),
+        reviews: [...this.reviews.values()],
         lastSeq: this.lastSeq,
       } satisfies FileShape,
       null,
@@ -218,6 +224,7 @@ export class JsonFileStore implements Store {
       if (surface.sessionId === id) this.surfaces.delete(sid);
     }
     this.comments = this.comments.filter((c) => c.sessionId !== id);
+    this.reviews.delete(id);
     // Assets are content-addressed and may be referenced across sessions, so a
     // session only takes its OWN assets down with it, and only those no live
     // surface still points at (referencedAssetIds is computed after the above
@@ -304,7 +311,6 @@ export class JsonFileStore implements Store {
     return clone(surface);
   }
 
-
   async removeSurface(id: string) {
     await this.load();
     const surface = this.surfaces.get(id);
@@ -348,6 +354,32 @@ export class JsonFileStore implements Store {
     this.touch(input.sessionId);
     await this.persist();
     return clone(comment);
+  }
+
+  // --- reviews (the decision-queue form factor) ---
+
+  async getReview(sessionId: string) {
+    await this.load();
+    return cloneOrNull(this.reviews.get(sessionId));
+  }
+
+  async putReview(sessionId: string, input: CreateReviewInput) {
+    await this.load();
+    if (!this.sessions.has(sessionId)) return null;
+    const now = new Date().toISOString();
+    const existing = this.reviews.get(sessionId);
+    const review: Review = {
+      sessionId,
+      brief: input.brief,
+      verdict: input.verdict ?? "comment",
+      decisions: clone(input.decisions),
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.reviews.set(sessionId, review);
+    this.touch(sessionId);
+    await this.persist();
+    return clone(review);
   }
 
   // --- assets ---

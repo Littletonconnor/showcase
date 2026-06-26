@@ -1,9 +1,12 @@
 // A sample review for the `?review-preview` form-factor mockup. Neutral content
 // (showcase's own upload path). Mixes decisions with/without evidence so the
 // evidence-gated layout (two-column ↔ full-width) is visible.
-import type { Review } from "./types.ts";
+import type { Review } from "../../../server/types.ts";
 
 export const DEMO_REVIEW: Review = {
+  sessionId: "demo",
+  createdAt: "2024-01-01T00:00:00.000Z",
+  updatedAt: "2024-01-01T00:00:00.000Z",
   verdict: "block",
   brief:
     "This change makes the app turn away oversized file uploads before it starts downloading them, so one giant upload can't run the server out of memory and crash it. Nothing changes for people using the app — it only affects what happens behind the scenes. One thing still needs a look: uploads that don't say their size up front aren't caught yet, which the author flagged as a follow-up.",

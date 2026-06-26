@@ -238,6 +238,51 @@ export interface Surface {
   badge?: SurfaceBadge;
 }
 
+// --- the agent-era review form factor (see docs/review-form-factor.md) ---
+// A review is a plain-English Brief plus a risk-ranked queue of decisions the
+// agent has triaged out of the diff for the human to adjudicate. The analysis is
+// the `code-review` skill's; this is the rendering contract. Stored per session
+// (one Review per review session), distinct from the card stream.
+
+export type DecisionCall = "block" | "ship" | "decide";
+export type DecisionScope = "changed-line" | "whole-file" | "codebase";
+export type DecisionConfidence = "high" | "medium" | "low";
+
+// A declared verification gap — the scoped target of a "Prove it".
+export interface DecisionGap {
+  what: string; // what the agent did NOT check, in plain terms
+  proveScope?: string; // the scoped task "Prove it" dispatches to close it
+}
+
+export interface Decision {
+  call: DecisionCall; // block | ship | decide — the recommendation
+  kind: string; // bug | fix | capability | refactor | migration | risk
+  scope: DecisionScope; // how far the reviewer must look to judge it
+  assertion: string; // one sentence — the conclusion
+  impact?: string; // why it matters — who hits it, how bad
+  confidence: DecisionConfidence;
+  coverage: string; // what was / wasn't verified — the honesty ledger
+  gaps?: DecisionGap[]; // declared uncertainties → each a scoped [Prove it]
+  pivot?: string; // conditional — "flips to ✅ if …"; omit unless there's a real fork
+  evidence?: SurfacePart[]; // right-pane artifacts; absent → that decision is full-width
+}
+
+export interface Review {
+  sessionId: string;
+  brief: string; // ≤4 sentences, plain English, no identifiers
+  verdict: "block" | "approve" | "comment"; // the bottom line (a consequence of the decisions)
+  decisions: Decision[]; // risk-ranked; decisions[0] is the lede
+  createdAt: string;
+  updatedAt: string;
+}
+
+// What a publisher hands in (the server stamps sessionId + timestamps).
+export interface CreateReviewInput {
+  brief: string;
+  verdict?: "block" | "approve" | "comment";
+  decisions: Decision[];
+}
+
 // Where on a surface a comment points, so the agent knows the user means a
 // specific spot — not the whole card. Two kinds:
 //   - a POINT (`xPct`/`yPct`, 0..1 of the card's rendered region) — for pinning
@@ -350,6 +395,11 @@ export interface Store {
 
   listComments(query: CommentQuery): Promise<Comment[]>;
   createComment(input: CreateCommentInput): Promise<Comment | null>;
+
+  // The decision-queue review for a session (one per session; replaces it on
+  // re-publish). putReview returns null only if the session is missing.
+  getReview(sessionId: string): Promise<Review | null>;
+  putReview(sessionId: string, input: CreateReviewInput): Promise<Review | null>;
 
   // Assets. putAsset evicts to stay under MAX_BOARD_ASSET_BYTES (see
   // selectEvictions) and returns null only if the session is missing.

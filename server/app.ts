@@ -14,6 +14,8 @@ import {
   type AssetKind,
   type Comment,
   type CommentAnchor,
+  type CreateReviewInput,
+  type Decision,
   htmlPart,
   isAssetKind,
   MAX_ASSET_BYTES,
@@ -980,6 +982,72 @@ export function coerceOverview(raw: any): OverviewInput {
   return { intent: str(raw?.intent), risk, budget: str(raw?.budget), manifest };
 }
 
+// Validate a published Review (the decision-queue form factor — see
+// docs/review-form-factor.md). Returns the normalized input or an error string.
+// `coverage` is required on every decision — the honesty ledger is the API, the
+// same discipline that makes confidence/coverage required on a finding. Evidence
+// reuses the surface-part validator, so right-pane artifacts meet the card bar.
+const DECISION_CALLS = new Set(["block", "ship", "decide"]);
+const DECISION_SCOPES = new Set(["changed-line", "whole-file", "codebase"]);
+const DECISION_CONFIDENCE = new Set(["high", "medium", "low"]);
+
+export function coerceReview(raw: any): { review: CreateReviewInput } | { error: string } {
+  if (!raw || typeof raw !== "object") return { error: "body must be an object" };
+  if (typeof raw.brief !== "string" || !raw.brief.trim()) return { error: '"brief" is required' };
+  if (!Array.isArray(raw.decisions) || raw.decisions.length === 0) {
+    return { error: '"decisions" must be a non-empty array' };
+  }
+  const verdict = raw.verdict === "block" || raw.verdict === "approve" ? raw.verdict : "comment";
+  const decisions: Decision[] = [];
+  for (let i = 0; i < raw.decisions.length; i++) {
+    const d = raw.decisions[i];
+    if (!d || typeof d !== "object") return { error: `decision ${i}: must be an object` };
+    if (!DECISION_CALLS.has(d.call))
+      return { error: `decision ${i}: "call" must be block|ship|decide` };
+    if (!DECISION_SCOPES.has(d.scope)) {
+      return { error: `decision ${i}: "scope" must be changed-line|whole-file|codebase` };
+    }
+    if (!DECISION_CONFIDENCE.has(d.confidence)) {
+      return { error: `decision ${i}: "confidence" must be high|medium|low` };
+    }
+    if (typeof d.kind !== "string" || !d.kind.trim())
+      return { error: `decision ${i}: "kind" is required` };
+    if (typeof d.assertion !== "string" || !d.assertion.trim()) {
+      return { error: `decision ${i}: "assertion" is required` };
+    }
+    if (typeof d.coverage !== "string" || !d.coverage.trim()) {
+      return { error: `decision ${i}: "coverage" is required (the honesty ledger)` };
+    }
+    let evidence: SurfacePart[] | undefined;
+    if (d.evidence != null) {
+      const parsed = validateSurfaceParts(d.evidence);
+      if (!parsed.ok) return { error: `decision ${i} evidence: ${parsed.error}` };
+      evidence = parsed.parts;
+    }
+    const gaps = Array.isArray(d.gaps)
+      ? d.gaps
+          .filter((g: any) => g && typeof g.what === "string" && g.what.trim())
+          .map((g: any) => ({
+            what: g.what,
+            ...(typeof g.proveScope === "string" ? { proveScope: g.proveScope } : {}),
+          }))
+      : undefined;
+    decisions.push({
+      call: d.call,
+      kind: d.kind,
+      scope: d.scope,
+      assertion: d.assertion,
+      ...(typeof d.impact === "string" && d.impact.trim() ? { impact: d.impact } : {}),
+      confidence: d.confidence,
+      coverage: d.coverage,
+      ...(gaps && gaps.length ? { gaps } : {}),
+      ...(typeof d.pivot === "string" && d.pivot.trim() ? { pivot: d.pivot } : {}),
+      ...(evidence ? { evidence } : {}),
+    });
+  }
+  return { review: { brief: raw.brief, verdict, decisions } };
+}
+
 export function createApp({
   store,
   viewerHtml,
@@ -1731,6 +1799,21 @@ export function createApp({
       "content-type": "text/html; charset=utf-8",
       "content-disposition": `attachment; filename="${filename}"`,
     });
+  });
+
+  // The decision-queue review for a session (the agent-era form factor).
+  app.get("/api/sessions/:id/review", async (c) => {
+    const review = await store.getReview(c.req.param("id"));
+    if (!review) return c.json({ error: "no review for this session" }, 404);
+    return c.json(review);
+  });
+  app.post("/api/sessions/:id/review", async (c) => {
+    const id = c.req.param("id");
+    const parsed = coerceReview(await c.req.json().catch(() => null));
+    if ("error" in parsed) return c.json({ error: parsed.error }, 400);
+    const review = await store.putReview(id, parsed.review);
+    if (!review) return c.json({ error: "session not found" }, 404);
+    return c.json(review, 201);
   });
 
   // --- surfaces ---

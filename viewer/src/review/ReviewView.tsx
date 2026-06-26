@@ -19,7 +19,7 @@ import { CodePart } from "../CodePart.tsx";
 import { DiffPart } from "../DiffPart.tsx";
 import { MarkdownPart } from "../MarkdownPart.tsx";
 import { MermaidPart } from "../MermaidPart.tsx";
-import type { Decision, DecisionCall, Review } from "./types.ts";
+import type { Decision, DecisionCall, Review } from "../../../server/types.ts";
 
 const CALL = {
   block: { label: "Block", Icon: Ban, cls: "text-red-700 dark:text-red-300" },
