@@ -445,3 +445,126 @@ so it rightly sits last and behind a spike).
    or accept line-level and reinvest the saved time in the manifest/IA. I'd
    timebox a spike on `@pierre/diffs` capabilities before committing.
 ```
+
+---
+
+## 8. Code-interaction visualizations — show how the change is _wired_
+
+_Enriches P1/P2 (the overview) and P3 (blast radius). This section is about the
+charts at the **top** of the review — the structural map a reviewer reads before
+the diff._
+
+The overview today answers **"how big / how risky"** (churn bar + risk band).
+What it barely answers is the question a reviewer of LLM-authored code asks
+_first_: **"what now talks to what, and what changed about that?"** Size is a
+scalar; interaction is a **graph** — and the graph is where the surprising,
+dangerous changes hide. A new edge from `auth → billing`, or a _severed_ call
+that silently drops a validation hop, never shows up in a churn bar. These views
+are the **structural** complement to P1's scalar risk band: both route attention,
+one by magnitude, one by topology.
+
+One rule before adding any of them: **the overview is itself subject to
+attention-routing (P1).** Ship _one_ structural view (the interaction map) and
+_one_ quantitative interaction view (the coupling delta) by default — not a wall
+of charts. Everything below is ranked; build top-down and stop when the overview
+has earned its scroll.
+
+### 8.1 Interaction map — the headline structural view `⭐` _(extends `buildChangeMap`)_
+
+The change map already colors **nodes** by status (new / modified / touched /
+removed). The missing half — and the actual "how code interacts" signal — is
+**edge status**:
+
+- **new edge** (green) — a dependency the PR _introduces_ (`wsUpgrade` now calls
+  `revocationList`). New coupling is the thing to scrutinize.
+- **removed edge** (red, dashed) — a call the PR _severs_. A dropped edge can
+  quietly delete an auth / validation hop — the most dangerous _invisible_ change.
+- **existing edge** (gray) — context, unchanged.
+
+Mechanically small and fully inside the current primitive: `buildChangeMap`
+(`server/app.ts:523`) already emits a mermaid flowchart; add an optional `status`
+to each edge and emit one `linkStyle <i> …` line per edge (mermaid styles edges
+by index), reusing the existing `CHANGE_STATUS` palette so nodes and edges share
+one legend:
+
+```
+flowchart LR
+  n0(["authMiddleware"]):::touched
+  n1["validateToken"]:::modified
+  n2[("revocationList")]:::new
+  n0 -->|calls| n1
+  n1 -->|"now checks"| n2
+  linkStyle 0 stroke:#9aa0a6;
+  linkStyle 1 stroke:#2f9e44,stroke-width:1.5px;
+  classDef touched stroke:#9aa0a6,color:#9aa0a6;
+  classDef modified stroke:#d9870a,color:#d9870a,stroke-width:1.5px;
+  classDef new stroke:#2f9e44,color:#2f9e44,stroke-width:1.5px;
+```
+
+Agent-authored, consistent with §7 decision 1: the agent supplies
+`edges:[{from,to,label,status}]`; the server renders. Highest-value interaction
+visual, cheapest to ship.
+
+### 8.2 Coupling delta — the quantitative interaction view _(reuses the `chart` bar primitive)_
+
+The map shows _where_ coupling changed; this shows _how much_, per module — the
+interaction analogue of the churn bar. For each module touched, plot edges
+**added** (new dependencies, green) vs **removed** (severed, red) as a stacked
+bar. This is the exact shape `buildChurnChart` (`server/app.ts:574`) already
+produces — a `chartType:"bar"`, `stacked`, green/red `colors` part — with edge
+counts instead of line counts. A module that gains four inbound edges in one PR
+is a coupling hotspot even when its own churn is tiny; the churn bar would never
+surface it.
+
+```
+data: [
+  { module: "auth/token.ts",     added: 3, removed: 1 },
+  { module: "billing/charge.ts", added: 2, removed: 0 },
+  { module: "api/routes.ts",     added: 1, removed: 0 },
+]
+chartType: "bar", x: "module", y: ["added","removed"], stacked: true,
+colors: ["#2f9e44","#e03131"], yLabel: "edges"
+```
+
+Zero new primitives, and it rides for free on the same edge data 8.1 already
+collected.
+
+### 8.3 Blast radius at overview scale _(promote the per-finding graph to the top)_
+
+P3 puts a mini call-graph on each _finding_. For the overview, draw **one**
+impact graph centered on the single most sensitive changed symbol: one hop of
+**callers** (who breaks if this is wrong) plus the **tests** that cover it — or,
+loudly, that don't. This is the codebase-tier signal (P3) made the first thing
+the reviewer sees. Same mermaid primitive and styling as 8.1; the only new
+decisions are _which_ node to center and a one-hop bound (keep it ≤ ~7 nodes, or
+the map becomes the territory).
+
+### 8.4 Flagged extensions — need a new primitive, not yet justified
+
+Honest about cost: these answer real interaction questions but **don't fit
+bar / line / area / pie / mermaid cleanly**, so they're a capability spike, not
+Phase 1.
+
+- **Co-change / adjacency heatmap** — "which files changed together" as a grid.
+  No heatmap chart type exists; render as an html-kit grid (the `review` kit,
+  Step A) or add a `heatmap` `chartType`. Defer until map + delta prove the
+  overview needs more.
+- **Data-flow Sankey** — mermaid ships `sankey-beta`; it could trace value flow
+  through the changed path. Unproven in this renderer — timebox a spike beside
+  open question 4, don't commit.
+
+### 8.5 Validation & honesty
+
+These are **interaction** views, and per §6 the interaction / blast-radius family
+is _design judgment, not deep-research-corroborated_ — the same caveat that gates
+the risk band gates these. The mitigation is the same: keep them
+**agent-authored** (the agent knows a new `auth → billing` edge matters; a static
+import graph would just show noise), so the open question becomes "did the agent
+pick the right edges," not "is our graph algorithm correct." Treat 8.1 as the bet
+to validate in real reviews; 8.2 rides on the same data; 8.3+ wait for 8.1 to
+earn them.
+
+**Plan delta:** 8.1 + 8.2 fold into **Step B** (overview composition) — both are
+additive fields on the existing `changeMap` / churn inputs and their existing
+emitters, so Phase 1 absorbs them with no new step. 8.3 extends **Step C**'s
+blast-radius work up to the overview. 8.4 is a Phase 2 spike beside Step D.
