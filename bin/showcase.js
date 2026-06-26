@@ -114,6 +114,7 @@ usage:
   showcase demo                           seed two example sessions to explore the viewer
   showcase guide                          print the design contract for surfaces
   showcase setup                          print the AGENTS.md integration block
+  showcase export <session> [--out f]     write a self-contained, shareable .html of a session
   showcase playbook                       print the agent publishing playbook
   showcase mcp                            run the stdio MCP server (for agent configs)
 
@@ -1195,6 +1196,37 @@ const commands = {
       profile: profile ? profilePath : null,
       prompt,
     });
+  },
+
+  // Static export: download a whole session as one self-contained, read-only
+  // HTML file (surfaces + comments + assets inlined) you can send anyone — the
+  // sanctioned "share a review/explainer" path, no server needed to view it.
+  async export() {
+    const { values: flags, positionals } = parse({
+      allowPositionals: true,
+      options: { out: { type: "string" } },
+    });
+    const session = positionals[0];
+    if (!session) fail("usage: showcase export <session> [--out <file.html>]");
+    let res;
+    try {
+      res = await fetch(`${BASE}/api/sessions/${encodeURIComponent(session)}/export`, {
+        headers: TOKEN ? { authorization: `Bearer ${TOKEN}` } : {},
+      });
+    } catch {
+      fail(`server not reachable at ${BASE} — start it with: showcase serve`);
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      fail(body.error ?? `${res.status} ${res.statusText}`);
+    }
+    const html = await res.text();
+    const suggested =
+      res.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ??
+      `showcase-${session}.html`;
+    const file = flags.out ?? suggested;
+    writeFileSync(file, html);
+    out({ session, file, bytes: html.length });
   },
 
   // Publish ONE structured review finding — showcase composes the multimodal

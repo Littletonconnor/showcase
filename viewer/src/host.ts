@@ -52,6 +52,10 @@ function urlFor(to: Route): string {
 }
 
 export function routeNavigate(to: Route, opts?: { replace?: boolean }): void {
+  // A static export is opened from disk (origin "null"), where history.*State to
+  // a different path throws a SecurityError — and there's nothing to route to
+  // anyway (one inlined session). Skip URL changes entirely in that mode.
+  if (window.__SHOWCASE_EXPORT__) return;
   const target = urlFor(to);
   if (opts?.replace) {
     history.replaceState(null, "", target);

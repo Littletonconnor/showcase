@@ -304,10 +304,14 @@ render is adequate; revisit only if one huge file's hunk count bites.
 Not flagship work; each is tagged with the workflow it serves. Don't build these
 for their own sake.
 
-- **Static export** _(sharing)_ — `showcase export <session>` → one self-contained
-  read-only `.html` of a review/explainer to send anyone. Bakes a snapshot via
-  the `host.ts` seam, live/comment bits disabled. This is how you share a review,
-  not a GitHub round-trip. _Effort:_ ~1–2h.
+- [x] **Static export (shipped)** _(sharing)_ — `showcase export <session>` →
+      one self-contained read-only `.html` of a review/explainer to send anyone.
+      `server/export.ts` inlines the session bundle (surfaces + comments + assets
+      as `data:` URIs) and `__SHOWCASE_READONLY__` into a copy of the viewer; the
+      viewer's `api()` reads the bundle in place of the network, html parts render
+      via `srcdoc` (no `/s/:id`), and the SSE/composing pings are skipped — so it
+      renders with zero requests. This is how you share a review, not a GitHub
+      round-trip. Verified end-to-end in a browser (offline, no network).
 - **Visual version diff** _(serves W1)_ — a "compare" next to the version `Select`
   showing what changed between two versions of a part. Pairs with R1's
   revise-the-fix-in-place loop. _Effort:_ ~2–3h for text-y parts.

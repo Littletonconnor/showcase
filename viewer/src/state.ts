@@ -10,6 +10,7 @@ import { toast as sonnerToast } from "sonner";
 import {
   api,
   appPath,
+  exportBundle,
   isReadonly,
   publicReadMode,
   type Comment,
@@ -396,6 +397,7 @@ export const isResolutionComment = (c: { author: string; text: string }) =>
 // `api` (which parses JSON); a dropped ping just means the wait settles sooner.
 let lastComposingPingAt = 0;
 export function notifyComposing(target: { session?: string; surface?: string | null }) {
+  if (exportBundle()) return; // no server in an export — nothing to ping
   if (!target.session && !target.surface) return;
   const now = Date.now();
   if (now - lastComposingPingAt < 1500) return;
@@ -582,6 +584,9 @@ interface FeedEvent {
 }
 
 export function connect() {
+  // A static export has no server — the bundle is already inlined, so there is
+  // nothing to stream. Stay "offline" and skip the EventSource entirely.
+  if (exportBundle()) return;
   const route = routeGet();
   const sessionId = route.sessionId ?? selectedNow();
   const eventsPath =

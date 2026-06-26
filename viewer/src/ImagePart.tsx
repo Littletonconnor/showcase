@@ -1,12 +1,13 @@
 import { useState } from "react";
-import type { ImagePart as ImagePartData } from "./api.ts";
+import { assetUrl, type ImagePart as ImagePartData } from "./api.ts";
 
 // A trusted, viewer-chrome <img> for an uploaded asset (no iframe). The bytes
-// live at /a/:id; an evicted/missing asset 404s, so show a placeholder rather
-// than a broken image. Clicking opens the asset in a new tab.
+// live at /a/:id (or an inlined `data:` URI in a static export); an evicted/
+// missing asset 404s, so show a placeholder rather than a broken image.
+// Clicking opens the asset in a new tab.
 export function ImagePart(props: { part: ImagePartData }) {
   const [failed, setFailed] = useState(false);
-  const src = `/a/${props.part.assetId}`;
+  const src = assetUrl(props.part.assetId);
   return (
     <div className="border-t-[0.5px] border-border px-3.5 py-3">
       {failed ? (

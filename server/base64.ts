@@ -12,3 +12,15 @@ export function decodeBase64(b64: string): Uint8Array {
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return bytes;
 }
+
+// bytes -> base64 via the `btoa` platform global (the encode mirror of the
+// above). Chunked so a large blob can't blow String.fromCharCode's argument
+// limit. Used by the static-export builder to inline assets as data URIs.
+export function encodeBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
