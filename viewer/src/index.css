@@ -103,15 +103,24 @@
  * same rules: drop the interactive shell (sidebar, pager, keyboard hints, card
  * footers) and keep cards from splitting across page breaks, so the output reads
  * as a clean document instead of a screenshot of an app. */
+/* Zero the page margin so the browser's Save-as-PDF stops stamping its own
+ * date/title header/footer in it (the --pdf CLI path already passes
+ * --no-pdf-header-footer); content gets its own breathing room below instead. */
+@page {
+  margin: 0;
+}
+
 @media print {
   [data-slot="sidebar"],
   [data-slot="sidebar-container"],
   [data-print-hide] {
     display: none !important;
   }
-  /* The content column owns the full page once the sidebar is gone. */
+  /* The content column owns the full page once the sidebar is gone; restore the
+   * page margin lost to `@page { margin: 0 }` as padding so text isn't at the edge. */
   [data-slot="sidebar-inset"] {
     margin: 0 !important;
+    padding: 12mm 10mm !important;
   }
   /* The session header is sticky on screen; in print that reserves a blank band
    * and shoves content down a page — make it flow inline instead. */
@@ -126,6 +135,19 @@
    * on the next page; that whitespace is a limit of the architecture, not a bug.) */
   body {
     background: #fff;
+  }
+  /* Cards fade/slide in on screen (animate-in fade-in-0 …); the print snapshot
+   * catches that mid-flight and washes the whole page out. Kill animations and
+   * transitions and pin the resting state so everything prints fully opaque. */
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .animate-in {
+    opacity: 1 !important;
+    transform: none !important;
   }
   /* No on-screen scrollbar baked into the printed page. */
   *::-webkit-scrollbar {

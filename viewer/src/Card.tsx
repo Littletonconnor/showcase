@@ -574,6 +574,7 @@ export function Card(props: { surface: Surface }) {
           >
             <SelectTrigger
               size="sm"
+              data-print-hide
               className="h-[22px] flex-none gap-1 rounded-full border-border px-2.5 text-[11px] font-medium text-muted-foreground"
             >
               <SelectValue />
@@ -673,39 +674,46 @@ export function Card(props: { surface: Surface }) {
           />
         ) : null}
       </div>
-      <Thread
-        surfaceId={surfaceId}
-        placeholder="Leave a comment…"
-        collapsible
-        readonly={isReadonly()}
-        actions={(startReply) => (
-          <TooltipProvider delayDuration={300}>
-            {!isReadonly() ? (
-              <>
-                {approveAction}
-                {dismissAction}
-                <VerdictButton
-                  tone="change"
-                  label={isFinding ? "Request change" : "Comment"}
-                  onClick={startReply}
-                >
-                  <MessageSquare />
-                </VerdictButton>
-              </>
-            ) : null}
-            <span className="flex-1" />
-            {surfaceActions}
-          </TooltipProvider>
-        )}
-        secondaryActions={
-          <TooltipProvider delayDuration={300}>
-            {approveAction}
-            {dismissAction}
-            {surfaceActions}
-          </TooltipProvider>
-        }
-        send={(text) => sendComment({ surface: surfaceId, text, author: "user" }, surfaceId, text)}
-      />
+      {/* The thread (comments + composer + the Approve/Dismiss/Request-change
+          footer) is interactive chrome — hidden when the board is printed/saved
+          as PDF so the document shows just the card content. */}
+      <div data-print-hide>
+        <Thread
+          surfaceId={surfaceId}
+          placeholder="Leave a comment…"
+          collapsible
+          readonly={isReadonly()}
+          actions={(startReply) => (
+            <TooltipProvider delayDuration={300}>
+              {!isReadonly() ? (
+                <>
+                  {approveAction}
+                  {dismissAction}
+                  <VerdictButton
+                    tone="change"
+                    label={isFinding ? "Request change" : "Comment"}
+                    onClick={startReply}
+                  >
+                    <MessageSquare />
+                  </VerdictButton>
+                </>
+              ) : null}
+              <span className="flex-1" />
+              {surfaceActions}
+            </TooltipProvider>
+          )}
+          secondaryActions={
+            <TooltipProvider delayDuration={300}>
+              {approveAction}
+              {dismissAction}
+              {surfaceActions}
+            </TooltipProvider>
+          }
+          send={(text) =>
+            sendComment({ surface: surfaceId, text, author: "user" }, surfaceId, text)
+          }
+        />
+      </div>
     </div>
   );
 }

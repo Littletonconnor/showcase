@@ -381,8 +381,12 @@ export default function App() {
           </SidebarFooter>
         </Sidebar>
         <SidebarInset className="min-w-0">
-          {/* Phone widths: a slim top bar with the offcanvas trigger + wordmark. */}
-          <header className="flex flex-none items-center gap-1 border-b-[0.5px] border-border bg-panel px-2 py-2 md:hidden">
+          {/* Phone widths: a slim top bar with the offcanvas trigger + wordmark.
+              It also surfaces at print's narrow page width, so hide it there. */}
+          <header
+            data-print-hide
+            className="flex flex-none items-center gap-1 border-b-[0.5px] border-border bg-panel px-2 py-2 md:hidden"
+          >
             <SidebarTrigger
               id="menuBtn"
               aria-label="Show sessions"
@@ -558,6 +562,9 @@ function SessionItem(props: { session: SessionRow }) {
       await select(props.session.id);
       await new Promise((r) => setTimeout(r, 600));
     }
+    // Wait for this menu to actually close, or the open dropdown gets captured
+    // in the print snapshot.
+    await new Promise((r) => setTimeout(r, 200));
     window.print();
   };
 
@@ -784,7 +791,9 @@ function SessionView(props: { onConnect?: () => void }) {
           surfaces.map((s) => <Card surface={s} key={s.id} />)
         )}
         {selected && !streamLoading && !isReadonly() ? (
-          <SessionChat sessionId={selected} onConnect={props.onConnect} />
+          <div data-print-hide>
+            <SessionChat sessionId={selected} onConnect={props.onConnect} />
+          </div>
         ) : null}
       </div>
     </div>
