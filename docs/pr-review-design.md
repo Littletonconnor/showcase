@@ -5,9 +5,12 @@ _A design + implementation plan for showcase's flagship "Visual PR review" workf
 Status: **draft for review.** Built from a full read of the existing review
 system (`server/app.ts` `publishReview`, `buildFinding`, `buildChangeMap`,
 `buildChurnChart`; `server/kits.ts`; `viewer/src/DiffPart.tsx`; `TODO.md`
-Workflow 1) plus PR-review UX prior art. Research citations are being folded in
-from a parallel deep-research run; this doc states the design first so we can
-argue about it before writing code.
+Workflow 1) plus PR-review UX prior art. A parallel deep-research run (GitHub's
+reengineered diff surface, pair-review's AI-review patterns; adversarially
+verified) is folded into §6 — it corroborates the IA, finding-scope, keyboard,
+and large-diff mechanics, and the unsupported parts (risk scoring, semantic
+diffs) are flagged as design judgment. This doc states the design first so we
+can argue about it before writing code.
 
 ---
 
@@ -136,6 +139,12 @@ reconstruct by hand:
   tests cover it. Even three mermaid nodes ("`validateToken` is called by
   `authMiddleware`, `wsUpgrade`; now also calls `revocationList`") beats reading
   the raw hunk cold.
+- **Scope tier** — each finding declares the scope it was found at, borrowing
+  the verified three-tier model from pair-review (§6): **changed-lines** (a bug
+  in the diff itself), **whole-file** (an inconsistency with the rest of the
+  file), or **codebase** (an architectural conflict with code outside the diff).
+  The tier tells the reviewer how far they have to look to judge it, and a
+  codebase-tier finding _is_ the blast-radius signal made explicit.
 - **Verification honesty (the LLM-age signal).** Each finding declares the
   agent's **confidence** and **what it did _not_ check**. "High confidence,
   reproduced with a test" vs "Plausible — I did not run the migration" is itself
@@ -179,6 +188,14 @@ matters without touching the mouse:
 The reviewer watches the manifest and verdict bar **burn down** as they go — the
 review has a visible terminal state, which is exactly what high-volume LLM review
 needs.
+
+This is also a genuine **differentiator**: the research found AI-review tooling's
+keyboard support is still immature (pair-review ships a single chord), while
+GitHub treats keyboard nav + screen-reader landmarks as first-class (§6). A
+keyboard-complete review traversal is table stakes for "best in class" and
+nobody in the AI-review space has it yet. Align the bindings with the
+established convention where one exists — `j`/`k` for next/previous is what
+GitHub trained reviewers on.
 
 ---
 
@@ -295,6 +312,15 @@ shows the chips + coverage line; the `problem → fix → why` spine is unchange
   with churn + jump, collapsing generated/vendored files by default.
 - **Moved-code** labeling and **collapse of large unchanged regions** with
   expand-on-demand.
+- **Large-diff handling** — the research's most strongly-verified mechanical
+  lesson (§6): GitHub made massive PRs reviewable via window virtualization
+  (render only the visible rows) and event delegation (one top-level handler
+  reading data-attributes, not per-line listeners), cutting JS heap and DOM
+  nodes ~10×. showcase's diff already SSR-renders per file and the bridge
+  already uses a single delegated click handler (`composedPath`) — so we're
+  aligned on delegation. The open risk is a single _huge_ file's hunk count
+  inside one iframe; if it bites, virtualize rows or paginate hunks. Budget a
+  spike here rather than pre-optimizing.
 
 Keep the trusted-origin DOM hooks the oracle asserts on (`.card[data-id]`,
 per-part iframes, `.thread .cmt.user`) intact.
@@ -343,7 +369,62 @@ changes.
 
 ---
 
-## 6. Decisions & open questions
+## 6. Evidence base (deep-research corroboration)
+
+A parallel deep-research run (5 angles → 21 sources → adversarial 3-vote
+verification, 13/14 claims confirmed) backs the design. Honest summary: the
+_mechanics_ and _IA_ are well-evidenced; the _risk-scoring / semantic-diff / blast
+-radius_ ideas are my design judgment, **not** corroborated — the run explicitly
+couldn't confirm them. Both are called out below.
+
+**Confirmed — what the design leans on:**
+
+- **Verdict-first IA / file-tree triage.** GitHub's reengineered "Files changed"
+  ships a resizable file-tree with **per-file status indicators** (comments,
+  errors, warnings) so reviewers triage which files need attention — direct
+  support for P2's manifest. ([GitHub changelog, 2025-06-26](https://github.blog/changelog/2025-06-26-improved-pull-request-files-changed-experience-now-in-public-preview/))
+- **Keyboard-driven review is first-class, and an AI-tooling gap.** GitHub built
+  consistent keyboard nav + screen-reader landmarks with `j`/`k` file nav;
+  AI-review tools haven't (pair-review documents one chord). P5 fills a real gap.
+  ([GitHub changelog](https://github.blog/changelog/2025-06-26-improved-pull-request-files-changed-experience-now-in-public-preview/) · [pair-review](https://github.com/in-the-loop-labs/pair-review))
+- **Tiered AI analysis by scope.** pair-review runs three levels in parallel —
+  **L1 changed-lines bugs · L2 whole-file consistency · L3 codebase-wide
+  architecture** — deduped and merged. This is the verified basis for the new
+  finding **scope tier** (P3). ([pair-review](https://github.com/in-the-loop-labs/pair-review))
+- **Source-attributed, human-in-the-loop suggestions.** pair-review color-codes
+  by source (AI=orange, your drafts=purple, external=blue) under "AI suggests,
+  you decide" — the human adopts/edits/discards. showcase already separates
+  agent vs user comments by alignment/color; keep that discipline and make the
+  agent-authored verdict clearly _the agent's_, arbitrated by the user. ([pair-review](https://github.com/in-the-loop-labs/pair-review))
+- **Large-diff mechanics.** Window virtualization + event delegation (~10× heap/
+  DOM reduction); split view costs ~1.5× the DOM of unified per line. Folded into
+  Step D. ([GitHub Engineering](https://github.blog/engineering/architecture-optimization/the-uphill-climb-of-making-diff-lines-performant/))
+
+**Not corroborated — flagged as design judgment, not evidence:**
+
+- **Risk / blast-radius _scoring_.** No surviving claim supports a composite risk
+  meter or quantified blast radius. It's a reasoned bet (and the decision to make
+  it _agent-authored_ rather than computed sidesteps the "is the formula right"
+  problem). Treat the risk panel as a hypothesis to validate in use, not a proven
+  pattern.
+- **Semantic/AST diffs, moved-code detection, word-level intra-line, split-vs-
+  unified merits.** None confirmed (several strong sources — matklad's unified-vs-
+  split essay, difftastic — were rated unreliable by the verifier and dropped).
+  Directionally, the unified-vs-split essay argues the right answer is
+  context-dependent, which supports keeping showcase's existing `layout` toggle
+  rather than hard-coding one. Step D's word-level/moved-code work stays gated
+  behind the `@pierre/diffs` capability spike (open question 4).
+- **Source concentration caveat.** Confirmed evidence comes from two vendors
+  (GitHub, pair-review), both primary but self-reported. Good enough to anchor a
+  design, not a benchmark. Full report + open questions:
+  `/tmp/.../tasks/wgupv54lq.output` (run `wgupv54lq`).
+
+**Net effect on the plan:** no structural change. The research _strengthens_
+Phases 1 and 3 (IA, finding scope, keyboard, attribution) and _tempers_ Phase 2
+(diff depth is less evidence-backed and more renderer-constrained than the rest —
+so it rightly sits last and behind a spike).
+
+## 7. Decisions & open questions
 
 **Decided:**
 
