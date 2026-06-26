@@ -280,6 +280,50 @@ test("clicking a diff line opens a line-anchored comment", async ({ page, reques
   expect(c?.anchor?.line, "the comment carries the diff line").toBeGreaterThan(0);
 });
 
+test("a multi-file diff shows a manifest header and collapses generated files", async ({
+  page,
+  request,
+}) => {
+  // Step D: a multi-file diff leads with a manifest (file list + churn) and
+  // collapses generated/vendored files (a lockfile) out of the rendered diff
+  // until the reviewer asks for them.
+  const session = await (
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "multi" } })
+  ).json();
+  const surface = await (
+    await request.post("/api/surfaces", {
+      data: {
+        session: session.id,
+        title: "Multi-file",
+        parts: [
+          {
+            kind: "diff",
+            patch:
+              'diff --git a/auth/token.ts b/auth/token.ts\n--- a/auth/token.ts\n+++ b/auth/token.ts\n@@ -1,3 +1,4 @@\n function v(t) {\n-  return d(t);\n+  if (!t) throw new Error(\'x\');\n+  return d(t);\n }\ndiff --git a/package-lock.json b/package-lock.json\n--- a/package-lock.json\n+++ b/package-lock.json\n@@ -1,3 +1,4 @@\n {\n-  "a": 1\n+  "a": 1,\n+  "b": 2\n }',
+          },
+        ],
+      },
+    })
+  ).json();
+  await page.goto(`/?surface=${surface.id}`);
+  const card = page.locator(`.card[data-id="${surface.id}"]`);
+  await expect(card).toBeVisible();
+
+  // The manifest header lists both files (trusted origin — assertable text) and
+  // flags the lockfile generated.
+  await expect(card.getByText("auth/token.ts")).toBeVisible();
+  await expect(card.getByText(/package-lock\.json/)).toBeVisible();
+  // Only the hot file renders to start (one diff iframe); the lockfile is behind
+  // the collapse toggle.
+  const toggle = card.getByText(/Show 1 generated file/);
+  await expect(toggle).toBeVisible();
+  const framesBefore = await card.locator("iframe").count();
+  await toggle.click();
+  await expect(card.getByText(/Hide 1 generated file/)).toBeVisible();
+  const framesAfter = await card.locator("iframe").count();
+  expect(framesAfter).toBeGreaterThan(framesBefore);
+});
+
 test("a finding's before/after suggestion renders real changed lines, not an empty diff", async ({
   page,
   request,
