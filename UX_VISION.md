@@ -8,6 +8,12 @@ This is a proposal to react to, not a shipped spec. Companion to `TODO.md` (the
 capability roadmap) and `AGENTS.md` (architecture). Code references point at the
 current viewer so each item is executable.
 
+> **Status:** Shipped. All four moves and the cut list are implemented on the
+> `claude/app-ux-audit-c2mjz5` branch — Move 1 (auto-replies framing + Connect
+> hero), Move 2 (review cockpit: burndown, `j`/`k` pager, terminal verdict,
+> sidebar open-count), Move 3 (labeled verdict buttons), Move 4 (line comments
+> only), and the cuts (Library, point annotations, Read gated to explainers).
+
 ---
 
 ## 1. What this app is (the focus)

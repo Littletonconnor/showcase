@@ -413,7 +413,7 @@ export default function App() {
             }}
           >
             <Onboard onConnect={() => setConnectOpen(true)} />
-            <SessionView />
+            <SessionView onConnect={() => setConnectOpen(true)} />
           </main>
         </SidebarInset>
       </SidebarProvider>
@@ -1037,7 +1037,7 @@ function ReadingView() {
   );
 }
 
-function SessionView() {
+function SessionView(props: { onConnect?: () => void }) {
   const sessions = useBoard((s) => s.sessions);
   const selected = useBoard((s) => s.selected);
   const surfaces = useBoard((s) => s.surfaces);
@@ -1059,7 +1059,9 @@ function SessionView() {
             ) : null}
             <SessionTitle current={current} />
             <span className="flex-1" />
-            {current && !isReadonly() ? <AgentPresence agent={current.agent} /> : null}
+            {current && !isReadonly() ? (
+              <AgentPresence agent={current.agent} onConnect={props.onConnect} />
+            ) : null}
           </div>
           <span className="pl-0.5 text-[12px] text-faint" id="sessMeta">
             {current
@@ -1085,7 +1087,9 @@ function SessionView() {
         ) : reading ? null : (
           surfaces.map((s) => <Card surface={s} key={s.id} />)
         )}
-        {selected && !streamLoading && !isReadonly() ? <SessionChat sessionId={selected} /> : null}
+        {selected && !streamLoading && !isReadonly() ? (
+          <SessionChat sessionId={selected} onConnect={props.onConnect} />
+        ) : null}
       </div>
     </div>
   );
@@ -1094,7 +1098,7 @@ function SessionView() {
 // The session-level chat: talk to your agent about the whole session, not a
 // specific card. Posts surfaceless comments; the agent replies session-level
 // (reply_to_user with no surfaceId). Reuses the card Thread with surfaceId=null.
-function SessionChat(props: { sessionId: string }) {
+function SessionChat(props: { sessionId: string; onConnect?: () => void }) {
   const listening = useSessionListening();
   return (
     <div className="mt-4 overflow-hidden rounded-xl border-[0.5px] border-border bg-card">
@@ -1102,9 +1106,22 @@ function SessionChat(props: { sessionId: string }) {
         <MessageSquare className="size-4 text-muted-foreground" />
         <span className="text-[13px] font-semibold text-foreground">Chat with your agent</span>
         <span className="flex-1" />
-        <span className="text-[11px] text-faint">
-          {listening ? "listening" : "agent idle — messages queue until it checks"}
-        </span>
+        {listening ? (
+          <span className="text-[11px] font-medium text-[#2e7d54] dark:text-[#5fd699]">
+            agent will see this
+          </span>
+        ) : (
+          // Carry the fix at the moment of friction: messages queue, and the way
+          // to make them land automatically is one click away.
+          <button
+            type="button"
+            onClick={() => props.onConnect?.()}
+            className="text-[11px] text-faint underline-offset-2 transition-colors hover:text-foreground hover:underline"
+            title="Comments queue until your agent checks. Click to turn on auto-replies so they land automatically."
+          >
+            queued — turn on auto-replies
+          </button>
+        )}
       </div>
       <Thread
         surfaceId={null}
@@ -1155,45 +1172,35 @@ function EmptySession() {
   );
 }
 
-// Live presence chip in the session header: green "Listening" while the agent
-// is parked in wait_for_feedback (messages reach it instantly), or a clickable
-// "Agent idle" that copies an instruction to arm the agent's chat loop. This is
-// the honest signal for the pull-based bridge — showcase can't push to the
-// editor, so the user needs to see whether a reply is even coming.
-function AgentPresence(props: { agent: string }) {
+// The single most important status in the app: will my next comment actually
+// reach the agent? Framed as a setting the user owns — "Auto-replies on" (green)
+// while the agent is connected (parked in a feedback wait, or kept there by the
+// `showcase watch` plugin), or a clickable "Auto-replies off" that opens Connect
+// — the durable fix — instead of leaving the user to hand-nudge their terminal.
+function AgentPresence(props: { agent: string; onConnect?: () => void }) {
   const listening = useSessionListening();
   const label = props.agent || "your agent";
   if (listening) {
     return (
       <span
         className="flex-none inline-flex items-center gap-1.5 rounded-full bg-[#4caf78]/12 px-2 py-0.5 text-[11px] font-medium text-[#2e7d54] dark:text-[#5fd699]"
-        title={`${label} is parked in wait_for_feedback — your messages reach it instantly.`}
+        title={`Auto-replies are on — ${label} is connected, so your comments reach it right away.`}
       >
         <span className="size-1.5 animate-pulse rounded-full bg-[#4caf78] motion-reduce:animate-none" />
-        Listening
+        Auto-replies on
       </span>
     );
   }
-  const armText = `Keep calling wait_for_feedback on showcase and reply to me with reply_to_user, looping, so I can chat with you from the browser.`;
   return (
     <button
       type="button"
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(armText);
-          toast(`Copied — paste it to ${label} to start the chat loop.`);
-        } catch {
-          toast("Couldn't copy the instruction");
-        }
-      }}
-      className="flex-none inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-faint transition-colors hover:bg-hover hover:text-muted-foreground"
-      title={`${label} isn't listening. Click to copy an instruction that arms it (it must call wait_for_feedback to receive your messages).`}
+      onClick={() => props.onConnect?.()}
+      className="flex-none inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-faint transition-colors hover:bg-hover hover:text-foreground"
+      title={`Auto-replies are off — ${label} isn't connected, so comments queue until it checks. Click to turn them on.`}
     >
       <span className="size-1.5 rounded-full bg-faint" />
-      Agent idle
-      {/* The trailing copy glyph signals this status pill is also a button —
-          clicking copies the wake instruction (the title spells it out). */}
-      <Copy className="size-3 opacity-70" />
+      Auto-replies off
+      <Plug className="size-3 opacity-70" />
     </button>
   );
 }
@@ -1265,21 +1272,27 @@ function Onboard(props: { onConnect: () => void }) {
         <>
           <h1>The show hasn&rsquo;t started yet</h1>
           <p className="mb-8 text-[14px] text-muted-foreground">
-            showcase is a live surface where coding agents draw HTML snippets — diagrams, sketches,
-            explainers — while they work in your terminal.
+            showcase is a live surface where your coding agent draws diagrams, sketches, and code
+            reviews while it works in your terminal — and your comments flow straight back to it.
           </p>
-          <h2>teach your agent about it</h2>
-          <Snip text={SETUP_SNIP} />
-          <h2>or try it yourself</h2>
-          <Snip text={TRY_SNIP} />
-          <h2>using claude code?</h2>
+          {/* The hero is closing the loop: connect once so comments reach the
+              agent automatically. The snippets below are the manual fallback. */}
+          <h2>turn on auto-replies</h2>
+          <p className="mb-3 text-[13px]/[1.55] text-muted-foreground">
+            Install the showcase plugin once so your comments reach your agent on their own — no
+            copy-pasting into your terminal, no re-arming a watcher.
+          </p>
           <button
-            className="group inline-flex cursor-pointer items-center gap-1.5 rounded-lg border-[0.5px] border-border bg-card px-3.5 py-2 text-[13px] text-foreground transition-colors hover:border-muted-foreground"
+            className="group inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand px-3.5 py-2 text-[13px] font-medium text-primary-foreground transition-opacity hover:opacity-90"
             onClick={props.onConnect}
           >
             Connect Claude Code
             <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
           </button>
+          <h2>or teach any agent</h2>
+          <Snip text={SETUP_SNIP} />
+          <h2>or try it yourself</h2>
+          <Snip text={TRY_SNIP} />
         </>
       ) : (
         <>
