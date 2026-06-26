@@ -17,7 +17,7 @@ A surface is a card built from ordered **parts**, each with a `kind`:
 - **`trace`** — agent-run steps rendered as a vertical step list.
 - **`code`** — a source file rendered with syntax highlighting.
 - **`json`** — a JSON value rendered as a collapsible tree.
-- **`chart`** — row-oriented numeric data rendered as a native SVG chart (bar, line, area, or pie). Reach for it for metrics, distributions, before/after comparisons — anything a terminal can't draw.
+- **`chart`** — row-oriented numeric data rendered as a native SVG chart (bar, line, area, pie, treemap, or scatter). Reach for it for metrics, distributions, before/after comparisons — anything a terminal can't draw. (`publish_review` builds the risk treemap + confidence×coverage quadrant for you.)
 
 A surface can combine parts — `[html, diff]` is a diagram with its code review in one card. html parts are sandboxed (you author the markup); diff/markdown/mermaid/terminal/image/trace/code/json/chart parts are data rendered by the trusted viewer.
 
@@ -106,9 +106,27 @@ This is showcase's flagship workflow — _"the future of code review is multimod
   "budget": "~7 min · 2 files need real eyes · 1 mechanical",
   "manifest": [
     // priority: sensitive | logic | mechanical (sensitive first; mechanical collapses)
-    { "file": "FinancialChatFeedback.java", "added": 64, "removed": 0, "priority": "sensitive", "note": "new entity — persists user feedback" },
-    { "file": "ChatController.java", "added": 22, "removed": 6, "priority": "logic", "note": "save path" },
-    { "file": "feedback.hbm.xml", "added": 18, "removed": 0, "priority": "mechanical", "note": "generated mapping" },
+    {
+      "file": "FinancialChatFeedback.java",
+      "added": 64,
+      "removed": 0,
+      "priority": "sensitive",
+      "note": "new entity — persists user feedback",
+    },
+    {
+      "file": "ChatController.java",
+      "added": 22,
+      "removed": 6,
+      "priority": "logic",
+      "note": "save path",
+    },
+    {
+      "file": "feedback.hbm.xml",
+      "added": 18,
+      "removed": 0,
+      "priority": "mechanical",
+      "note": "generated mapping",
+    },
   ],
   "summary": "Adds the FinancialChatFeedback entity + cipher wiring + persistence tests. No P1s.",
   "coverage": "Read the entity + mapping + cipher wiring; did not exercise the sql-schema repo changes.",

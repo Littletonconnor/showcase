@@ -98,12 +98,12 @@ first. The overview is a map you read before entering the territory.
 **Composite risk, made of four sub-signals** — each a small bar, the composite a
 labeled band (Low / Elevated / High), never a bare number:
 
-| Sub-signal      | What it measures                                              |
-| --------------- | ------------------------------------------------------------ |
-| **Size**        | Total churn (added + removed), log-scaled.                   |
-| **Surface area**| Number of distinct files / modules / public exports touched. |
-| **Sensitivity** | Are touched paths security / auth / data-model / migration / money / deletion / config? Weighted heaviest. |
-| **Test delta**  | Did test lines move with the change, or did logic change with tests untouched? (untouched = riskier) |
+| Sub-signal       | What it measures                                                                                           |
+| ---------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Size**         | Total churn (added + removed), log-scaled.                                                                 |
+| **Surface area** | Number of distinct files / modules / public exports touched.                                               |
+| **Sensitivity**  | Are touched paths security / auth / data-model / migration / money / deletion / config? Weighted heaviest. |
+| **Test delta**   | Did test lines move with the change, or did logic change with tests untouched? (untouched = riskier)       |
 
 The point is not a precise score — it's **directing attention**. A 2000-line PR
 that's all generated lockfile churn is _Low_; a 30-line change to auth token
@@ -270,9 +270,9 @@ declares them directly. The server's job is to render them _consistently_, not t
 second-guess them.
 
 - New `ReviewInput` fields: `intent`, `risk:{size,surfaceArea,sensitivity,
-  testDelta,band}` (each a 0–3 agent-supplied weight + an overall band label),
+testDelta,band}` (each a 0–3 agent-supplied weight + an overall band label),
   `budget` (the review-time / hot-vs-cold line), and `manifest:[{file, added,
-  removed, priority, note}]` where the agent supplies `priority`
+removed, priority, note}]` where the agent supplies `priority`
   ("sensitive"|"logic"|"mechanical") and the one-line `note`.
 - A `buildOverview()` that emits the `review`-kit html part (manifest + risk +
   budget) above the existing change map. Manifest rows render in the agent's
@@ -360,6 +360,21 @@ blast radius), and the standardized template, with a copy-paste example. Reseed
 Each phase is independently shippable and independently valuable. Phase 1 is what
 makes a reviewer say "this is the one I'm proud of."
 
+> **Shipped status (update).** Phases 1 & 3 are complete (Steps A–C, E–F). Of
+> Phase 2 (Step D): word-level intra-line highlighting, the multi-file **manifest
+> header** (with added/modified/deleted/moved/renamed labels + churn), and
+> **collapse of generated/vendored files** are shipped; **large-diff
+> virtualization is intentionally skipped** (the existing per-file SSR render is
+> adequate), and **intra-file moved-code block detection** is deferred —
+> `@pierre/diffs` detects file-level renames/moves but not in-file block moves.
+> From §8: the edge-status interaction map, the **review burn-down** (a live
+> header sparkline), the **risk-weighted treemap**, and the **confidence ×
+> coverage quadrant** are shipped on the existing Recharts `chart` path (new
+> `treemap`/`scatter` types) — the sandboxed D3 charting kit (§8.5 #1) was **not**
+> needed for these and the chart-cell→navigate bridge (§8.5 #3) remains future
+> work. The `x` keyboard binding (mark file reviewed) is wired. The **Tour
+> surface** (§3) remains deferred by design.
+
 ### Validation gate (every step)
 
 `npm run typecheck` · `npm run lint` · `npm run build:viewer` ·
@@ -444,6 +459,7 @@ so it rightly sits last and behind a spike).
    moved-code, how far do we go? Options: post-process the hunks, fork the lib,
    or accept line-level and reinvest the saved time in the manifest/IA. I'd
    timebox a spike on `@pierre/diffs` capabilities before committing.
+
 ```
 
 ---
@@ -525,17 +541,19 @@ line per edge (mermaid styles edges by index), reusing the `CHANGE_STATUS`
 palette so nodes and edges share one legend:
 
 ```
+
 flowchart LR
-  n0(["authMiddleware"]):::touched
-  n1["validateToken"]:::modified
-  n2[("revocationList")]:::new
-  n0 -->|calls| n1
-  n1 -->|"now checks"| n2
-  linkStyle 0 stroke:#9aa0a6;
-  linkStyle 1 stroke:#2f9e44,stroke-width:1.5px;
-  classDef touched stroke:#9aa0a6,color:#9aa0a6;
-  classDef modified stroke:#d9870a,color:#d9870a,stroke-width:1.5px;
-  classDef new stroke:#2f9e44,color:#2f9e44,stroke-width:1.5px;
+n0(["authMiddleware"]):::touched
+n1["validateToken"]:::modified
+n2[("revocationList")]:::new
+n0 -->|calls| n1
+n1 -->|"now checks"| n2
+linkStyle 0 stroke:#9aa0a6;
+linkStyle 1 stroke:#2f9e44,stroke-width:1.5px;
+classDef touched stroke:#9aa0a6,color:#9aa0a6;
+classDef modified stroke:#d9870a,color:#d9870a,stroke-width:1.5px;
+classDef new stroke:#2f9e44,color:#2f9e44,stroke-width:1.5px;
+
 ```
 
 Agent supplies `edges:[{from,to,label,status}]`; the server renders. Highest-value
@@ -548,13 +566,15 @@ counts instead of line counts. A module that gains four inbound edges in one PR 
 a coupling hotspot even when its own churn is tiny.
 
 ```
+
 data: [
-  { module: "auth/token.ts",     added: 3, removed: 1 },
-  { module: "billing/charge.ts", added: 2, removed: 0 },
-  { module: "api/routes.ts",     added: 1, removed: 0 },
+{ module: "auth/token.ts", added: 3, removed: 1 },
+{ module: "billing/charge.ts", added: 2, removed: 0 },
+{ module: "api/routes.ts", added: 1, removed: 0 },
 ]
 chartType: "bar", x: "module", y: ["added","removed"], stacked: true,
 colors: ["#2f9e44","#e03131"], yLabel: "edges"
+
 ```
 
 Zero new primitives; rides on the same edge data the interaction map collects.
@@ -671,3 +691,4 @@ graph/scoring algorithm correct"), and the **buildable-today** pair (interaction
 map + burndown) lets us validate the whole "charts route attention" thesis in real
 reviews _before_ investing in the charting kit. Treat the treemap and quadrant as
 the bets to confirm once the cheap pair has proven the direction.
+```
