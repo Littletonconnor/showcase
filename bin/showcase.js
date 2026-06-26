@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -114,6 +114,8 @@ usage:
   showcase demo                           seed two example sessions to explore the viewer
   showcase guide                          print the design contract for surfaces
   showcase setup                          print the AGENTS.md integration block
+  showcase export <session> [--out f]     write a self-contained, shareable .html of a session
+      --pdf             render that HTML to a flat PDF via headless Chrome (set SHOWCASE_CHROME to override)
   showcase playbook                       print the agent publishing playbook
   showcase mcp                            run the stdio MCP server (for agent configs)
 
@@ -128,6 +130,49 @@ environment:
 function fail(msg) {
   console.error(`showcase: ${msg}`);
   process.exit(1);
+}
+
+// Locate a Chrome/Chromium binary for `export --pdf` (it renders the export HTML
+// headlessly and prints to PDF). $SHOWCASE_CHROME wins; otherwise probe the usual
+// install paths per platform, then PATH for a bare command name. Returns null if
+// none is found — the caller turns that into a clear, actionable error.
+function findChrome() {
+  if (process.env.SHOWCASE_CHROME) return process.env.SHOWCASE_CHROME;
+  const candidates =
+    process.platform === "darwin"
+      ? [
+          "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+          "/Applications/Chromium.app/Contents/MacOS/Chromium",
+          "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        ]
+      : process.platform === "win32"
+        ? [
+            join(
+              process.env.PROGRAMFILES ?? "C:/Program Files",
+              "Google/Chrome/Application/chrome.exe",
+            ),
+            join(
+              process.env["PROGRAMFILES(X86)"] ?? "C:/Program Files (x86)",
+              "Google/Chrome/Application/chrome.exe",
+            ),
+          ]
+        : ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"];
+  for (const c of candidates) {
+    if (c.includes("/") || c.includes("\\")) {
+      if (existsSync(c)) return c;
+    } else {
+      try {
+        const found = execFileSync(process.platform === "win32" ? "where" : "which", [c], {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "ignore"],
+        })
+          .trim()
+          .split("\n")[0];
+        if (found) return found;
+      } catch {}
+    }
+  }
+  return null;
 }
 
 async function api(path, init = {}) {
@@ -1195,6 +1240,76 @@ const commands = {
       profile: profile ? profilePath : null,
       prompt,
     });
+  },
+
+  // Static export: download a whole session as one self-contained, read-only
+  // file (surfaces + comments + assets inlined) you can send anyone — the
+  // sanctioned "share a review/explainer" path. Default is a standalone HTML
+  // (interactive, no server needed); `--pdf` renders that HTML through headless
+  // Chrome to a flat PDF for recipients who'd rather not open an HTML file.
+  async export() {
+    const { values: flags, positionals } = parse({
+      allowPositionals: true,
+      options: { out: { type: "string" }, pdf: { type: "boolean" } },
+    });
+    const session = positionals[0];
+    if (!session) fail("usage: showcase export <session> [--out <file>] [--pdf]");
+    let res;
+    try {
+      res = await fetch(`${BASE}/api/sessions/${encodeURIComponent(session)}/export`, {
+        headers: TOKEN ? { authorization: `Bearer ${TOKEN}` } : {},
+      });
+    } catch {
+      fail(`server not reachable at ${BASE} — start it with: showcase serve`);
+    }
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      fail(body.error ?? `${res.status} ${res.statusText}`);
+    }
+    const html = await res.text();
+    const suggested =
+      res.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ??
+      `showcase-${session}.html`;
+
+    if (!flags.pdf) {
+      const file = flags.out ?? suggested;
+      writeFileSync(file, html);
+      return out({ session, file, bytes: html.length, format: "html" });
+    }
+
+    // --pdf: print the self-contained HTML with headless Chrome.
+    const chrome = findChrome();
+    if (!chrome) {
+      fail(
+        "no Chrome/Chromium found for --pdf — install Chrome or set SHOWCASE_CHROME=/path/to/chrome",
+      );
+    }
+    const file = flags.out ?? suggested.replace(/\.html$/i, ".pdf");
+    const dir = mkdtempSync(join(tmpdir(), "showcase-pdf-"));
+    const tmpHtml = join(dir, "page.html");
+    writeFileSync(tmpHtml, html);
+    try {
+      execFileSync(
+        chrome,
+        [
+          "--headless",
+          "--disable-gpu",
+          "--no-pdf-header-footer",
+          // Let async rendering (mermaid, the iframe resize bridge) settle before
+          // the page is printed, so nothing prints half-laid-out.
+          "--virtual-time-budget=8000",
+          `--print-to-pdf=${file}`,
+          `file://${tmpHtml}`,
+        ],
+        { stdio: ["ignore", "ignore", "ignore"] },
+      );
+    } catch (e) {
+      fail(`Chrome failed to render the PDF: ${e.message}`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+    if (!existsSync(file)) fail("Chrome ran but produced no PDF");
+    out({ session, file, format: "pdf" });
   },
 
   // Publish ONE structured review finding — showcase composes the multimodal

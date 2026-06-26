@@ -18,6 +18,7 @@ import type {
   TracePart,
   TraceStep,
 } from "../../server/types.ts";
+import type { ExportBundle } from "../../server/export.ts";
 import { basePath } from "./host.ts";
 
 export type {
@@ -67,7 +68,49 @@ declare global {
     // __SHOWCASE_BASE_PATH__ lives in host.ts (the default host reads it).
     __SHOWCASE_READONLY__?: boolean;
     __SHOWCASE_PUBLIC_READ__?: PublicReadMode;
+    // Set by a static export: the whole session inlined, so the viewer renders
+    // with no server (see server/export.ts). Implies read-only.
+    __SHOWCASE_EXPORT__?: ExportBundle;
   }
+}
+
+// A static export inlines the session; when present the viewer reads it in place
+// of the network and never opens an SSE/long-poll.
+export function exportBundle(): ExportBundle | undefined {
+  return window.__SHOWCASE_EXPORT__;
+}
+
+// The URL for an uploaded asset's bytes. In an export the bytes are inlined as a
+// `data:` URI; live, they stream from `/a/:id`.
+export function assetUrl(id: string): string {
+  return window.__SHOWCASE_EXPORT__?.assets[id] ?? `/a/${id}`;
+}
+
+// Rewrite `/a/:id` references inside agent HTML to inlined `data:` URIs for an
+// export (so an `<img src="/a/…">` in an html part renders with no server). A
+// no-op when live. An id with no inlined asset is left as-is.
+export function inlineAssetRefs(html: string): string {
+  const b = window.__SHOWCASE_EXPORT__;
+  if (!b) return html;
+  return html.replace(/\/a\/([A-Za-z0-9_-]+)/g, (m, id) => b.assets[id] ?? m);
+}
+
+// Resolve a GET against the inlined export bundle, or undefined if this path
+// isn't one the export serves (callers then fall through to the network, which
+// in an opened file simply yields no data). Mirrors the `/api/*` shapes.
+function resolveFromExport(b: ExportBundle, path: string): unknown {
+  const clean = path.split("?")[0];
+  if (clean === "/api/sessions") return b.sessions;
+  if (/^\/api\/sessions\/[^/]+\/(surfaces|snippets)$/.test(clean)) return b.surfaces;
+  const surf = clean.match(/^\/api\/(?:surfaces|snippets)\/([^/]+)$/);
+  if (surf) {
+    const found = b.surfaces.find((s) => s.id === decodeURIComponent(surf[1]));
+    if (!found) throw new Error("404");
+    return found;
+  }
+  if (clean === "/api/comments") return { comments: b.comments };
+  if (clean === "/api/version") return { current: null, latest: null, updateAvailable: false };
+  return undefined;
 }
 
 // The base path comes from the hosted-wrapper global / URL prefix, matching the
@@ -106,6 +149,11 @@ export function sessionLink(id: string): string {
 }
 
 export async function api<T = unknown>(path: string, init?: RequestInit): Promise<T> {
+  const bundle = window.__SHOWCASE_EXPORT__;
+  if (bundle && (!init || (init.method ?? "GET") === "GET")) {
+    const hit = resolveFromExport(bundle, path);
+    if (hit !== undefined) return hit as T;
+  }
   const res = await fetch(
     appPath(path),
     init ? { headers: { "content-type": "application/json" }, ...init } : undefined,

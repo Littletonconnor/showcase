@@ -298,7 +298,9 @@ export function ReviewSummary(props: { surfaces: Surface[] }) {
       {/* The burndown row: an open/resolved tally and a pager while findings are
           open, an explicit terminal verdict once they're all resolved. */}
       {findingsTotal > 0 ? (
-        <div className="flex items-center gap-2 pl-0.5 text-[11px]">
+        // The pager + keyboard hints are interactive chrome — hidden when the
+        // board is printed/exported to PDF (the verdict chips above carry the gist).
+        <div data-print-hide className="flex items-center gap-2 pl-0.5 text-[11px]">
           {openCount > 0 ? (
             <>
               <span className="tabular-nums text-faint">

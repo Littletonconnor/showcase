@@ -44,6 +44,9 @@ test("the animate kit ships its stepper css + play/scrub behavior", () => {
   assert.match(js, /anim-ctl/); // injected controls
   assert.match(js, /setInterval/); // auto-play
   assert.match(js, /type='range'/); // the scrubber
+  // In print/PDF a stepper can't be played, and steps default to hidden — so
+  // print reveals every step stacked (else an exported explainer prints blank).
+  assert.match(css, /@media print\{\.anim>\.step\{display:block/);
 });
 
 test("the review kit ships its overview vocabulary + burn-down behavior", () => {

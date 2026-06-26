@@ -4,6 +4,7 @@ import { getCookie, setCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { decodeBase64 } from "./base64.ts";
 import { EventBus } from "./events.ts";
+import { buildExportBundle, exportFilename, renderExportHtml } from "./export.ts";
 import { kitSummaries } from "./kits.ts";
 import { registerMcp } from "./mcpHttp.ts";
 import { escapeHtml, renderHtmlPage } from "./surfacePage.ts";
@@ -1670,6 +1671,25 @@ export function createApp({
   };
   app.get("/api/sessions/:id/surfaces", listSessionSurfaces);
   app.get("/api/sessions/:id/snippets", listSessionSurfaces); // legacy alias
+
+  // Static export: a self-contained read-only .html of a whole session (surfaces
+  // + comments + assets inlined) that renders with no server. The viewer reads
+  // the inlined bundle in place of `/api/*` and runs read-only — so this is how
+  // you share a review, not a GitHub round-trip. Behind auth like any session
+  // read; the served file carries the session's data.
+  app.get("/api/sessions/:id/export", async (c) => {
+    const id = c.req.param("id");
+    const bundle = await buildExportBundle(store, id);
+    if (!bundle) return c.json({ error: "session not found" }, 404);
+    const filename = exportFilename(
+      bundle.sessions[0] ? (bundle.sessions[0] as any).title : null,
+      id,
+    );
+    return c.body(renderExportHtml(viewerHtml, bundle), 200, {
+      "content-type": "text/html; charset=utf-8",
+      "content-disposition": `attachment; filename="${filename}"`,
+    });
+  });
 
   // --- surfaces ---
 

@@ -3,11 +3,13 @@ import {
   ArrowDown,
   BookOpen,
   Copy,
+  Download,
   Link2,
   MessageSquare,
   MoreHorizontal,
   Pencil,
   Plug,
+  Printer,
   Search,
   Settings2,
   Sparkles,
@@ -19,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { AgentMark } from "./agentMarks.tsx";
 import {
   api,
+  appPath,
   isReadonly,
   layoutMode,
   relTime,
@@ -547,6 +550,16 @@ function SessionItem(props: { session: SessionRow }) {
       toast("Couldn't copy the link");
     }
   };
+  // Save the session as a PDF via the browser's own print-to-PDF (the @media
+  // print rules strip the chrome). Make sure this session is the one on screen
+  // before printing, then give the stream + sandboxed iframes a beat to lay out.
+  const saveAsPdf = async () => {
+    if (selectedNow() !== props.session.id) {
+      await select(props.session.id);
+      await new Promise((r) => setTimeout(r, 600));
+    }
+    window.print();
+  };
 
   // While renaming, the whole row becomes a borderless input pinned to the
   // session-title type so the edit lands exactly where the label was.
@@ -691,6 +704,18 @@ function SessionItem(props: { session: SessionRow }) {
               <Link2 />
               Copy link
             </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              {/* The export route sets a download disposition, so a plain link
+                  downloads the self-contained HTML — no JS fetch needed. */}
+              <a href={appPath(`/api/sessions/${props.session.id}/export`)} download>
+                <Download />
+                Download HTML
+              </a>
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={saveAsPdf}>
+              <Printer />
+              Save as PDF
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onSelect={remove}>
               <Trash2 />
@@ -715,7 +740,10 @@ function SessionView(props: { onConnect?: () => void }) {
   const surfaceCount = current?.surfaceCount ?? 0;
   return (
     <div id="sessionView" hidden={sessions.length === 0}>
-      <div className="sticky top-0 z-[5] border-b-[0.5px] border-border bg-background/85 px-7 pt-3 pb-2.5 backdrop-blur-md max-[700px]:px-4 max-[700px]:pt-3 max-[700px]:pb-2.5">
+      <div
+        data-print-static
+        className="sticky top-0 z-[5] border-b-[0.5px] border-border bg-background/85 px-7 pt-3 pb-2.5 backdrop-blur-md max-[700px]:px-4 max-[700px]:pt-3 max-[700px]:pb-2.5"
+      >
         <div className="mx-auto flex max-w-[860px] flex-col gap-0.5">
           <div className="flex min-w-0 items-center gap-2">
             {current ? (

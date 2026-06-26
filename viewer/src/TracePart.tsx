@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Download } from "lucide-react";
-import type { TracePart as TracePartData, TraceStep } from "./api.ts";
+import { assetUrl, type TracePart as TracePartData, type TraceStep } from "./api.ts";
 import { cx } from "./cx.ts";
 
 // Render an agent trace as a step timeline the user can scan beside the surface.
@@ -13,7 +13,7 @@ export function TracePart(props: { part: TracePartData }) {
 
   useEffect(() => {
     if ((props.part.steps?.length ?? 0) > 0 || !props.part.assetId) return;
-    void fetch(`/a/${props.part.assetId}`)
+    void fetch(assetUrl(props.part.assetId))
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
       .then((text) => setSteps(parseTrace(text)))
       .catch(() => setNote("Trace file unavailable — it may have been evicted."));
@@ -29,7 +29,7 @@ export function TracePart(props: { part: TracePartData }) {
         {props.part.assetId ? (
           <a
             className="ml-auto inline-flex items-center gap-1 text-xs text-brand no-underline hover:underline"
-            href={`/a/${props.part.assetId}`}
+            href={assetUrl(props.part.assetId)}
             target="_blank"
             rel="noopener"
           >

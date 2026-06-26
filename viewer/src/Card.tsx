@@ -1,12 +1,17 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { renderHtmlPage } from "../../server/surfacePage.ts";
+import { themeById } from "../../server/themes.ts";
 import {
   api,
   appPath,
+  exportBundle,
+  inlineAssetRefs,
   isReadonly,
   relTime,
   type ChartPart as ChartPartData,
   type CommentAnchor,
   type DiffPart as DiffPartData,
+  type HtmlPart as HtmlPartData,
   type ImagePart as ImagePartData,
   type JsonPart as JsonPartData,
   type CodePart as CodePartData,
@@ -377,6 +382,34 @@ export function Card(props: { surface: Surface }) {
   const [draftAnchor, setDraftAnchor] = useState<CommentAnchor | null>(null);
 
   const surfaceId = props.surface.id;
+
+  // In a static export there is no `/s/:id` server route, so html parts can't
+  // load from it. Render each html part to a self-contained sandbox doc here
+  // (the same `renderHtmlPage` the server uses), with `/a/:id` asset refs inlined
+  // — then the iframe gets a `srcdoc` instead of a `src`. Recomputes on theme/
+  // mode change, so light/dark still toggles, exactly like the data parts.
+  const exportHtmlDocs = useMemo(() => {
+    if (!exportBundle()) return null;
+    const docs = new Map<number, string>();
+    props.surface.parts.forEach((part, i) => {
+      if (part.kind === "html") {
+        const p = part as HtmlPartData;
+        docs.set(
+          i,
+          renderHtmlPage({
+            title: props.surface.title,
+            html: inlineAssetRefs(p.html),
+            origin: location.origin,
+            theme: themeById(activeTheme),
+            mode,
+            kits: p.kits,
+          }),
+        );
+      }
+    });
+    return docs;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.surface.parts, props.surface.title, activeTheme, mode]);
   // Approve / Dismiss are review-verdict decisions: they only do anything on a
   // finding card (one carrying a severity badge), where they resolve the finding
   // and strike its chip in the header verdict bar. On a plain diagram/explainer
@@ -525,8 +558,10 @@ export function Card(props: { surface: Surface }) {
           {props.surface.title}
         </span>
         {/* A new version rebuilds the select, resetting the selection to the
-            latest like the live iframe src does. */}
-        {props.surface.version > 1 ? (
+            latest like the live iframe src does. Version switching drives html
+            parts via `/s/:id`, which a static export has no server for — so it's
+            a live-only affordance; an export is a snapshot of the current version. */}
+        {props.surface.version > 1 && !exportBundle() ? (
           <Select
             key={props.surface.version}
             defaultValue={String(props.surface.version)}
@@ -572,7 +607,8 @@ export function Card(props: { surface: Surface }) {
       <div className="relative">
         {props.surface.parts.map((part, i) => {
           switch (part.kind) {
-            case "html":
+            case "html": {
+              const exportDoc = exportHtmlDocs?.get(i);
               return (
                 <iframe
                   key={i}
@@ -584,11 +620,16 @@ export function Card(props: { surface: Surface }) {
                       ? `${props.surface.title} (part ${i + 1})`
                       : props.surface.title
                   }
-                  src={appPath(
-                    `/s/${surfaceId}?part=${i}&ver=${props.surface.version}&cb=${props.surface.version}&theme=${activeTheme}&mode=${mode}`,
-                  )}
+                  {...(exportDoc !== undefined
+                    ? { srcDoc: exportDoc }
+                    : {
+                        src: appPath(
+                          `/s/${surfaceId}?part=${i}&ver=${props.surface.version}&cb=${props.surface.version}&theme=${activeTheme}&mode=${mode}`,
+                        ),
+                      })}
                 ></iframe>
               );
+            }
             case "markdown":
               return <MarkdownPart key={i} part={part as MarkdownPartData} />;
             case "mermaid":
