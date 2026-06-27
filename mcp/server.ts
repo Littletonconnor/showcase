@@ -1,12 +1,17 @@
 #!/usr/bin/env node
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
 import {
   FEEDBACK_REPLY_NOTE,
   MCP_INSTRUCTIONS,
+  MCP_PROMPT_DEFS,
   MCP_SERVER_INFO,
   MCP_TOOL_DESCRIPTIONS,
+  promptMessages,
   STDIO_MCP_INPUT_SCHEMAS,
+  SURFACE_RESOURCE_TEMPLATE,
+  SURFACE_RESOURCE_URI,
 } from "../server/mcpSpec.ts";
 
 // Point at a deployed instance later by setting SHOWCASE_URL.
@@ -286,6 +291,18 @@ server.registerTool(
 );
 
 server.registerTool(
+  "get_surface",
+  {
+    description: MCP_TOOL_DESCRIPTIONS.getSurfaceStdio,
+    inputSchema: STDIO_MCP_INPUT_SCHEMAS.getSurface,
+  },
+  async ({ id }) => {
+    const surface = JSON.parse(await api(`/api/surfaces/${id}`));
+    return text({ ...surface, url: `${API}/session/${surface.sessionId}/s/${surface.id}` });
+  },
+);
+
+server.registerTool(
   "upload_asset",
   {
     description: MCP_TOOL_DESCRIPTIONS.uploadAssetStdio,
@@ -311,5 +328,62 @@ server.registerTool(
   },
   async () => text(await api("/guide")),
 );
+
+// Resources: published surfaces, browsable/attachable as showcase://surface/<id>.
+// `list` is scoped to this conversation's session (the agent's own board); read
+// fetches any id's full current content (same JSON the get_surface tool returns).
+server.registerResource(
+  "surface",
+  new ResourceTemplate(SURFACE_RESOURCE_TEMPLATE, {
+    list: async () => {
+      if (!sessionId) return { resources: [] };
+      const surfaces = JSON.parse(await api(`/api/sessions/${sessionId}/surfaces`));
+      return {
+        resources: surfaces.map((s: any) => ({
+          uri: `${SURFACE_RESOURCE_URI}${s.id}`,
+          name: s.title,
+          mimeType: "application/json",
+        })),
+      };
+    },
+  }),
+  { title: "showcase surface", description: "A published surface's full current content, by id" },
+  async (uri, { id }) => {
+    const surface = JSON.parse(await api(`/api/surfaces/${id}`));
+    return {
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: "application/json",
+          text: JSON.stringify(
+            { ...surface, url: `${API}/session/${surface.sessionId}/s/${surface.id}` },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  },
+);
+
+// Prompts: the flagship recipes (review a PR, build an explainer) as ready-to-run
+// templates. The text is shared with the HTTP transport via promptMessages.
+for (const def of MCP_PROMPT_DEFS) {
+  server.registerPrompt(
+    def.name,
+    {
+      title: def.title,
+      description: def.description,
+      argsSchema: Object.fromEntries(
+        def.arguments.map((a) => [a.name, z.string().optional().describe(a.description)]),
+      ),
+    },
+    (args: Record<string, unknown>) => {
+      const built = promptMessages(def.name, args);
+      if (!built) throw new Error(`unknown prompt: ${def.name}`);
+      return built;
+    },
+  );
+}
 
 await server.connect(new StdioServerTransport());

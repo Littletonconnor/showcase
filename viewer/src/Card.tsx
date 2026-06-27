@@ -299,25 +299,32 @@ function SurfaceBadgeChip(props: { badge: SurfaceBadge }) {
   );
 }
 
-// The card's stable handle: a click-to-copy chip of the surface id, always
-// shown in the header. Copy it and mention it to your agent in the terminal —
-// that's how a surface is referenced now (the in-browser comment thread is
-// gone). A monospace pill so it reads as an identifier, not prose.
-function CardIdChip(props: { id: string }) {
+// The card's stable handle: a click-to-copy chip showing the surface id, always
+// in the header. It copies a paste-ready, SCOPED ref — `showcase surface <id>
+// "<title>"` — not the bare id, so when you paste it to your agent in the
+// terminal it carries enough to resolve the exact surface (the agent calls
+// get_surface with the id to read its current content). The pill still shows the
+// id so it reads as an identifier. This is how a surface is referenced now (the
+// in-browser comment thread is gone).
+function surfaceRef(id: string, title: string): string {
+  return title.trim() ? `showcase surface ${id} "${title.trim()}"` : `showcase surface ${id}`;
+}
+
+function CardIdChip(props: { id: string; title: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
       type="button"
-      aria-label={`Copy card ID ${props.id}`}
-      title="Copy card ID — mention it to your agent"
+      aria-label={`Copy a reference to surface ${props.id}`}
+      title="Copy a ref to this surface — paste it to your agent to revise it"
       onClick={async () => {
         try {
-          await navigator.clipboard.writeText(props.id);
+          await navigator.clipboard.writeText(surfaceRef(props.id, props.title));
           setCopied(true);
-          toast("Card ID copied");
+          toast("Surface ref copied");
           setTimeout(() => setCopied(false), 1200);
         } catch {
-          toast("Couldn't copy the card ID");
+          toast("Couldn't copy the surface ref");
         }
       }}
       className="inline-flex flex-none items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-hover hover:text-foreground"
@@ -499,7 +506,7 @@ export function Card(props: { surface: Surface }) {
             <span className="flex-none text-[11px] font-normal text-faint tabular-nums">v1</span>
           )}
           <span className="flex-1"></span>
-          <CardIdChip id={surfaceId} />
+          <CardIdChip id={surfaceId} title={props.surface.title} />
           <span className="flex-none text-[11px] text-faint tabular-nums">
             {relTime(props.surface.updatedAt)}
           </span>

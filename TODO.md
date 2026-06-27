@@ -347,18 +347,18 @@ deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
 
 **Editor-side conversation ergonomics**
 
-- **Tighten the editor↔surface reference loop** — the conversation deliberately
-  lives in Cursor / Claude Code, not in showcase (the in-app comment UI was
-  stripped on purpose); the copy-surface-id affordance is the bridge. The "ask
-  questions of an explainer" vision is _not_ a new viewer widget — it's making that
-  bridge frictionless so iterating on a surface from your editor is easy: (a)
-  **scoped copy-refs** — clicking a step/part copies a ready-to-paste phrase like
-  `showcase surface 7Kq2 "Auth flow" · step 3` instead of a bare id, so the agent
-  gets exact scope; (b) lean on **agent read-back via MCP** (the resources/prompts
-  item below) so the agent finds a surface by title and reads its current parts
-  with _no copy at all_ — "slow down the backfill step" just works. The explainer
-  stays a plain document; the conversation stays in the editor; only the
-  _reference_ gets easy. Largely folds into the MCP item. _Effort: low–medium._
+- **✅ Shipped — tighten the editor↔surface reference loop.** The conversation
+  deliberately lives in Cursor / Claude Code, not in showcase (the in-app comment
+  UI was stripped on purpose); the copy-ref affordance is the bridge, now scoped.
+  (a) **Scoped copy-refs** — `CardIdChip` (`viewer/src/Card.tsx`) copies a
+  paste-ready phrase `showcase surface <id> "<title>"` instead of a bare id, so a
+  paste into your terminal carries exact scope. (b) **Agent read-back** — a new
+  **`get_surface`** MCP tool (both transports) returns a surface's CURRENT full
+  content, so when a ref lands the agent reads what's on it and `update_surface`s it
+  in place; the old `MCP_INSTRUCTIONS` claim that `list_surfaces` returned content
+  is fixed (it's the title index; `get_surface` is the content). The explainer
+  stays a plain document; the conversation stays in the editor. _Next refinement
+  (optional): per-step copy buttons inside the `animate` kit for step-level scope._
 
 **Housekeeping**
 
@@ -389,14 +389,16 @@ deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
 - **Schema validation + `showcase validate`** — `userConfig.ts` validates only
   rough shape; a malformed palette color or blueprint section is skipped with a
   boot warning and no author-facing error. Ship JSON schemas + a `showcase
-  validate` command so theme/kit/blueprint authors (`docs/themable-explainers.md`)
+validate` command so theme/kit/blueprint authors (`docs/themable-explainers.md`)
   get real errors before publishing. _Effort: low._
-- **Expose board state to the agent via MCP resources/prompts** — the MCP server is
-  publish-heavy with thin read-back (`list_surfaces` only). Expose existing
-  surfaces/sessions as MCP **resources** (and blueprint recipes as MCP **prompts**)
-  so the agent sees what it already published and avoids redundant re-publishes —
-  protocol-native, and it keeps the agent's model of the board accurate.
-  _Effort: medium._
+- **✅ Shipped — expose board state to the agent via MCP resources/prompts.** Both
+  transports now advertise `resources` + `prompts` capabilities. Surfaces are
+  browsable/attachable as `showcase://surface/<id>` resources (`resources/list` +
+  `resources/read` on HTTP; a `ResourceTemplate` on stdio, scoped to the session),
+  and the flagship recipes ship as **prompts** (`review_pr`, `explainer`) with text
+  shared by both transports (`promptMessages` in `server/mcpSpec.ts`). Covered by
+  `test/api.test.ts` ("mcp read-back"). _Next: surface the assets/sessions as
+  resources too if a need shows up._
 
 _Deferred / punted (revisit later):_ a **durable searchable store** (SQLite +
 FTS5) for referencing old mockups/reviews — `JsonFileStore` is fine at personal

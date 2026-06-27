@@ -36,9 +36,11 @@ export const MCP_INSTRUCTIONS =
   "fixed layout (so every instance looks identical, like publish_decisions does for a review): " +
   "publish_postmortem, publish_dashboard, publish_design_doc, publish_status, publish_architecture, " +
   "publish_product_demo. Prefer the tailored tool when one fits; fall back to publish_surface for free-form. " +
-  "REFERENCING A SURFACE: every card shows a copy-to-clipboard card id in its header. The user copies " +
-  "that id and mentions it to you in YOUR TERMINAL — that's where the conversation happens. Refer to " +
-  "surfaces back to the user by id; list_surfaces fetches one if you need its current content. " +
+  "REFERENCING A SURFACE: every card shows a copy-to-clipboard ref in its header. The user copies it — " +
+  "it carries the surface id AND title — and pastes it to you in YOUR TERMINAL, where the conversation " +
+  "happens. To act on a referenced surface, call get_surface with its id to read its CURRENT full " +
+  "content (every part), then update_surface to revise it in place. list_surfaces is the title index " +
+  "for a session; get_surface is the full content of one. " +
   "FEEDBACK FROM THE BROWSER: on a review the user adjudicates in the tab — Accept burns a decision down " +
   "(local). To push back they copy a decision's ref (shown in its header) and paste it to you in YOUR " +
   "TERMINAL to scope a revision — there's no browser pushback verb. On other surfaces the user leaves " +
@@ -253,8 +255,14 @@ export const MCP_TOOL_DESCRIPTIONS = {
     "Delete a surface you published — removes the card and ALL its versions from the board permanently. Use it to clean up while iterating: a stale, duplicate, or superseded card. Prefer update_surface to revise a card in place; reach for this only when the card should disappear entirely. Irreversible. Returns the deleted id and its sessionId.",
   waitForFeedback:
     "Block until the user comments on a surface in this session in their browser (or the timeout passes), coalesced into one batch (delivered once, resuming from where the agent last left off). (Review Accepts are local and pushback comes via a decision's copy-ref pasted into your terminal, so review adjudications do NOT arrive here.) Use timeoutSeconds 0 for a non-blocking check. Act on what comes back in your terminal and republish the review with publish_decisions so the board reflects it.",
-  listSurfacesHttp: "List surfaces — pass a session id to scope, or omit for all sessions.",
-  listSurfacesStdio: "List surfaces in this conversation's session.",
+  listSurfacesHttp:
+    "List surfaces (the title index: id, title, part kinds, version) — pass a session id to scope, or omit for all sessions. Use get_surface to read one's full content.",
+  listSurfacesStdio:
+    "List surfaces in this conversation's session (id, title, part kinds, version). Use get_surface to read one's full content.",
+  getSurfaceHttp:
+    "Fetch a surface's CURRENT full content by id — every part (html, markdown, diff, chart, …) plus its title, version, badge, theme, and blueprint. THIS is how you read back a surface the user referenced: when they paste a surface ref (e.g. 'showcase surface 7Kq2 \"Auth flow\"') into your terminal, call get_surface with that id to see what's actually on it before you revise it with update_surface. list_surfaces is the index; get_surface is the content.",
+  getSurfaceStdio:
+    "Fetch a surface's CURRENT full content by id — every part plus title, version, badge, theme, blueprint. When the user pastes a surface ref into your terminal, call this with its id to read what's on it before revising with update_surface.",
   uploadAsset:
     "Upload a binary asset (image, trace file, any file) and get back its id and URL. base64-encode the bytes in `data` (MCP carries no binary). Then reference it: put {kind:'image', assetId} or {kind:'trace', assetId} in a surface's parts, or embed the returned url in an html part (<img src=\"...\">). Pass the same session id you publish with so the asset is grouped and cleaned up with it.",
   uploadAssetStdio:
@@ -468,6 +476,17 @@ export const HTTP_MCP_TOOLS = [
       properties: {
         session: { type: "string", description: "Optional session id to scope the list" },
       },
+    },
+  },
+  {
+    name: "get_surface",
+    description: MCP_TOOL_DESCRIPTIONS.getSurfaceHttp,
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: d.surfaceId },
+      },
+      required: ["id"],
     },
   },
   {
@@ -1181,4 +1200,85 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
       .optional()
       .describe("Inferred from contentType if omitted"),
   },
+  getSurface: {
+    id: z.string().describe(d.surfaceId),
+  },
 } as const;
+
+// MCP resources + prompts — the protocol-native read-back/recipe layer, shared
+// by both transports (HTTP in mcpHttp.ts, stdio in mcp/server.ts). Resources let
+// a client browse/attach published surfaces; prompts expose the flagship recipes
+// (review, explainer) as ready-to-run templates.
+export const SURFACE_RESOURCE_URI = "showcase://surface/";
+export const SURFACE_RESOURCE_TEMPLATE = `${SURFACE_RESOURCE_URI}{id}`;
+
+// Parse a surface id out of a showcase://surface/<id> uri (null if it isn't one).
+export function parseSurfaceUri(uri: string): string | null {
+  if (!uri.startsWith(SURFACE_RESOURCE_URI)) return null;
+  const id = uri.slice(SURFACE_RESOURCE_URI.length).trim();
+  return id.length > 0 ? id : null;
+}
+
+// The MCP Prompt descriptors (the prompts/list payload shape).
+export const MCP_PROMPT_DEFS = [
+  {
+    name: "review_pr",
+    title: "Review a PR on showcase",
+    description:
+      "Review a pull request as a decision queue (publish_decisions): a plain-English brief, a risk-ranked list of decisions, and a complete changed-file manifest.",
+    arguments: [
+      { name: "branch", description: "Branch or PR to review (optional)", required: false },
+    ],
+  },
+  {
+    name: "explainer",
+    title: "Build an animated explainer",
+    description:
+      "Turn a concept or a screenshot into an animated, scrubbable explainer surface the user can step through.",
+    arguments: [{ name: "topic", description: "What to explain (optional)", required: false }],
+  },
+] as const;
+
+// Build a prompts/get result for a prompt name + args. Returns null for an
+// unknown name so the caller can 404. The text guides the agent through the
+// flagship workflow; the live contract lives in get_design_guide / the playbook.
+export function promptMessages(
+  name: string,
+  args: Record<string, unknown>,
+): {
+  description: string;
+  messages: { role: "user"; content: { type: "text"; text: string } }[];
+} | null {
+  const text = (body: string) => ({
+    description: MCP_PROMPT_DEFS.find((p) => p.name === name)?.description ?? name,
+    messages: [{ role: "user" as const, content: { type: "text" as const, text: body } }],
+  });
+  const arg = (k: string) => (typeof args[k] === "string" ? (args[k] as string) : "");
+  switch (name) {
+    case "review_pr": {
+      const branch = arg("branch");
+      return text(
+        `Review ${branch ? `the PR on \`${branch}\`` : "the current pull request"} on showcase. ` +
+          "Do the analysis FIRST with your `code-review` skill, scoped to risk not diff size. Then call " +
+          "publish_decisions ONCE with: a plain-English `brief` (≤4 sentences, no code identifiers), a " +
+          "`verdict` (block|approve|comment), a risk-ranked `decisions[]` (one per thing that needs a human " +
+          "call, hardest first, each with a stable `id`, `confidence`, and — where a concrete fix exists — a " +
+          "`proposal`), and the REQUIRED `manifest` (EVERY changed file tagged has-decision / " +
+          "reviewed-no-comment / mechanical-skipped). Do not write the review as one big markdown surface.",
+      );
+    }
+    case "explainer": {
+      const topic = arg("topic");
+      return text(
+        `Build an animated explainer ${topic ? `of ${topic}` : "of the concept the user shares (a screenshot or snippet)"} ` +
+          "on showcase. Call get_design_guide first. Publish a surface whose html part opts into the `animate` " +
+          "kit: cumulative `.step` reveals the user can scrub, each tagged data-label, building the idea up one " +
+          "beat at a time (question → mechanism → payoff). Keep the conversation in the terminal — when the user " +
+          "asks to change a step, call get_surface to read the current content, then update_surface to revise it " +
+          "in place.",
+      );
+    }
+    default:
+      return null;
+  }
+}

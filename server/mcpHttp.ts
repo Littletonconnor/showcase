@@ -18,7 +18,12 @@ import {
   FEEDBACK_REPLY_NOTE,
   HTTP_MCP_TOOLS,
   MCP_INSTRUCTIONS,
+  MCP_PROMPT_DEFS,
   MCP_SERVER_INFO,
+  parseSurfaceUri,
+  promptMessages,
+  SURFACE_RESOURCE_TEMPLATE,
+  SURFACE_RESOURCE_URI,
 } from "./mcpSpec.ts";
 import { coerceSurfaceBadge, coerceSurfaceParts } from "./surfaceParts.ts";
 
@@ -117,6 +122,29 @@ export function registerMcp(app: Hono, deps: McpDeps) {
       null,
       2,
     );
+
+  // The full read-back view of a surface, shared by the get_surface tool and the
+  // resources/read handler — every current part plus its metadata and view URL.
+  const surfaceReadView = (s: Surface, origin: string) => ({
+    id: s.id,
+    sessionId: s.sessionId,
+    title: s.title,
+    version: s.version,
+    updatedAt: s.updatedAt,
+    ...(s.badge ? { badge: s.badge } : {}),
+    ...(s.theme ? { theme: s.theme } : {}),
+    ...(s.blueprint ? { blueprint: s.blueprint } : {}),
+    parts: s.parts,
+    url: `${origin}/session/${s.sessionId}/s/${s.id}`,
+  });
+
+  // showcase://surface/<id> → an MCP resource descriptor for resources/list.
+  const surfaceResource = (s: Surface) => ({
+    uri: `${SURFACE_RESOURCE_URI}${s.id}`,
+    name: s.title,
+    description: `${s.parts.map((p) => p.kind).join(", ")} · v${s.version} · session ${s.sessionId}`,
+    mimeType: "application/json",
+  });
 
   async function callTool(name: string, args: any, origin: string): Promise<string> {
     switch (name) {
@@ -260,6 +288,11 @@ export function registerMcp(app: Hono, deps: McpDeps) {
           2,
         );
       }
+      case "get_surface": {
+        const surface = await deps.store.getSurface(String(args.id ?? ""));
+        if (!surface) throw new Error(`no surface ${args.id ?? ""}`);
+        return JSON.stringify(surfaceReadView(surface, origin), null, 2);
+      }
       case "upload_asset": {
         if (typeof args.data !== "string" || args.data.length === 0) {
           throw new Error("upload_asset needs base64 `data`");
@@ -353,7 +386,11 @@ export function registerMcp(app: Hono, deps: McpDeps) {
           typeof msg.params?.protocolVersion === "string"
             ? msg.params.protocolVersion
             : "2025-03-26",
-        capabilities: { tools: { listChanged: false } },
+        capabilities: {
+          tools: { listChanged: false },
+          resources: { listChanged: false },
+          prompts: { listChanged: false },
+        },
         serverInfo: MCP_SERVER_INFO,
         instructions: MCP_INSTRUCTIONS,
       });
@@ -361,6 +398,48 @@ export function registerMcp(app: Hono, deps: McpDeps) {
     if (msg.id === undefined) return c.body(null, 202); // notifications
     if (msg.method === "ping") return rpc(msg.id, {});
     if (msg.method === "tools/list") return rpc(msg.id, { tools: HTTP_MCP_TOOLS });
+    if (msg.method === "resources/list") {
+      const surfaces = await deps.store.listSurfaces(
+        typeof msg.params?.session === "string" ? msg.params.session : undefined,
+      );
+      return rpc(msg.id, { resources: surfaces.map(surfaceResource) });
+    }
+    if (msg.method === "resources/templates/list") {
+      return rpc(msg.id, {
+        resourceTemplates: [
+          {
+            uriTemplate: SURFACE_RESOURCE_TEMPLATE,
+            name: "showcase surface",
+            description: "A published surface's full current content, by id",
+            mimeType: "application/json",
+          },
+        ],
+      });
+    }
+    if (msg.method === "resources/read") {
+      const uri = String(msg.params?.uri ?? "");
+      const id = parseSurfaceUri(uri);
+      if (!id) return rpcError(msg.id, -32602, `unsupported resource uri: ${uri}`);
+      const surface = await deps.store.getSurface(id);
+      if (!surface) return rpcError(msg.id, -32602, `no surface ${id}`);
+      const url = new URL(c.req.url);
+      const origin = `${url.origin}${deps.basePath?.(c.req.raw) ?? ""}`;
+      return rpc(msg.id, {
+        contents: [
+          {
+            uri,
+            mimeType: "application/json",
+            text: JSON.stringify(surfaceReadView(surface, origin), null, 2),
+          },
+        ],
+      });
+    }
+    if (msg.method === "prompts/list") return rpc(msg.id, { prompts: MCP_PROMPT_DEFS });
+    if (msg.method === "prompts/get") {
+      const built = promptMessages(String(msg.params?.name ?? ""), msg.params?.arguments ?? {});
+      if (!built) return rpcError(msg.id, -32602, `unknown prompt: ${msg.params?.name}`);
+      return rpc(msg.id, built);
+    }
     if (msg.method === "tools/call") {
       const url = new URL(c.req.url);
       const baseUrl = `${url.origin}${deps.basePath?.(c.req.raw) ?? ""}`;
