@@ -280,8 +280,9 @@ logic."
 
 A 5,000-line agent diff is exactly where a real change hides in the
 "mechanical-skipped" bucket — and the decision form factor _amplifies_ that bug
-instead of catching it (the form-factor doc's own open question #2). Close it with
-a **deterministic** re-check, not another LLM pass: flag any
+instead of catching it (the form-factor doc's open question #2, now **resolved**
+by this audit — built as `evidence-pack cold-set`, T7). Close it with a
+**deterministic** re-check, not another LLM pass: flag any
 `mechanical-skipped`/`reviewed-no-comment` file whose churn exceeds a threshold,
 whose path is sensitive, or that change-couples to a `has-decision` file — and
 force a decision or an explicit justification. This makes the manifest's

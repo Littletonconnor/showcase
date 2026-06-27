@@ -291,14 +291,30 @@ a rewrite.
 
 ---
 
-## Open questions (revisit before / during build)
+## Open questions — resolved
 
-1. **Decision granularity** — what rises to a "decision" vs. folds into the cold/
-   skip set? The whole thing hinges on the agent's triage being honest.
-2. **Trusting the skip set** — if the agent buries a real change in "cold," the
-   form factor _helps_ the bug. Deferred until real use shows whether it happens;
-   may need a cheap independent check on what's marked cold.
-3. **Brief enforcement** — how strict is "no identifiers"? Reject outright, or warn?
+All three are now answered by work since the original sketch. The mechanisms live
+on the analysis side (the `code-review` skill and its `aic` tooling) per the
+one-way seam — showcase still only renders the result — with one viewer follow-up
+noted.
+
+1. **Decision granularity** — _resolved: the strictness floor._ What rises to a
+   decision vs. folds into the cold/skip set is the **severity floor**
+   (chill / standard / strict): a finding at or above the floor becomes a
+   decision, everything below folds into the manifest with a disposition. `chill`
+   surfaces only blockers; `strict` promotes P3s. Granularity is now a tunable
+   knob rather than a guess — though it still rests on honest triage (see #2).
+2. **Trusting the skip set** — _resolved: the cold-set audit._ The "cheap
+   independent check on what's marked cold" this question asked for is built: a
+   deterministic re-check (`evidence-pack cold-set`) re-flags any skipped file
+   with churn over a threshold, a sensitive path, or change-coupling to a touched
+   file, forcing a decision or an explicit justification. The form factor no
+   longer _helps_ a buried change. _Viewer follow-up (not yet built):_ a
+   disposition-aware manifest summary that surfaces the audit result in the UI
+   ("K skipped — N audited / justified") would close the loop visually.
+3. **Brief enforcement** — _resolved: warn, not reject._ "No identifiers" is a
+   non-blocking `briefWarning` chip, never a hard reject — a mid-loop rejection
+   would break the publish → render → revise loop. (Shipped.)
 
 _(Resolved during design: the unit is a **decision**; the masthead is replaced by
 the plain-English **Brief**; the lede is automatically decision #1; **Prove it** is
