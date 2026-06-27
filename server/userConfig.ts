@@ -16,7 +16,7 @@
 //   <dir>/kits/*.json         → a Kit        (custom CSS/JS vocabulary)
 //   <dir>/blueprints/*.json   → a Blueprint  (theme + kits + structure + brand)
 
-import { readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Blueprint } from "./blueprints.ts";
 import type { Kit } from "./kits.ts";
@@ -26,6 +26,14 @@ export interface UserExtensions {
   themes: Theme[];
   kits: Kit[];
   blueprints: Blueprint[];
+}
+
+// Board-level defaults, read from <dir>/config.json. A repo (or user) sets these
+// so every NEW session starts in one format without the agent naming it — "this
+// whole repo's sessions are design-doc sessions" (docs/themable-explainers.md).
+export interface BoardDefaults {
+  defaultBlueprint?: string;
+  defaultTheme?: string;
 }
 
 const isStr = (v: unknown): v is string => typeof v === "string" && v.length > 0;
@@ -125,4 +133,51 @@ export async function loadUserExtensions(dir: string): Promise<UserExtensions> {
   ].filter(Boolean);
   if (note.length > 0) console.log(`showcase: loaded ${note.join(", ")} from ${dir}`);
   return { themes, kits, blueprints };
+}
+
+// Read <dir>/config.json for the board's default preset. Missing/invalid → {}.
+export async function loadBoardDefaults(dir: string): Promise<BoardDefaults> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await readFile(join(dir, "config.json"), "utf8"));
+  } catch {
+    return {};
+  }
+  if (!isObj(raw)) return {};
+  return {
+    defaultBlueprint: isStr(raw.defaultBlueprint) ? raw.defaultBlueprint : undefined,
+    defaultTheme: isStr(raw.defaultTheme) ? raw.defaultTheme : undefined,
+  };
+}
+
+// Merge config layers, EARLIER layers winning on id collision (pass them most-
+// specific first, e.g. [repo, user]). Deduping by id means the list handed to
+// the registries never contains a collision, so each register*'s own ordering
+// can't change the winner.
+export function mergeExtensions(layers: UserExtensions[]): UserExtensions {
+  const dedupe = <T extends { id: string }>(items: T[]): T[] => {
+    const seen = new Set<string>();
+    const out: T[] = [];
+    for (const it of items) {
+      if (it && typeof it.id === "string" && !seen.has(it.id)) {
+        seen.add(it.id);
+        out.push(it);
+      }
+    }
+    return out;
+  };
+  return {
+    themes: dedupe(layers.flatMap((l) => l.themes)),
+    kits: dedupe(layers.flatMap((l) => l.kits)),
+    blueprints: dedupe(layers.flatMap((l) => l.blueprints)),
+  };
+}
+
+// Persist a runtime-authored brand theme to <dir>/themes/<id>.json so it survives
+// a restart (wired to POST /api/themes ... persist:true via app's persistTheme).
+export async function saveUserTheme(dir: string, theme: Theme): Promise<void> {
+  const themesDir = join(dir, "themes");
+  await mkdir(themesDir, { recursive: true });
+  const safeId = theme.id.replace(/[^a-zA-Z0-9_-]/g, "_") || "theme";
+  await writeFile(join(themesDir, `${safeId}.json`), JSON.stringify(theme, null, 2), "utf8");
 }

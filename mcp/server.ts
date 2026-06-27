@@ -167,6 +167,24 @@ server.registerTool(
 );
 
 server.registerTool(
+  "configure_session",
+  {
+    description: MCP_TOOL_DESCRIPTIONS.configureSession,
+    inputSchema: STDIO_MCP_INPUT_SCHEMAS.configureSession,
+  },
+  async ({ blueprint, theme }) => {
+    const session = await ensureSession();
+    const updated = JSON.parse(
+      await api(`/api/sessions/${session}`, {
+        method: "PATCH",
+        body: JSON.stringify({ blueprint, theme }),
+      }),
+    );
+    return text(updated);
+  },
+);
+
+server.registerTool(
   "wait_for_feedback",
   {
     description: MCP_TOOL_DESCRIPTIONS.waitForFeedback,

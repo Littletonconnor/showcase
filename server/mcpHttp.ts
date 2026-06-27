@@ -7,11 +7,13 @@ import {
   type Comment,
   htmlPart,
   isAssetKind,
+  type Session,
   type Store,
   type Surface,
   type SurfaceBadge,
   type SurfacePart,
 } from "./types.ts";
+import { blueprintById } from "./blueprints.ts";
 import {
   FEEDBACK_REPLY_NOTE,
   HTTP_MCP_TOOLS,
@@ -64,6 +66,10 @@ export interface McpDeps {
     },
   ): FlowResult<Surface>;
   deleteSurface(id: string): Promise<{ surface: Surface } | { error: string; status: number }>;
+  configureSession(
+    sessionId: string,
+    preset: { blueprint?: string | null; theme?: string | null },
+  ): Promise<{ session: Session } | { error: string; status: number }>;
   createComment(input: {
     text: string;
     surface?: string;
@@ -257,6 +263,29 @@ export function registerMcp(app: Hono, deps: McpDeps) {
             contentType: result.asset.contentType,
             byteLength: result.asset.byteLength,
             kind: result.asset.kind,
+          },
+          null,
+          2,
+        );
+      }
+      case "configure_session": {
+        const presetField = (v: unknown): string | null | undefined =>
+          v === null ? null : typeof v === "string" ? v : undefined;
+        const result = await deps.configureSession(String(args.session ?? ""), {
+          blueprint: "blueprint" in args ? presetField(args.blueprint) : undefined,
+          theme: "theme" in args ? presetField(args.theme) : undefined,
+        });
+        if ("error" in result) throw new Error(result.error);
+        const bp = blueprintById(result.session.blueprint);
+        return JSON.stringify(
+          {
+            sessionId: result.session.id,
+            blueprint: result.session.blueprint ?? null,
+            theme: result.session.theme ?? null,
+            structure: bp?.structure ?? [],
+            note: bp
+              ? `Every surface published to this session now defaults to the "${bp.label}" preset (${bp.summary}). Author each surface to follow its structure in order, tagging each section data-section="<id>", so the session stays consistent no matter what is asked.`
+              : "Session preset updated.",
           },
           null,
           2,

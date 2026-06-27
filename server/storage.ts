@@ -18,6 +18,7 @@ import {
   type Review,
   selectEvictions,
   type Session,
+  type SessionPresetInput,
   type Store,
   type Surface,
   type UpdateSurfaceInput,
@@ -201,6 +202,8 @@ export class JsonFileStore implements Store {
       cwd: input.cwd ?? null,
       createdAt: now,
       lastActiveAt: now,
+      ...(input.blueprint ? { blueprint: input.blueprint } : {}),
+      ...(input.theme ? { theme: input.theme } : {}),
       agentSeq: 0,
     };
     this.sessions.set(session.id, session);
@@ -213,6 +216,24 @@ export class JsonFileStore implements Store {
     const session = this.sessions.get(id);
     if (!session) return null;
     session.title = title.trim() || null;
+    await this.persist();
+    return clone(session);
+  }
+
+  // Pin/change/clear the session preset. `null` clears a field; `undefined`
+  // leaves it as-is, so a partial patch (theme only) keeps the blueprint.
+  async setSessionPreset(id: string, preset: SessionPresetInput) {
+    await this.load();
+    const session = this.sessions.get(id);
+    if (!session) return null;
+    if (preset.blueprint !== undefined) {
+      if (preset.blueprint === null) delete session.blueprint;
+      else session.blueprint = preset.blueprint;
+    }
+    if (preset.theme !== undefined) {
+      if (preset.theme === null) delete session.theme;
+      else session.theme = preset.theme;
+    }
     await this.persist();
     return clone(session);
   }

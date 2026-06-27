@@ -26,6 +26,13 @@ export const MCP_INSTRUCTIONS =
   "— that wall of text is the failure mode publish_decisions exists to prevent. " +
   "Call get_design_guide once before your first publish. On your first " +
   'publish, also pass sessionTitle to name the session after the task (e.g. "Auth refactor"). ' +
+  "SESSION PRESETS: a session can be pinned to a PRESET (an explainer blueprint + theme) so every " +
+  "surface in it comes out in the same structure + look no matter what is asked — a design-doc session, " +
+  "a product-demo session, a data-viz session. If the user asks for a kind of session ('make this a " +
+  "design-doc session') call configure_session up front; otherwise pass `blueprint` on your first " +
+  "publish and it pins for the rest of the session. Then author every surface to the preset's structure. " +
+  "A repo or user can also set a default preset that new sessions start in. Discover presets via " +
+  "GET /api/blueprints. " +
   "REFERENCING A SURFACE: every card shows a copy-to-clipboard card id in its header. The user copies " +
   "that id and mentions it to you in YOUR TERMINAL — that's where the conversation happens. Refer to " +
   "surfaces back to the user by id; list_surfaces fetches one if you need its current content. " +
@@ -64,9 +71,9 @@ const d = {
   theme: `Optional theme this surface renders under (${THEME_IDS.join(
     " | ",
   )}). Sets the palette for the card's parts so themed mockups stay consistent — pick one and reuse it across a set of mockups instead of restyling each. Omit for the board default. On update_surface, pass null to reset.`,
-  blueprint: `Optional explainer blueprint — a named preset that applies a theme + kit composition + a section structure in one shot (built-ins: ${BLUEPRINT_IDS.join(
+  blueprint: `Optional explainer blueprint — a named PRESET that applies a theme + kit composition + a section structure in one shot (built-ins: ${BLUEPRINT_IDS.join(
     " | ",
-  )}; a board may define more — see get_design_guide). Use it for repeatable explainers: a branded "product-demo" or a neutral "concept" teacher. It fills gaps only — an explicit theme or part kits still win. Author your .anim steps to follow the blueprint's structure, tagging each step data-section="<id>". On update_surface, pass null to clear.`,
+  )}; a board/repo may define more — see get_design_guide or GET /api/blueprints). Use it for repeatable, consistent output: a "design-doc", a branded "product-demo", a "data-viz" dashboard. It fills gaps only — an explicit theme or part kits still win. IMPORTANT: a blueprint passed here PINS to the session — every later surface inherits it automatically (until you pass a different one), so a whole session stays in one format no matter what is asked. Author your parts to follow the blueprint's structure, tagging each section/step data-section="<id>". To set the preset up front without publishing, or to switch it, use configure_session. On update_surface, pass null to clear.`,
   timeout: "How long to wait, 0-300",
   afterSeq: "explicit cursor override (default: where the agent left off)",
   assetData: "base64-encoded file bytes",
@@ -251,6 +258,8 @@ export const MCP_TOOL_DESCRIPTIONS = {
     "Upload a binary asset (image, trace file, any file) and get back its id and URL. base64-encode the bytes in `data`. Then reference it: put {kind:'image', assetId} or {kind:'trace', assetId} in a surface's parts, or embed the returned url in an html part (<img src=\"...\">). Attached to this conversation's session.",
   getDesignGuide:
     "Fetch the design contract: surface parts, html fragment rules, theme CSS variables, CDN allowlist, and the interactivity bridge. Call once per session before publishing.",
+  configureSession:
+    "Pin a PRESET (an explainer blueprint + optional theme) to a whole session, so EVERY surface you publish to it comes out in the same structure + look no matter what is asked — a 'design-doc session', a 'product-demo session'. Pass session + blueprint (and/or theme); pass null to clear a field. Returns the pinned preset and its section structure — author each later surface against that structure (tag steps data-section=\"<id>\") for a consistent series. You can also just pass `blueprint` on your first publish_surface to pin it; use this tool to set it up FRONT, before publishing, or to switch a running session's preset. List available presets via GET /api/blueprints or `showcase blueprints`.",
 } as const;
 
 const MCP_BADGE_JSON_SCHEMA = {
@@ -462,6 +471,19 @@ export const HTTP_MCP_TOOLS = [
     },
   },
   {
+    name: "configure_session",
+    description: MCP_TOOL_DESCRIPTIONS.configureSession,
+    inputSchema: {
+      type: "object",
+      properties: {
+        session: { type: "string", description: "Session id to configure" },
+        blueprint: { type: "string", description: d.blueprint },
+        theme: { type: "string", description: d.theme },
+      },
+      required: ["session"],
+    },
+  },
+  {
     name: "get_design_guide",
     description: MCP_TOOL_DESCRIPTIONS.getDesignGuide,
     inputSchema: { type: "object", properties: {} },
@@ -601,6 +623,10 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
   },
   deleteSurface: {
     id: z.string().describe(d.surfaceId),
+  },
+  configureSession: {
+    blueprint: z.string().nullable().optional().describe(d.blueprint),
+    theme: z.string().nullable().optional().describe(d.theme),
   },
   waitForFeedback: {
     timeoutSeconds: z

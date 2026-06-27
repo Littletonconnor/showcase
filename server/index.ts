@@ -5,7 +5,14 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp } from "./app.ts";
 import { JsonFileStore } from "./storage.ts";
-import { loadUserExtensions } from "./userConfig.ts";
+import {
+  type BoardDefaults,
+  loadBoardDefaults,
+  loadUserExtensions,
+  mergeExtensions,
+  saveUserTheme,
+  type UserExtensions,
+} from "./userConfig.ts";
 
 // Source layout puts this file at server/index.ts; the published package runs
 // the compiled copy at dist/server/index.js. viewer/ and guide/ live at the
@@ -26,11 +33,27 @@ const [viewerHtml, guideMarkdown, setupText, playbookText] = await Promise.all([
 const pr = process.env.SHOWCASE_PUBLIC_READ;
 const publicRead = pr === "session" || pr === "full" ? pr : undefined;
 
-// User-authored brand palettes, kits, and explainer blueprints layered over the
-// built-ins (docs/themable-explainers.md). Defaults to ~/.showcase; override
-// with SHOWCASE_CONFIG. Absent dir → no extensions, identical to before.
-const configDir = process.env.SHOWCASE_CONFIG ?? join(homedir(), ".showcase");
-const { themes, kits, blueprints } = await loadUserExtensions(configDir);
+// Presets (brand palettes, custom kits, explainer blueprints) come in two config
+// layers over the built-ins (docs/themable-explainers.md):
+//   • USER  — ~/.showcase (override with SHOWCASE_CONFIG): personal presets.
+//   • REPO  — <cwd>/.showcase (override with SHOWCASE_REPO_CONFIG): committed
+//             with the project, so a team's sessions share one format.
+// Repo wins over user on id collision; both win over built-ins. A `config.json`
+// in either sets the board's default preset for new sessions (repo over user).
+// Both dirs are optional — absent → behaves exactly as before.
+const userDir = process.env.SHOWCASE_CONFIG ?? join(homedir(), ".showcase");
+const repoDir = process.env.SHOWCASE_REPO_CONFIG ?? join(process.cwd(), ".showcase");
+const sameDir = repoDir === userDir;
+const emptyExt: UserExtensions = { themes: [], kits: [], blueprints: [] };
+const [userExt, repoExt, userCfg, repoCfg] = await Promise.all([
+  loadUserExtensions(userDir),
+  sameDir ? Promise.resolve(emptyExt) : loadUserExtensions(repoDir),
+  loadBoardDefaults(userDir),
+  sameDir ? Promise.resolve({} as BoardDefaults) : loadBoardDefaults(repoDir),
+]);
+const { themes, kits, blueprints } = mergeExtensions([repoExt, userExt]); // repo wins
+const defaultBlueprint = repoCfg.defaultBlueprint ?? userCfg.defaultBlueprint;
+const defaultTheme = repoCfg.defaultTheme ?? userCfg.defaultTheme;
 
 const app = createApp({
   store: new JsonFileStore(process.env.SHOWCASE_DATA ?? join(root, "data", "showcase.json")),
@@ -41,6 +64,10 @@ const app = createApp({
   extraThemes: themes,
   extraKits: kits,
   extraBlueprints: blueprints,
+  defaultBlueprint,
+  defaultTheme,
+  // Brand themes authored at runtime (POST /api/themes) persist to the USER dir.
+  persistTheme: (theme) => saveUserTheme(userDir, theme),
   authToken: process.env.SHOWCASE_TOKEN,
   publicRead,
   // `npm run dev` sets this; it adds the live-reload endpoint + snippet.
