@@ -95,6 +95,100 @@ sketch UI ideas (sandboxed HTML), or compose a walk-through deck with the
 
 ---
 
+## Session presets — one format, every answer
+
+The three workflows above all rely on the same idea, made explicit: a **session
+preset**. Pin a preset to a session once and **every surface it publishes comes
+out in the same structure and the same look — no matter what you ask.** A
+"design-doc session" keeps producing design docs; a "data-viz session" keeps
+producing dashboards. The repeatability _is_ the feature: you configure the
+format, then think about the content.
+
+A preset (internally a **blueprint**, see `server/blueprints.ts`) bundles three
+layers under one id:
+
+- a **theme** — the palette (one of the built-ins, or your brand);
+- a **kit** composition — the component vocabulary (`mockup`, `issues`, `animate`, …);
+- a **structure** — the named, ordered sections the agent authors against.
+
+### Built-in presets
+
+| preset           | for                           | structure                                                                                                                                                  |
+| ---------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `design-doc`     | technical design / RFC        | metadata → summary → **goal (as a problem)** → invariants → background → **solution space (axes)** → proposed → scope → rollout → testing → open questions |
+| `architecture`   | system design                 | overview → components → data flow → decisions → scale                                                                                                      |
+| `data-viz`       | metrics dashboard             | headline → breakdown → trend → detail → takeaway                                                                                                           |
+| `postmortem`     | blameless incident review     | summary → customer impact → timeline → **root cause (5 Whys)** → fixes (immediate/necessary/additional) → what went well/painful → owned follow-ups        |
+| `status`         | recurring status report       | headline → shipped → in flight → blockers → next                                                                                                           |
+| `product-demo`   | branded feature walkthrough   | hook → problem → feature → proof → cta                                                                                                                     |
+| `product-mockup` | visualize a product idea fast | premise → screens → core flow → key states → validate                                                                                                      |
+| `concept`        | teach-an-idea explainer       | question → mechanism → payoff                                                                                                                              |
+
+Each renders consistently in light and dark (gallery: `docs/images/presets/`):
+
+![The design-doc preset: an RFC with metadata, an executive summary, a goal stated as a problem, invariants/preferences/assumptions, and a solution space framed as axes with discarded options](docs/images/presets/design-doc-light.png)
+
+![The data-viz preset in dark mode: a headline p95 stat, a per-endpoint bar chart, a trend sparkline, and a takeaway callout](docs/images/presets/data-viz-dark.png)
+
+![The postmortem preset: a summary, an incident timeline, impact metrics, a 5-Whys causal chain down to the systemic cause, and prioritized action items](docs/images/presets/postmortem-light.png)
+
+![The product-mockup preset: a product premise, two mocked app screens, the core flow, key UI states, and the riskiest assumption to validate](docs/images/presets/product-mockup-light.png)
+
+### Using a preset
+
+It's MCP-driven — no UI to click. Either tell the agent up front (_"make this a
+design-doc session"_) and it calls **`configure_session`**, or it passes
+`blueprint` on its first publish; either way the preset **pins to the session**
+and every later surface inherits it. Discover what's available with `showcase
+blueprints` (or `GET /api/blueprints`).
+
+**Tailored typed tools.** Six presets go further than a structure hint: they have
+a dedicated MCP tool whose **server-side renderer owns the layout**, so the agent
+fills typed slots and the output is byte-for-byte consistent every time — the same
+guarantee `publish_decisions` gives a code review. `publish_postmortem` takes
+`timeline[]` / `fiveWhys[]` / `fixes{immediate,necessary,additional}` /
+`followups[]`; `publish_dashboard` takes `headline` / `stats[]` / `bars` /
+`trend`; `publish_design_doc` takes `goal{problem}` / `solutionSpace{axes[]}` /
+… ; plus `publish_status`, `publish_architecture`, `publish_product_demo`. Every
+screenshot above is rendered by these tools (`server/presetRenders.ts`), not
+hand-authored. The generic `publish_surface` + `blueprint` path remains for
+free-form surfaces.
+
+### Defaults and your own presets — repo + user
+
+Presets layer over the built-ins from two config dirs (more-specific wins by id):
+
+```
+<repo>/.showcase/   committed with the project — the team's shared format
+~/.showcase/        personal — your own presets        (override: $SHOWCASE_CONFIG)
+  blueprints/ *.json   a preset: { id, label, summary, theme, kits, structure[], extends? }
+  themes/     *.json   a brand palette (light + dark)
+  kits/       *.json   custom CSS/JS component vocabulary
+  config.json          { "defaultBlueprint": "design-doc", "defaultTheme": "ocean" }
+```
+
+`config.json` sets the **default preset new sessions start in** — so a repo can
+make _every_ session a design-doc session (the repo default wins over the user
+default; the agent can still override per session). It's all JSON, no rebuild.
+
+### Match your brand (theme building)
+
+A theme is the palette layer. Hand-authoring one is 24 colors × light + dark; the
+**derivation engine** (`server/themeDerive.ts`) instead expands a few **seed**
+colors into a full, contrast-checked light+dark palette. The intended loop: an
+agent reads a screenshot you drop, names the brand color(s), and authors the
+theme for you —
+
+```sh
+POST /api/themes  { "seed": { "id": "acme", "label": "Acme", "accent": "#5c46e6" }, "persist": true }
+```
+
+`persist:true` writes it to `~/.showcase/themes/` so it survives a restart. Point
+a preset's `theme` at it to brand the whole format. See
+[docs/theme-building.md](docs/theme-building.md) and the `session-presets` skill.
+
+---
+
 ## Quickstart
 
 **Requirements:** Node ≥ 22.18 (the server and CLI run TypeScript directly via

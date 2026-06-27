@@ -265,6 +265,196 @@ export const THEMES: Theme[] = [
       danger: { bg: "rgba(180, 90, 75, 0.18)", text: "#d99284", border: "#6e433b" },
     },
   },
+  {
+    // Ocean — a calm professional blue, the default "dev-tool" palette (cloud
+    // dashboards, CI, IDE chrome). Cool slate neutrals under a clear azure
+    // accent; the most broadly useful theme after the warm default.
+    id: "ocean",
+    label: "Ocean",
+    shiki: { light: "github-light", dark: "github-dark" },
+    light: {
+      bg: "#f3f6fb",
+      panel: "#eaf0f8",
+      surface: "#ffffff",
+      text: "#0f1f33",
+      muted: "#5a6b80",
+      faint: "#8a99ad",
+      border: "#e2e8f1",
+      border2: "#ccd7e4",
+      hover: "#edf2f8",
+      info: { bg: "#e6f0fc", text: "#1a66c7", border: "#a9cdf3" },
+      success: { bg: "#e6f4ec", text: "#1f7a48", border: "#a8d6bb" },
+      warning: { bg: "#fbf0d8", text: "#8a6310", border: "#e6c879" },
+      danger: { bg: "#fbe7e4", text: "#c33829", border: "#efb0a6" },
+    },
+    dark: {
+      bg: "#0e1622",
+      panel: "#131e2e",
+      surface: "#172234",
+      text: "#e6eef9",
+      muted: "#9fb1c7",
+      faint: "#6b7d94",
+      border: "#243349",
+      border2: "#324563",
+      hover: "rgba(220, 232, 249, 0.06)",
+      info: { bg: "rgba(56, 139, 230, 0.18)", text: "#69aef0", border: "#3d7fd6" },
+      success: { bg: "rgba(45, 160, 90, 0.18)", text: "#6cc88c", border: "#2f8a52" },
+      warning: { bg: "rgba(200, 150, 50, 0.18)", text: "#d8b061", border: "#9a7320" },
+      danger: { bg: "rgba(210, 90, 75, 0.18)", text: "#ef9384", border: "#c0463a" },
+    },
+  },
+  {
+    // Forest — a grounded green for terminal-leaning, low-key surfaces. Sage
+    // neutrals, a deep-green accent, and a teal-shifted success so the brand and
+    // the "ok" state stay distinguishable.
+    id: "forest",
+    label: "Forest",
+    shiki: { light: "github-light", dark: "github-dark" },
+    light: {
+      bg: "#f3f7f2",
+      panel: "#e9f0e7",
+      surface: "#ffffff",
+      text: "#15241a",
+      muted: "#566256",
+      faint: "#88958a",
+      border: "#e1e9df",
+      border2: "#ccd9c9",
+      hover: "#edf3eb",
+      info: { bg: "#e4f2e6", text: "#2c7a3d", border: "#a4d0a8" },
+      success: { bg: "#e7f4ea", text: "#1f7a52", border: "#a6dcc0" },
+      warning: { bg: "#f7f0d8", text: "#876510", border: "#e0c777" },
+      danger: { bg: "#f9e8e3", text: "#b8442f", border: "#e9b3a4" },
+    },
+    dark: {
+      bg: "#0f1711",
+      panel: "#141f17",
+      surface: "#18241b",
+      text: "#e7f0e6",
+      muted: "#a3b3a3",
+      faint: "#6f7f70",
+      border: "#243224",
+      border2: "#324433",
+      hover: "rgba(225, 240, 225, 0.06)",
+      info: { bg: "rgba(70, 160, 85, 0.18)", text: "#74c182", border: "#3f8a4f" },
+      success: { bg: "rgba(40, 160, 110, 0.18)", text: "#5fc89b", border: "#2f8a64" },
+      warning: { bg: "rgba(200, 160, 60, 0.18)", text: "#d4b066", border: "#9a7320" },
+      danger: { bg: "rgba(205, 95, 75, 0.18)", text: "#e7917f", border: "#b8442f" },
+    },
+  },
+  {
+    // Dracula — the iconic high-contrast purple dark theme, with a soft purple
+    // light companion (the community "Alucard" register) so the theme honors the
+    // mandatory light/dark pair.
+    id: "dracula",
+    label: "Dracula",
+    shiki: { light: "github-light", dark: "github-dark" },
+    light: {
+      bg: "#f6f4fb",
+      panel: "#eee9f8",
+      surface: "#ffffff",
+      text: "#211d2e",
+      muted: "#635d78",
+      faint: "#938da6",
+      border: "#e7e1f3",
+      border2: "#d6cdea",
+      hover: "#f0ebf9",
+      info: { bg: "#efe9fd", text: "#6b46c1", border: "#c9b8f0" },
+      success: { bg: "#e7f4e9", text: "#218739", border: "#a8d6b0" },
+      warning: { bg: "#fbf0d8", text: "#8a6310", border: "#e6c879" },
+      danger: { bg: "#fbe6ea", text: "#b21e4b", border: "#eeaac0" },
+    },
+    dark: {
+      bg: "#21222c",
+      panel: "#282a36",
+      surface: "#2d2f3d",
+      text: "#f8f8f2",
+      muted: "#a3a7c2",
+      faint: "#6272a4",
+      border: "#3a3d50",
+      border2: "#4a4e69",
+      hover: "rgba(248, 248, 242, 0.06)",
+      info: { bg: "rgba(189, 147, 249, 0.20)", text: "#c9adff", border: "#6f5f99" },
+      success: { bg: "rgba(80, 250, 123, 0.16)", text: "#6ff58e", border: "#3fae5e" },
+      warning: { bg: "rgba(255, 184, 108, 0.18)", text: "#ffc285", border: "#b07d3f" },
+      danger: { bg: "rgba(255, 85, 85, 0.18)", text: "#ff7b7b", border: "#b34242" },
+    },
+  },
+  {
+    // Nord — the arctic, desaturated slate-blue palette. Polar Night surfaces in
+    // dark, Snow Storm in light, with Frost (accent), Aurora green/yellow/red as
+    // the semantic states.
+    id: "nord",
+    label: "Nord",
+    shiki: { light: "github-light", dark: "github-dark" },
+    light: {
+      bg: "#eceff4",
+      panel: "#e5e9f0",
+      surface: "#ffffff",
+      text: "#2e3440",
+      muted: "#4c566a",
+      faint: "#7b8494",
+      border: "#dde3ec",
+      border2: "#cbd3df",
+      hover: "#e8edf4",
+      info: { bg: "#e7eef6", text: "#3a6394", border: "#a9c0dc" },
+      success: { bg: "#eef3e8", text: "#4a6b39", border: "#c2d4ad" },
+      warning: { bg: "#f7f0db", text: "#846515", border: "#e0c784" },
+      danger: { bg: "#f8e9ea", text: "#a93f48", border: "#e6b3b8" },
+    },
+    dark: {
+      bg: "#2e3440",
+      panel: "#353c4a",
+      surface: "#3b4252",
+      text: "#eceff4",
+      muted: "#abb2c0",
+      faint: "#7b8494",
+      border: "#434c5e",
+      border2: "#4c566a",
+      hover: "rgba(236, 239, 244, 0.05)",
+      info: { bg: "rgba(136, 192, 208, 0.18)", text: "#93c9d8", border: "#5e81ac" },
+      success: { bg: "rgba(163, 190, 140, 0.18)", text: "#b1cc97", border: "#6e8b5a" },
+      warning: { bg: "rgba(235, 203, 139, 0.18)", text: "#eccf93", border: "#a98f4e" },
+      danger: { bg: "rgba(191, 97, 106, 0.20)", text: "#d2818a", border: "#8a4248" },
+    },
+  },
+  {
+    // Rosé — a warm, muted mauve (Rosé Pine, with its Dawn light variant). Rosy
+    // cream paper, an iris accent, gold/love for warning/danger, and a soft green
+    // success since the source palette has no green.
+    id: "rose",
+    label: "Rosé",
+    shiki: { light: "github-light", dark: "github-dark" },
+    light: {
+      bg: "#faf4ed",
+      panel: "#f2e9e1",
+      surface: "#fffaf3",
+      text: "#575279",
+      muted: "#797593",
+      faint: "#9893a5",
+      border: "#eaddd4",
+      border2: "#ddcdc0",
+      hover: "#f4ece3",
+      info: { bg: "#f0eaf4", text: "#6f5d97", border: "#cdbbdb" },
+      success: { bg: "#e9f3ec", text: "#3f7a55", border: "#b3d7c0" },
+      warning: { bg: "#f9efdb", text: "#946514", border: "#e6c887" },
+      danger: { bg: "#f7e7eb", text: "#a23f5a", border: "#e3b1bd" },
+    },
+    dark: {
+      bg: "#191724",
+      panel: "#1f1d2e",
+      surface: "#26233a",
+      text: "#e0def4",
+      muted: "#908caa",
+      faint: "#6e6a86",
+      border: "#2f2b43",
+      border2: "#3e3a57",
+      hover: "rgba(224, 222, 244, 0.05)",
+      info: { bg: "rgba(196, 167, 231, 0.18)", text: "#cdb4ec", border: "#8c74b0" },
+      success: { bg: "rgba(95, 185, 143, 0.16)", text: "#79c7a0", border: "#3f8a64" },
+      warning: { bg: "rgba(246, 193, 119, 0.18)", text: "#f3c485", border: "#b08a45" },
+      danger: { bg: "rgba(235, 111, 146, 0.18)", text: "#ef8ba6", border: "#b3536e" },
+    },
+  },
 ];
 
 export const DEFAULT_THEME_ID = "showcase";
@@ -286,6 +476,14 @@ let extraThemes: Theme[] = [];
 // pass a fresh list per instance without leaking across test apps).
 export function registerThemes(themes: Theme[]): void {
   extraThemes = themes.slice();
+}
+
+// Additively register ONE theme at runtime (POST /api/themes — authoring a brand
+// palette live). Unlike registerThemes it appends rather than resets, dropping
+// any prior extra of the same id so a re-author replaces cleanly. The new theme
+// goes first so it shadows a built-in of the same id in `find`-based lookups.
+export function addTheme(theme: Theme): void {
+  extraThemes = [theme, ...extraThemes.filter((t) => t.id !== theme.id)];
 }
 
 // Built-ins ⊕ user themes, user first so a user id shadows a built-in of the

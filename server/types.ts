@@ -7,6 +7,15 @@ export interface Session {
   cwd: string | null;
   createdAt: string;
   lastActiveAt: string;
+  // The session's pinned PRESET — a default explainer blueprint and/or theme
+  // every surface in the session inherits when it doesn't set its own (see
+  // server/blueprints.ts, resolveBlueprint). This is what makes a session
+  // "configurable": pick a format once (a design-doc session, a product-demo
+  // session) and every surface comes out in that structure + look, no matter
+  // what the user asks. The first publish that carries a blueprint/theme pins it;
+  // a later explicit value re-pins. Unset → the board default.
+  blueprint?: string;
+  theme?: string;
   // Highest comment seq already delivered to the agent — lets responses to
   // agent writes piggyback comments the agent has not seen yet.
   agentSeq: number;
@@ -377,6 +386,19 @@ export interface CreateSessionInput {
   agent: string;
   title?: string;
   cwd?: string;
+  // The preset to pin on the new session (see Session.blueprint/theme). The
+  // publish flow passes the first publish's preset, or the board default when
+  // none was given, so every session is born with a format.
+  blueprint?: string;
+  theme?: string;
+}
+
+// Pin or change a session's preset after creation (the MCP configure_session
+// tool / PATCH /api/sessions/:id). `null` clears the field; `undefined` leaves
+// it unchanged — same convention as UpdateSurfaceInput.
+export interface SessionPresetInput {
+  blueprint?: string | null;
+  theme?: string | null;
 }
 
 export interface CreateSurfaceInput {
@@ -420,6 +442,9 @@ export interface Store {
   getSession(id: string): Promise<Session | null>;
   createSession(input: CreateSessionInput): Promise<Session>;
   renameSession(id: string, title: string): Promise<Session | null>;
+  // Pin/change/clear the session's preset (blueprint + theme). Returns the
+  // updated session, or null if it doesn't exist.
+  setSessionPreset(id: string, preset: SessionPresetInput): Promise<Session | null>;
   removeSession(id: string): Promise<boolean>;
   // Advance the delivered-to-agent comment cursor (never moves backwards).
   markAgentSeen(sessionId: string, seq: number): Promise<void>;

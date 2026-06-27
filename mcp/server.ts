@@ -167,6 +167,87 @@ server.registerTool(
 );
 
 server.registerTool(
+  "configure_session",
+  {
+    description: MCP_TOOL_DESCRIPTIONS.configureSession,
+    inputSchema: STDIO_MCP_INPUT_SCHEMAS.configureSession,
+  },
+  async ({ blueprint, theme }) => {
+    const session = await ensureSession();
+    const updated = JSON.parse(
+      await api(`/api/sessions/${session}`, {
+        method: "PATCH",
+        body: JSON.stringify({ blueprint, theme }),
+      }),
+    );
+    return text(updated);
+  },
+);
+
+// Tailored preset tools — typed payloads rendered server-side into a fixed
+// layout (postmortem, dashboard, design doc, status, architecture, product demo).
+// Each posts its typed body to /api/presets/<preset>; the server renders + pins.
+// inputSchema/handler are loosely typed: the per-call generic inference the SDK
+// relies on is lost through a wrapper (it collapses the callback arg to `never`),
+// so we hand it a plain shape and read args dynamically — the server validates.
+function presetTool(name: string, preset: string, description: string, inputSchema: object) {
+  const handler = async (args: Record<string, unknown>) => {
+    const session = await ensureSession(args.sessionTitle as string | undefined);
+    const created = JSON.parse(
+      await api(`/api/presets/${preset}`, {
+        method: "POST",
+        body: JSON.stringify({ ...args, session }),
+      }),
+    );
+    return text({ ...created, url: `${API}/session/${created.sessionId}/s/${created.id}` });
+  };
+  // The SDK infers the handler arg from inputSchema per call; that inference is
+  // lost through this wrapper, so register dynamically.
+  (server.registerTool as (n: string, c: object, h: typeof handler) => void)(
+    name,
+    { description, inputSchema },
+    handler,
+  );
+}
+
+presetTool(
+  "publish_postmortem",
+  "postmortem",
+  MCP_TOOL_DESCRIPTIONS.publishPostmortem,
+  STDIO_MCP_INPUT_SCHEMAS.publishPostmortem,
+);
+presetTool(
+  "publish_dashboard",
+  "data-viz",
+  MCP_TOOL_DESCRIPTIONS.publishDashboard,
+  STDIO_MCP_INPUT_SCHEMAS.publishDashboard,
+);
+presetTool(
+  "publish_design_doc",
+  "design-doc",
+  MCP_TOOL_DESCRIPTIONS.publishDesignDoc,
+  STDIO_MCP_INPUT_SCHEMAS.publishDesignDoc,
+);
+presetTool(
+  "publish_status",
+  "status",
+  MCP_TOOL_DESCRIPTIONS.publishStatus,
+  STDIO_MCP_INPUT_SCHEMAS.publishStatus,
+);
+presetTool(
+  "publish_architecture",
+  "architecture",
+  MCP_TOOL_DESCRIPTIONS.publishArchitecture,
+  STDIO_MCP_INPUT_SCHEMAS.publishArchitecture,
+);
+presetTool(
+  "publish_product_demo",
+  "product-demo",
+  MCP_TOOL_DESCRIPTIONS.publishProductDemo,
+  STDIO_MCP_INPUT_SCHEMAS.publishProductDemo,
+);
+
+server.registerTool(
   "wait_for_feedback",
   {
     description: MCP_TOOL_DESCRIPTIONS.waitForFeedback,

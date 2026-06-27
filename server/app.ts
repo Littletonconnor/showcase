@@ -17,6 +17,7 @@ import { type Kit, kitSummaries, registerKits } from "./kits.ts";
 import { registerMcp } from "./mcpHttp.ts";
 import { renderHtmlPage } from "./surfacePage.ts";
 import {
+  addTheme,
   DEFAULT_THEME_ID,
   isKnownTheme,
   registerThemes,
@@ -24,6 +25,8 @@ import {
   themeById,
   themeIds,
 } from "./themes.ts";
+import { deriveTheme, type ThemeSeed } from "./themeDerive.ts";
+import { PRESET_RENDERERS } from "./presetRenders.ts";
 import {
   type Asset,
   type AssetKind,
@@ -37,6 +40,8 @@ import {
   MAX_ASSET_BYTES,
   newId,
   partsByteLength,
+  type Session,
+  type SessionPresetInput,
   type Store,
   type Surface,
   type SurfaceBadge,
@@ -131,6 +136,18 @@ export interface AppOptions {
   extraThemes?: Theme[];
   extraKits?: Kit[];
   extraBlueprints?: Blueprint[];
+  // Board defaults applied to every NEW session that doesn't name its own preset
+  // — so a repo (or user) can make all its sessions start in one format (a
+  // design-doc board, a product-demo board). Resolved from layered config by
+  // server/userConfig.ts (repo .showcase wins over user ~/.showcase). An unknown
+  // id is ignored at use. See docs/themable-explainers.md.
+  defaultBlueprint?: string;
+  defaultTheme?: string;
+  // Persist a runtime-authored brand theme (POST /api/themes ... persist:true) to
+  // the user config dir so it survives a restart. Node-only (fs); injected by
+  // index.ts to keep app.ts runtime-agnostic. Omitted → authored themes are
+  // in-memory only (live for this process).
+  persistTheme?: (theme: Theme) => Promise<void>;
   // Dev-only live reload. When true, the served viewer HTML gets a tiny
   // reconnecting EventSource snippet and a GET /api/livereload endpoint that
   // streams this process's boot id. `npm run dev` rebuilds viewer/dist and
@@ -478,6 +495,9 @@ export function createApp({
   extraThemes,
   extraKits,
   extraBlueprints,
+  defaultBlueprint,
+  defaultTheme,
+  persistTheme,
   dev = false,
   authenticate,
   authToken,
@@ -557,7 +577,38 @@ export function createApp({
     return value;
   }
 
+  // Preset helpers. Keep only KNOWN ids — an unknown blueprint/theme is ignored
+  // rather than pinned or stored (resolveBlueprint validates the same way for
+  // rendering). Board defaults come from layered config (repo/user) via index.ts.
+  const pickBlueprint = (id: string | null | undefined): string | undefined =>
+    isKnownBlueprint(id) ? id : undefined;
+  const pickTheme = (id: string | null | undefined): string | undefined =>
+    isKnownTheme(id) ? id : undefined;
+  const boardDefaultBlueprint = (): string | undefined => pickBlueprint(defaultBlueprint);
+  const boardDefaultTheme = (): string | undefined => pickTheme(defaultTheme);
+
   // --- shared flows (used by both the REST API and the MCP endpoint) ---
+
+  // Pin/change a session's preset without publishing — the MCP configure_session
+  // tool and PATCH /api/sessions/:id. Lets a user set "this is a design-doc
+  // session" up front, then ask anything. Only known ids stick; `null` clears.
+  async function configureSession(
+    sessionId: string,
+    preset: SessionPresetInput,
+  ): Promise<{ session: Session } | { error: string; status: 404 }> {
+    const sanitized: SessionPresetInput = {};
+    if (preset.blueprint !== undefined) {
+      sanitized.blueprint =
+        preset.blueprint === null ? null : (pickBlueprint(preset.blueprint) ?? null);
+    }
+    if (preset.theme !== undefined) {
+      sanitized.theme = preset.theme === null ? null : (pickTheme(preset.theme) ?? null);
+    }
+    const session = await store.setSessionPreset(sessionId, sanitized);
+    if (!session) return { error: "session not found", status: 404 };
+    bus.broadcast({ type: "session-updated", id: session.id });
+    return { session };
+  }
 
   // User comments the agent has not seen yet ride along on its next write, so
   // agents hear feedback without blocking on the long-poll. The cursor also
@@ -592,30 +643,46 @@ export function createApp({
       return { error: `surface exceeds ${MAX_SURFACE_BYTES} bytes`, status: 413 };
     }
     let sessionId = input.session;
-    if (sessionId && !(await store.getSession(sessionId))) {
+    let session = sessionId ? await store.getSession(sessionId) : null;
+    if (sessionId && !session) {
       return { error: `session "${sessionId}" not found`, status: 404 };
     }
-    if (!sessionId) {
-      // sessionTitle applies only here — an existing session keeps its title,
-      // which the user may have set by renaming it in the viewer.
-      const session = await store.createSession({
+    if (!session) {
+      // First publish pins the session's PRESET: the preset this publish names,
+      // else the board default (a repo/user default — boardDefault* below). Every
+      // later surface in the session inherits it, which is what makes a session
+      // "a design-doc session" / "a product-demo session" regardless of the ask.
+      // sessionTitle applies only here — an existing session keeps its title.
+      session = await store.createSession({
         agent: input.agent ?? "agent",
         title: input.sessionTitle?.slice(0, MAX_TITLE),
         cwd: input.cwd,
+        blueprint: pickBlueprint(input.blueprint) ?? boardDefaultBlueprint(),
+        theme: pickTheme(input.theme) ?? boardDefaultTheme(),
       });
       bus.broadcast({ type: "session-created", id: session.id });
       sessionId = session.id;
+    } else {
+      // An explicit, KNOWN preset on a later publish re-pins the session so it
+      // carries forward ("switch this session to design-doc from here").
+      const repin: SessionPresetInput = {};
+      if (pickBlueprint(input.blueprint)) repin.blueprint = input.blueprint;
+      if (pickTheme(input.theme)) repin.theme = input.theme;
+      if (repin.blueprint !== undefined || repin.theme !== undefined) {
+        session = (await store.setSessionPreset(session.id, repin)) ?? session;
+      }
     }
-    // A blueprint fills gaps only: an explicit theme/part-kits/badge always wins,
+    // Effective preset = what this publish named, else the session's pin. A
+    // blueprint fills gaps only: an explicit theme/part-kits/badge always wins,
     // and its theme + kits are baked into the stored surface here so everything
     // downstream sees an ordinary themed surface (see server/blueprints.ts).
     const resolved = resolveBlueprint({
-      blueprint: input.blueprint,
-      theme: input.theme,
+      blueprint: input.blueprint ?? session.blueprint,
+      theme: input.theme ?? session.theme,
       parts: input.parts,
     });
     const surface = await store.createSurface({
-      sessionId,
+      sessionId: session.id,
       parts: resolved.parts,
       title: input.title?.slice(0, MAX_TITLE),
       badge: input.badge ?? resolved.defaultBadge,
@@ -623,8 +690,39 @@ export function createApp({
       blueprint: resolved.blueprintId,
     });
     if (!surface) return { error: "session not found", status: 404 };
-    bus.broadcast({ type: "surface-created", id: surface.id, sessionId, version: 1 });
-    return { surface, userFeedback: await collectFeedback(sessionId) };
+    bus.broadcast({ type: "surface-created", id: surface.id, sessionId: session.id, version: 1 });
+    return { surface, userFeedback: await collectFeedback(session.id) };
+  }
+
+  // Publish a tailored PRESET surface — the typed form factors (postmortem,
+  // data-viz, design-doc, status, architecture, product-demo). The preset's
+  // renderer (server/presetRenders.ts) owns the layout: typed data in → one html
+  // part with a fixed structure out, so every instance looks identical. The
+  // matching blueprint is pinned, so the session's theme/kits resolve as usual
+  // and the preset pins to the session like any other (configurable, consistent).
+  async function publishPreset(input: {
+    preset: string;
+    data: unknown;
+    session?: string;
+    sessionTitle?: string;
+    agent?: string;
+    cwd?: string;
+  }): Promise<
+    { surface: Surface; userFeedback?: Feedback[] } | { error: string; status: 400 | 404 | 413 }
+  > {
+    const render = PRESET_RENDERERS[input.preset];
+    if (!render) return { error: `unknown preset "${input.preset}"`, status: 400 };
+    const rendered = render(input.data);
+    return publishSurface({
+      parts: [htmlPart(rendered.html)],
+      title: rendered.title,
+      badge: rendered.badge,
+      blueprint: input.preset,
+      session: input.session,
+      sessionTitle: input.sessionTitle,
+      agent: input.agent,
+      cwd: input.cwd,
+    });
   }
 
   // Publish a decision-queue review (the agent-era form factor — see
@@ -1119,6 +1217,63 @@ export function createApp({
   // ids, for discovery. The full palettes are server/viewer internals.
   app.get("/api/themes", (c) => c.json(themeIds()));
 
+  // Author a brand theme at runtime from a few SEED colors (the "match my
+  // product" path — an agent reads a screenshot, names the brand color(s), and
+  // the engine derives a full contrast-checked light+dark palette; see
+  // server/themeDerive.ts). `seed` derives; `theme` registers a full palette as
+  // given. Registers it live for immediate html-part preview; `persist:true`
+  // writes it to user config (via persistTheme) so it survives a restart — only
+  // then does the viewer chrome / picker pick it up (they read the bundled set).
+  app.post("/api/themes", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object") return c.json({ error: "invalid body" }, 400);
+    let theme: Theme;
+    if (body.seed && typeof body.seed === "object") {
+      const seed = body.seed as ThemeSeed;
+      if (!seed.id || !seed.label || !seed.accent) {
+        return c.json({ error: "seed needs id, label, accent" }, 400);
+      }
+      theme = deriveTheme(seed);
+    } else if (body.theme && typeof body.theme === "object" && body.theme.id) {
+      theme = body.theme as Theme;
+    } else {
+      return c.json({ error: 'pass a "seed" {id,label,accent,...} or a full "theme"' }, 400);
+    }
+    addTheme(theme);
+    let persisted = false;
+    if (body.persist && persistTheme) {
+      await persistTheme(theme);
+      persisted = true;
+    }
+    return c.json({ id: theme.id, persisted, theme }, 201);
+  });
+
+  // Publish a tailored preset surface from typed data (the form factors behind
+  // publish_postmortem / publish_dashboard / …). The stdio MCP server posts here;
+  // the HTTP MCP calls publishPreset in-process. Body = the preset's typed fields
+  // plus session/sessionTitle/agent.
+  app.post("/api/presets/:id", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const result = await publishPreset({
+      preset: c.req.param("id"),
+      data: body,
+      session: typeof body.session === "string" ? body.session : undefined,
+      sessionTitle: typeof body.sessionTitle === "string" ? body.sessionTitle : undefined,
+      agent: typeof body.agent === "string" ? body.agent : undefined,
+      cwd: typeof body.cwd === "string" ? body.cwd : undefined,
+    });
+    if ("error" in result) return c.json({ error: result.error }, result.status);
+    return c.json(
+      {
+        id: result.surface.id,
+        sessionId: result.surface.sessionId,
+        version: result.surface.version,
+        ...(result.userFeedback ? { userFeedback: result.userFeedback } : {}),
+      },
+      201,
+    );
+  });
+
   // --- sessions ---
 
   app.get("/api/sessions", async (c) => {
@@ -1156,14 +1311,31 @@ export function createApp({
     return c.json(session, 201);
   });
 
+  // Rename and/or re-pin the session preset (blueprint/theme). A bare title patch
+  // keeps the old behavior; passing blueprint/theme (string to set, null to
+  // clear) configures the session's format. At least one field is required.
   app.patch("/api/sessions/:id", async (c) => {
     const body = await c.req.json().catch(() => null);
-    if (!body || typeof body.title !== "string") {
-      return c.json({ error: 'body must include "title" string' }, 400);
+    const id = c.req.param("id");
+    const hasTitle = body && typeof body.title === "string";
+    const hasPreset = body && ("blueprint" in body || "theme" in body);
+    if (!hasTitle && !hasPreset) {
+      return c.json({ error: 'body must include "title", "blueprint", or "theme"' }, 400);
     }
-    const session = await store.renameSession(c.req.param("id"), body.title.slice(0, MAX_TITLE));
-    if (!session) return c.json({ error: "session not found" }, 404);
-    bus.broadcast({ type: "session-updated", id: session.id });
+    let session = hasTitle ? await store.renameSession(id, body.title.slice(0, MAX_TITLE)) : null;
+    if (hasTitle && !session) return c.json({ error: "session not found" }, 404);
+    if (hasPreset) {
+      const presetField = (v: unknown): string | null | undefined =>
+        v === null ? null : typeof v === "string" ? v : undefined;
+      const result = await configureSession(id, {
+        blueprint: "blueprint" in body ? presetField(body.blueprint) : undefined,
+        theme: "theme" in body ? presetField(body.theme) : undefined,
+      });
+      if ("error" in result) return c.json({ error: result.error }, result.status);
+      session = result.session;
+    } else if (session) {
+      bus.broadcast({ type: "session-updated", id: session.id });
+    }
     return c.json(session);
   });
 
@@ -1628,8 +1800,10 @@ export function createApp({
     basePath: requestBasePath,
     publishSurface,
     publishDecisions,
+    publishPreset,
     reviseSurface,
     deleteSurface,
+    configureSession,
     createComment,
     waitForComments,
     uploadAsset,

@@ -7,11 +7,13 @@ import {
   type Comment,
   htmlPart,
   isAssetKind,
+  type Session,
   type Store,
   type Surface,
   type SurfaceBadge,
   type SurfacePart,
 } from "./types.ts";
+import { blueprintById } from "./blueprints.ts";
 import {
   FEEDBACK_REPLY_NOTE,
   HTTP_MCP_TOOLS,
@@ -53,6 +55,13 @@ export interface McpDeps {
     | { sessionId: string; decisions: number; briefWarning?: string }
     | { error: string; status: number }
   >;
+  publishPreset(input: {
+    preset: string;
+    data: unknown;
+    session?: string;
+    sessionTitle?: string;
+    agent?: string;
+  }): FlowResult<Surface>;
   reviseSurface(
     id: string,
     patch: {
@@ -64,6 +73,10 @@ export interface McpDeps {
     },
   ): FlowResult<Surface>;
   deleteSurface(id: string): Promise<{ surface: Surface } | { error: string; status: number }>;
+  configureSession(
+    sessionId: string,
+    preset: { blueprint?: string | null; theme?: string | null },
+  ): Promise<{ session: Session } | { error: string; status: number }>;
   createComment(input: {
     text: string;
     surface?: string;
@@ -80,6 +93,16 @@ export interface McpDeps {
   }): Promise<{ asset: Omit<Asset, "data"> } | { error: string; status: number }>;
   guide: string;
 }
+
+// Tailored preset tools → their blueprint id (the renderer + theme + kits).
+const TOOL_TO_PRESET: Record<string, string> = {
+  publish_postmortem: "postmortem",
+  publish_dashboard: "data-viz",
+  publish_design_doc: "design-doc",
+  publish_status: "status",
+  publish_architecture: "architecture",
+  publish_product_demo: "product-demo",
+};
 
 export function registerMcp(app: Hono, deps: McpDeps) {
   const surfaceResult = (result: { surface: Surface; userFeedback?: Feedback[] }, origin: string) =>
@@ -257,6 +280,46 @@ export function registerMcp(app: Hono, deps: McpDeps) {
             contentType: result.asset.contentType,
             byteLength: result.asset.byteLength,
             kind: result.asset.kind,
+          },
+          null,
+          2,
+        );
+      }
+      case "publish_postmortem":
+      case "publish_dashboard":
+      case "publish_design_doc":
+      case "publish_status":
+      case "publish_architecture":
+      case "publish_product_demo": {
+        const preset = TOOL_TO_PRESET[name];
+        const result = await deps.publishPreset({
+          preset,
+          data: args,
+          session: typeof args.session === "string" ? args.session : undefined,
+          sessionTitle: typeof args.sessionTitle === "string" ? args.sessionTitle : undefined,
+          agent: typeof args.agent === "string" ? args.agent : undefined,
+        });
+        if ("error" in result) throw new Error(result.error);
+        return surfaceResult(result, origin);
+      }
+      case "configure_session": {
+        const presetField = (v: unknown): string | null | undefined =>
+          v === null ? null : typeof v === "string" ? v : undefined;
+        const result = await deps.configureSession(String(args.session ?? ""), {
+          blueprint: "blueprint" in args ? presetField(args.blueprint) : undefined,
+          theme: "theme" in args ? presetField(args.theme) : undefined,
+        });
+        if ("error" in result) throw new Error(result.error);
+        const bp = blueprintById(result.session.blueprint);
+        return JSON.stringify(
+          {
+            sessionId: result.session.id,
+            blueprint: result.session.blueprint ?? null,
+            theme: result.session.theme ?? null,
+            structure: bp?.structure ?? [],
+            note: bp
+              ? `Every surface published to this session now defaults to the "${bp.label}" preset (${bp.summary}). Author each surface to follow its structure in order, tagging each section data-section="<id>", so the session stays consistent no matter what is asked.`
+              : "Session preset updated.",
           },
           null,
           2,

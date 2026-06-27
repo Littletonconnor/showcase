@@ -11,6 +11,18 @@ without touching the binary. If an implementation drifts, come back here._
 > types/storage/app/MCP/CLI, brand injection in `renderHtmlPage`, and the
 > `data-section` labelling in the animate kit). Built-in blueprints: `product-demo`
 > and `concept`. The doc is the rationale; the code is the source of truth.
+>
+> **Update (session presets).** Blueprints are now **session-scoped presets**: a
+> session carries a `blueprint`/`theme` (`Session` in `types.ts`), pinned by the
+> first publish (or the `configure_session` MCP tool / `PATCH /api/sessions/:id`),
+> and every later surface inherits it — so a whole session stays in one format.
+> Config now layers **repo** (`<cwd>/.showcase`) over **user** (`~/.showcase`),
+> and a `config.json` sets a board **default preset** for new sessions. Built-in
+> presets expanded to: `design-doc` (the team RFC template), `architecture`,
+> `data-viz`, `postmortem` (5-Whys), `status`, `product-demo`, `product-mockup`,
+> `concept`. A theme can be derived from seed colors (`server/themeDerive.ts`,
+> `POST /api/themes`) — see `docs/theme-building.md`. The `session-presets` skill
+> drives the loop. Gallery: `docs/images/presets/`.
 
 ---
 

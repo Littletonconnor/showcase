@@ -85,6 +85,255 @@ export const BLUEPRINTS: Blueprint[] = [
     ],
     defaults: { badge: { tone: "info", label: "Explainer" } },
   },
+  {
+    // Design doc — an RFC/technical-design session. Every doc reads the same:
+    // summary → context → goals → design → alternatives → risks → rollout. Mostly
+    // markdown + mermaid parts; the mockup kit styles any html callouts/panels.
+    id: "design-doc",
+    label: "Design doc",
+    summary:
+      "Technical design / RFC — the detailed design-doc template (goal-as-problem, axes, trade-offs)",
+    theme: "showcase",
+    kits: ["mockup"],
+    // The detailed design-doc template (the team convention). Two rules carry the
+    // weight: the GOAL is a problem statement with no implementation leakage
+    // ("reduce toil", not "build X"), and the SOLUTION SPACE is framed as AXES —
+    // independent technical decisions — with candidates named by property and the
+    // discarded ones explained.
+    structure: [
+      {
+        id: "metadata",
+        label: "Metadata",
+        hint: "Title, author/reviewers, status (Draft → In review → Approved → Implemented), links: ticket / PRD / prior art",
+      },
+      {
+        id: "summary",
+        label: "Executive summary",
+        hint: "If someone reads only this, what do they walk away with?",
+        required: true,
+      },
+      {
+        id: "goal",
+        label: "Goal statement",
+        hint: "A PROBLEM statement — no implementation leakage ('reduce errors', not 'build X'). Success metrics if any.",
+        required: true,
+      },
+      {
+        id: "invariants",
+        label: "Invariants & constraints",
+        hint: "True invariants (must-haves) vs preferences (nice-to-haves) vs assumptions. Challenge the over-constraining ones.",
+      },
+      {
+        id: "background",
+        label: "Background / research",
+        hint: "Current system + pain points, prior art (internal + external), platform context",
+      },
+      {
+        id: "solutionspace",
+        label: "Solution space",
+        hint: "Axes = the big INDEPENDENT decisions (technical, not product). Candidates named by property (build/buy, push/pull). Why some are discarded.",
+        required: true,
+      },
+      {
+        id: "proposed",
+        label: "Proposed solution",
+        hint: "Architecture / data model, APIs, failure modes + mitigations, observability, security / privacy",
+        required: true,
+      },
+      {
+        id: "scope",
+        label: "Scope, sequencing, ownership",
+        hint: "In vs out of scope, medium-grained milestones, parallelism & dependencies, known unknowns",
+      },
+      {
+        id: "rollout",
+        label: "Rollout plan",
+        hint: "Feature flags, backfill / migration steps, rollback plan",
+      },
+      {
+        id: "testing",
+        label: "Testing & confidence",
+        hint: "Unit / integration / e2e coverage; how you'll validate correctness",
+      },
+      {
+        id: "openquestions",
+        label: "Open questions",
+        hint: "Questions for reviewers, decision deadlines — every open question needs an owner",
+      },
+    ],
+    defaults: { badge: { tone: "info", label: "Design" } },
+  },
+  {
+    // Product mockup — visualize a product IDEA fast. Not the branded marketing
+    // walkthrough (product-demo) — this mocks the actual screens with the mockup
+    // kit's UI primitives so you can SEE the idea: premise → screens → flow →
+    // states → what to validate. Neutral palette reads as "sketch, not final".
+    id: "product-mockup",
+    label: "Product mockup",
+    summary:
+      "Visualize a product idea fast — mocked screens, the core flow, key states, what to test",
+    theme: "neutral",
+    kits: ["mockup"],
+    structure: [
+      {
+        id: "premise",
+        label: "Premise",
+        hint: "The idea in one line — who it's for, what it does",
+        required: true,
+      },
+      {
+        id: "screens",
+        label: "Screens",
+        hint: "The 1–3 key screens, mocked with real-ish UI controls",
+        required: true,
+      },
+      { id: "flow", label: "Core flow", hint: "The primary path, screen by screen" },
+      {
+        id: "states",
+        label: "Key states",
+        hint: "Empty / loading / error / success — what's easy to forget",
+      },
+      {
+        id: "validate",
+        label: "Validate",
+        hint: "The riskiest assumption to test before building",
+      },
+    ],
+    defaults: { badge: { tone: "neutral", label: "Mockup" } },
+  },
+  {
+    // Architecture — diagram-forward system design. Lead with one system diagram,
+    // then components, data flow, decisions, scale/failure. Cool, technical palette.
+    id: "architecture",
+    label: "Architecture",
+    summary: "System design — diagram-led overview, components, data flow, decisions, scale",
+    theme: "nord",
+    kits: ["mockup", "issues"],
+    structure: [
+      {
+        id: "overview",
+        label: "Overview",
+        hint: "One system diagram + a sentence",
+        required: true,
+      },
+      { id: "components", label: "Components", hint: "Each box's responsibility and boundary" },
+      { id: "dataflow", label: "Data flow", hint: "How a request/event moves through it" },
+      { id: "decisions", label: "Key decisions", hint: "The load-bearing choices and tradeoffs" },
+      { id: "scale", label: "Scale & failure", hint: "Limits, failure modes, what degrades" },
+    ],
+    defaults: { badge: { tone: "info", label: "Architecture" } },
+  },
+  {
+    // Data viz / dashboard — metrics-forward. Headline number, the main chart, a
+    // trend, a detail cut, and a takeaway. Charts are native parts that re-theme;
+    // the mockup kit supplies stat callouts. Same dashboard shape for any data.
+    id: "data-viz",
+    label: "Data viz",
+    summary: "Metrics dashboard — headline stat, main chart, trend, detail, takeaway",
+    theme: "ocean",
+    kits: ["mockup"],
+    structure: [
+      {
+        id: "headline",
+        label: "Headline",
+        hint: "The one number/result that matters",
+        required: true,
+      },
+      {
+        id: "breakdown",
+        label: "Breakdown",
+        hint: "The main chart — the distribution or comparison",
+        required: true,
+      },
+      { id: "trend", label: "Trend", hint: "How it's moving over time" },
+      { id: "detail", label: "Detail", hint: "A table or finer cut for the curious" },
+      { id: "takeaway", label: "Takeaway", hint: "So what — the decision or next step" },
+    ],
+    defaults: { badge: { tone: "info", label: "Metrics" } },
+  },
+  {
+    // Postmortem — blameless incident review. Summary → timeline → impact → root
+    // cause → remediation. Calm palette (gravity without alarm); the issues kit's
+    // timeline/badges and mockup callouts carry the structure.
+    id: "postmortem",
+    label: "Postmortem",
+    summary:
+      "Blameless incident review — impact, timeline, 5 Whys to a systemic cause, tiered fixes, owned follow-ups",
+    theme: "rose",
+    kits: ["issues", "mockup"],
+    // The team postmortem template. Blameless: assume everyone acted reasonably
+    // with the info they had. The 5 Whys runs from the customer-visible failure to
+    // a SYSTEMIC, fixable cause, then pressure-tests "why didn't tests / monitoring
+    // catch it?". Fixes are tiered (immediate/necessary/additional); every
+    // follow-up is owned, concrete, tracked, and time-bounded.
+    structure: [
+      {
+        id: "summary",
+        label: "Summary",
+        hint: "One paragraph: what happened and what changed after",
+        required: true,
+      },
+      {
+        id: "impact",
+        label: "Customer impact",
+        hint: "Who was affected, the user experience, how long",
+        required: true,
+      },
+      {
+        id: "timeline",
+        label: "Timeline (PT)",
+        hint: "Timestamped signals, decisions, mitigations, deploys, comms — link evidence",
+        required: true,
+      },
+      {
+        id: "rootcause",
+        label: "Root cause (5 Whys)",
+        hint: "Ask why from the customer-visible failure to a systemic, fixable cause; pressure-test 'why didn't tests / monitoring catch it?'. Note contributing factors.",
+        required: true,
+      },
+      {
+        id: "fixes",
+        label: "Fixes",
+        hint: "Immediate (stabilize / rollback) · Necessary (prevent THIS root cause) · Additional (pay down reliability debt)",
+        required: true,
+      },
+      {
+        id: "wentwell",
+        label: "What went well / painful",
+        hint: "Reinforce good behaviors; surface process pain. Keep it short.",
+      },
+      {
+        id: "followups",
+        label: "Follow-ups & tracking",
+        hint: "Action items — each Owned (one owner), Concrete, Tracked (link), Time-bounded",
+        required: true,
+      },
+    ],
+    defaults: { badge: { tone: "warning", label: "Postmortem" } },
+  },
+  {
+    // Status report — recurring update. Headline (on track?), shipped, in flight,
+    // blockers, next. The issues kit's badges/bars + mockup metrics keep every
+    // weekly update identical in shape.
+    id: "status",
+    label: "Status report",
+    summary: "Recurring update — headline, shipped, in flight, blockers, next up",
+    theme: "forest",
+    kits: ["issues", "mockup"],
+    structure: [
+      {
+        id: "headline",
+        label: "Headline",
+        hint: "On track / at risk / off track, in one line",
+        required: true,
+      },
+      { id: "shipped", label: "Shipped", hint: "What landed since the last update" },
+      { id: "inflight", label: "In flight", hint: "What's in progress, with rough % or ETA" },
+      { id: "blockers", label: "Blockers", hint: "What's stuck and what would unblock it" },
+      { id: "next", label: "Next up", hint: "What's planned for the next window" },
+    ],
+    defaults: { badge: { tone: "success", label: "Status" } },
+  },
 ];
 
 // Built-in ids, frozen at import (the MCP `blueprint` description lists these).
