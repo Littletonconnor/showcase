@@ -80,11 +80,47 @@ npm run serve            # API + viewer on http://localhost:8229
 
 ---
 
+## Keep it running (no babysat tab)
+
+`npm run serve` ties the server to a terminal. You don't have to keep that tab
+open — there are two lighter options.
+
+**Auto-start on demand (zero config).** Any CLI/MCP call to a _local_ surface
+that finds nothing listening will spin the server up in the background and retry,
+so an agent's first `publish` just works:
+
+```sh
+showcase sessions     # nothing running? it starts the server, then answers
+```
+
+The server it starts is detached and outlives the CLI, logging to
+`~/.showcase/server.log`. It does **not** restart on crash or relaunch on login —
+for that, install it as a service (below). Opt out by setting
+`SHOWCASE_NO_AUTOSTART=1`; it's a no-op for a remote `SHOWCASE_URL` (not ours to
+start).
+
+**Always-on OS service (recommended).** Register the server with your OS so it
+starts on login and restarts on crash — launchd on macOS, `systemd --user` on
+Linux:
+
+```sh
+showcase service install      # start now + on every login (use --port N to override 8229)
+showcase service status       # installed? running? where are the logs?
+showcase service uninstall    # stop and remove it
+```
+
+Logs stream to `~/.showcase/server.log`. On Linux, run `loginctl enable-linger`
+once if you want it to keep running after you log out. (Windows has no
+launchd/systemd — use auto-start or run `showcase serve` under a process manager.)
+
+---
+
 ## Use it from your agent (MCP)
 
 Cursor and Claude Code talk to showcase over **MCP** — a stdio server
-(`mcp/server.ts`) that proxies the local HTTP API. Keep `npm run serve` running,
-then register the server once.
+(`mcp/server.ts`) that proxies the local HTTP API. The server needs to be
+reachable (it auto-starts on demand, or install it as a service — see
+[Keep it running](#keep-it-running-no-babysat-tab)); register the MCP server once:
 
 **Claude Code:**
 

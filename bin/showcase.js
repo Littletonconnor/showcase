@@ -1,7 +1,16 @@
 #!/usr/bin/env node
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -185,9 +194,8 @@ function findChrome() {
 }
 
 async function api(path, init = {}) {
-  let res;
-  try {
-    res = await fetch(`${BASE}${path}`, {
+  const send = () =>
+    fetch(`${BASE}${path}`, {
       ...init,
       headers: {
         "content-type": "application/json",
@@ -195,9 +203,10 @@ async function api(path, init = {}) {
         ...init.headers,
       },
     });
-  } catch {
-    fail(`server not reachable at ${BASE} — start it with: showcase serve`);
-  }
+  // On a connection failure, try to auto-start a local server, then retry once.
+  let res = await send().catch(() => null);
+  if (!res && (await ensureServerUp())) res = await send().catch(() => null);
+  if (!res) fail(`server not reachable at ${BASE} — start it with: showcase serve`);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) fail(body.error ?? `${res.status} ${res.statusText}`);
   return body;
@@ -476,9 +485,8 @@ async function uploadFile(file, { session, kind } = {}) {
   params.set("filename", file.split(/[\\/]/).pop() ?? "upload");
   if (session) params.set("session", session);
   if (kind) params.set("kind", kind);
-  let res;
-  try {
-    res = await fetch(`${BASE}/api/assets?${params}`, {
+  const send = () =>
+    fetch(`${BASE}/api/assets?${params}`, {
       method: "POST",
       headers: {
         "content-type": contentTypeFor(file),
@@ -486,9 +494,9 @@ async function uploadFile(file, { session, kind } = {}) {
       },
       body: bytes,
     });
-  } catch {
-    fail(`server not reachable at ${BASE} — start it with: showcase serve`);
-  }
+  let res = await send().catch(() => null);
+  if (!res && (await ensureServerUp())) res = await send().catch(() => null);
+  if (!res) fail(`server not reachable at ${BASE} — start it with: showcase serve`);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) fail(body.error ?? `${res.status} ${res.statusText}`);
   return body;
@@ -695,6 +703,55 @@ function run(cmd, args, { soft = false } = {}) {
     if (!soft) fail(`${cmd} ${args.join(" ")} failed — ${err.stderr || err.message}`);
     return { ok: false, out: err.stderr || "" };
   }
+}
+
+// Auto-start a local server on demand. When a CLI call can't reach the surface
+// and BASE is local, spawn the server detached in the background and wait for it
+// to answer — so an agent's first `publish` "just works" with no babysat tab and
+// no service install. No-op for a remote SHOWCASE_URL (not ours to start), when
+// SHOWCASE_NO_AUTOSTART is set, or on a node too old to run the .ts source. Tries
+// at most once per process; returns whether the server is now reachable.
+let autoStartAttempted = false;
+async function ensureServerUp() {
+  if (autoStartAttempted) return false; // one shot — don't respawn on every retry
+  autoStartAttempted = true;
+  if (process.env.SHOWCASE_NO_AUTOSTART) return false;
+  let url;
+  try {
+    url = new URL(BASE);
+  } catch {
+    return false;
+  }
+  if (!["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname)) return false;
+  const entry = entrypoint("server", "index.ts");
+  if (entry.endsWith(".ts")) {
+    const [major, minor] = process.versions.node.split(".").map(Number);
+    if (!(major > 22 || (major === 22 && minor >= 18))) return false; // can't type-strip
+  }
+  const port = url.port || "8229";
+  mkdirSync(dirname(SERVICE_LOG), { recursive: true });
+  // Detached + unref'd so the server outlives this short-lived CLI process;
+  // output goes to the same log the OS service uses. This is a plain background
+  // process — `showcase service install` is still how you get restart-on-crash.
+  const log = openSync(SERVICE_LOG, "a");
+  const child = spawn(process.execPath, [entry], {
+    detached: true,
+    stdio: ["ignore", log, log],
+    env: { ...process.env, PORT: port },
+  });
+  child.unref();
+  closeSync(log);
+  // Poll a tiny endpoint until it answers (any HTTP response means it's
+  // listening) or give up after ~6s.
+  for (let i = 0; i < 60; i++) {
+    await sleep(100);
+    const up = await fetch(`${BASE}/api/kits`).then(
+      () => true,
+      () => false,
+    );
+    if (up) return true;
+  }
+  return false;
 }
 
 // --- git helpers, for `showcase review` ---
