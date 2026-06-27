@@ -280,8 +280,9 @@ logic."
 
 A 5,000-line agent diff is exactly where a real change hides in the
 "mechanical-skipped" bucket — and the decision form factor _amplifies_ that bug
-instead of catching it (the form-factor doc's own open question #2). Close it with
-a **deterministic** re-check, not another LLM pass: flag any
+instead of catching it (the form-factor doc's open question #2, now **resolved**
+by this audit — built as `evidence-pack cold-set`, T7). Close it with a
+**deterministic** re-check, not another LLM pass: flag any
 `mechanical-skipped`/`reviewed-no-comment` file whose churn exceeds a threshold,
 whose path is sensitive, or that change-couples to a `has-decision` file — and
 force a decision or an explicit justification. This makes the manifest's
@@ -586,23 +587,37 @@ re-check before editing.
   `ReviewInline` for every review session; `ReviewInline` sets `readonly` from
   `exportBundle()`.
 
-**Specced, not built** — the keystone of the skill-side bucket:
+**Built (2026-06-27, in `aic`)** — the keystone of the skill-side bucket:
 
-- **T6 📄 spec written** — see [`docs/evidence-pack-spec.md`](./evidence-pack-spec.md).
-  The pack is fully specified (output schema, conflict rule, time-to-first-card
-  budget, honesty rules, acceptance). The **tool itself is not built** — it lands
-  in the skill, not showcase (see the seam note below).
+- **T6 ✅ built** — `evidence-pack` tool in the `aic` repo (`src/tools/evidence-pack.ts`,
+  route **b**), to the spec in [`docs/evidence-pack-spec.md`](./evidence-pack-spec.md).
+  `evidence-pack pack --base <ref> --head HEAD --json` emits the frozen-diff pack:
+  changed files with churn + hunk `file:line` ranges, hop-1 reach (language-gated,
+  labeled heuristic), change-coupling with the `missingFromDiff` hint, and opt-in
+  shell-out check receipts. Git sections are byte-reproducible for a frozen base.
+  The `code-review` skill is wired to compute it before judging and apply the
+  pack-vs-model conflict rule (`reference/execution.md`). None of it touches
+  showcase — the seam held.
 
-**Not started — needs the skill/aic environment** (absent in the repo where this
-pass ran; see the decision below): **T7, T8, T9, T10**. **Deferred by YAGNI** (do
-not build until a real review demands it): **T11, T12, T13**.
+**Built (2026-06-27, in `aic`) — the whole "then" bucket:** **T7, T8, T9, T10**.
 
-> **Why the skill-side tasks didn't land here.** This pass ran against the
-> `showcase` repo only. The `code-review` skill (`~/.claude/skills/code-review/`)
-> and its `aic` source were **not present**, and the engine doc's seam is explicit
-> that T6–T10 "land in the skill. None touch showcase" (see "How this maps onto the
-> existing code"). So nothing analysis-side was added to showcase. The next agent
-> with the skill/aic checkout picks up from T6's spec.
+- **T7 ✅** cold-set audit — `evidence-pack cold-set` re-flags a skipped file with
+  churn/sensitive/coupling risk; wired into `code-review/reference/execution.md`.
+- **T8 ✅** reach-gated escalation + lens dispatch — `code-review/reference/lenses.md`
+  gates the panel on sensitive-trigger AND high reach and dispatches
+  backend/frontend lenses by risk dimension.
+- **T9 ✅** verification receipts — a P1/block must name a runnable receipt or it
+  auto-downgrades (`deep-review.md`).
+- **T10 ✅** flexibility seam — `code-review/reference/profiles.md`: chill/standard/strict
+  severity floor + never-flag/always-flag lists from `AGENTS.md`/`CLAUDE.md`.
+
+**Deferred by YAGNI** (do not build until a real review demands it): **T11, T12,
+T13**.
+
+> **Cross-repo status.** T6–T10 all landed in the `aic` repo, not here — the
+> engine doc's seam is explicit that they "land in the skill. None touch
+> showcase." Nothing left in the do-now / then buckets; only the YAGNI-gated
+> T11–T13 remain, by design.
 
 ### The decision to make first (it gates everything skill-side)
 
@@ -692,40 +707,43 @@ having the skill/aic checkout, which was absent for this pass — so only the
 > ([`evidence-pack-spec.md`](./evidence-pack-spec.md)); the rest await the
 > skill/aic checkout. Start at T6, then T7/T9 (consume the pack), then T8/T10.
 
-- [ ] **T6 · The deterministic evidence pack.** 📄 _Spec written —
-      [`docs/evidence-pack-spec.md`](./evidence-pack-spec.md); tool not built (skill-side)._
-      _Route (b) tool._ Emit, for a
+- [x] **T6 · The deterministic evidence pack.** ✅ _Built in `aic`:
+      `src/tools/evidence-pack.ts` (route b), to [`docs/evidence-pack-spec.md`](./evidence-pack-spec.md)._
+      Emits, for a
       frozen diff: hunk `file:line` ranges, per-file churn, hop-1 callers + their tests,
-      change-coupling (pinned window), shell-out lint/test results — as JSON the skill
-      cites and may not re-derive. Add the **conflict rule** (a Layer-1 fact beats a
+      change-coupling (pinned window), opt-in shell-out lint/test results — as JSON the
+      skill cites and may not re-derive. The **conflict rule** (a Layer-1 fact beats a
       Layer-2 assertion; surface the discrepancy) and the **time-to-first-card budget**
-      (seconds or stream; lint/test opt-in per slice, never a precondition for card 1).
-      _Needs its own spec before coding_ (`docs/evidence-pack-spec.md`). _Done when:_
-      same diff → reproducible pack (flaky tests recorded honestly); findings cite pack
-      `file:line`; a contradicted high-confidence claim is capped + flagged.
-- [ ] **T7 · Cold-set audit.** _Route (b)._ Re-flag any
-      `mechanical-skipped`/`reviewed-no-comment` file with churn over threshold, a
-      sensitive path, or coupling to a `has-decision` file → force a decision or an
-      explicit justification. No per-repo config (test/generated classifier optional).
-      _Done when:_ a high-churn file silently parked in `mechanical-skipped` is surfaced
-      or carries a justification note.
-- [ ] **T8 · Reach-gated escalation + lens dispatch.** _Route (a)._ Escalate to the
-      panel only on sensitive-trigger **AND** high deterministic reach; wire
-      backend/frontend lenses by risk dimension in `reference/deep-review.md`, not the
-      extension table in `reference/languages.md`. _Done when:_ an isolated sensitive
-      one-liner gets one specialist, not a 5-agent panel; a high-reach slice gets the
-      panel; lenses load by risk dimension.
-- [ ] **T9 · Verification receipts for block/P1.** _Route (a)._ A `block`/P1
-      decision must name a check it ran; the receipt rides into the decision's
-      `evidence` as a `terminal`/`diff`/`code` part; a receiptless claim auto-downgrades
-      before publish. _Done when:_ every shipped block decision carries a runnable
-      receipt in its evidence pane.
-- [ ] **T10 · Flexibility seam.** _Route (a)._ One enum (chill/standard/strict
-      severity floor) + two lists (always/never-flag), read from `AGENTS.md`/`CLAUDE.md`;
-      per-PR chat override wins; never-flag never suppresses a P1 and a suppressed item
-      shows as a manifest disposition. _Done when:_ `strict`/`chill` changes which
-      severities become decisions (no type change); a never-flag entry suppresses a
-      matching nit and records it in the manifest; a P1 is never suppressed.
+      (git-only sub-second sections first; `--checks` opt-in, never a precondition for
+      card 1) live in the skill wiring (`code-review/reference/execution.md`). _Done:_
+      same range → byte-identical git sections (verified); reach resolves hop-1 callers
+      with `inDiff` flags; coupling surfaces real co-changed-but-untouched files. The
+      pack-vs-model conflict rule is enforced skill-side at review time.
+- [x] **T7 · Cold-set audit.** ✅ _Built in `aic`: `evidence-pack cold-set`._ Re-flags
+      any skipped file with churn over threshold, a sensitive path, or change-coupling
+      to another file in this diff → forces a decision or an explicit justification. No
+      per-repo config. Wired into `code-review/reference/execution.md`. _Done:_ a
+      high-churn or sensitive skipped file is surfaced in `mustDecide` and must carry a
+      justification.
+- [x] **T8 · Reach-gated escalation + lens dispatch.** ✅ _Built in `aic`:
+      `code-review/reference/lenses.md`._ The panel is gated on sensitive-trigger
+      **AND** high deterministic reach; a sensitive-but-isolated change gets one scoped
+      specialist. Backend/frontend lenses dispatch by risk dimension, not the extension
+      table. SKILL.md "Pick depth" and `deep-review.md` updated. _Done:_ isolated
+      sensitive one-liner → one specialist; high-reach slice → panel; lenses load by
+      risk dimension.
+- [x] **T9 · Verification receipts for block/P1.** ✅ _Built in `aic`:
+      `code-review/reference/deep-review.md` P1 gate + a SKILL.md red flag._ A `block`/P1
+      must name a check it ran (failing test, reach/grep hit, reproduced trace) that
+      rides into the finding's `evidence`; a receiptless claim auto-downgrades to P2 or
+      is dropped. _Done:_ every shipped block carries a runnable receipt.
+- [x] **T10 · Flexibility seam.** ✅ _Built in `aic`:
+      `code-review/reference/profiles.md`._ One enum (chill/standard/strict severity
+      floor) + two lists (always/never-flag), read from `AGENTS.md`/`CLAUDE.md`; per-PR
+      override > repo file > default; never-flag never suppresses a P1 and a suppressed
+      item shows as a manifest disposition. _Done:_ `strict`/`chill` changes which
+      severities surface (no type change); never-flag suppresses a matching nit and
+      records it; a P1 is never suppressed.
 
 ### Earn their keep — gated on a real review that demands it
 
@@ -734,8 +752,9 @@ having the skill/aic checkout, which was absent for this pass — so only the
 - [ ] **T13 ·** agent-owned, human-editable adjudication-memory ledger — only if it
       proves out `[skill/aic]`.
 
-**Sequencing:** T0–T5 are **done** (in this repo). T6's **spec is written**
-(`evidence-pack-spec.md`); it is the keystone of the "then" bucket — T7/T9 consume
-its pack — so build it first when the skill/aic checkout is available, then T8/T10.
-YAGNI gates T11–T13. See **▶ Status for the next agent** at the top of this appendix
-for the authoritative per-task state.
+**Sequencing:** T0–T5 are **done** (in this repo); **T6–T10 are built** (in `aic`
+— the evidence pack, cold-set audit, lenses + reach-gating, verification
+receipts, and the strictness/never-flag seam). Nothing remains in the do-now or
+then buckets; only the YAGNI-gated **T11–T13** are open, by design. See **▶ Status
+for the next agent** at the top of this appendix for the authoritative per-task
+state.
