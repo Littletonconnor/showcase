@@ -82,9 +82,9 @@ The form factor is built and was dogfooded against a real Java PR
 ### Run & verify
 
 - Pinned Node: `export PATH="$HOME/.nvm/versions/node/v24.12.0/bin:$PATH"`.
-  Port **8229**. `npm run dev` builds the viewer + restarts the server on save.
-- Gate before "done": `npm run typecheck`, `npm test`, `npm run lint` (warnings =
-  errors), `npm run format:check`. For UI, screenshot with a headless Playwright
+  Port **8229**. `pnpm dev` builds the viewer + restarts the server on save.
+- Gate before "done": `pnpm typecheck`, `pnpm test`, `pnpm lint` (warnings =
+  errors), `pnpm format:check`. For UI, screenshot with a headless Playwright
   script and actually look — `http://localhost:8229/session/<reviewSessionId>`.
 
 ### Cautions
@@ -133,15 +133,16 @@ the chrome and the sandboxed part-iframes.
 
 ```sh
 cd ~/personal/showcase
-npm run serve            # API + viewer on http://localhost:8229  (keep running)
+pnpm install             # once after cloning (pnpm workspace)
+pnpm serve               # API + viewer on http://localhost:8229  (keep running)
 # rebuild the viewer + restart after viewer changes:
-npm run build:viewer
-node bin/showcase.js demo   # seed example sessions to look around
+pnpm build:viewer
+node packages/cli/bin/showcase.js demo   # seed example sessions to look around
 ```
 
 **Create a surface** — in Cursor/Claude Code, ask "diagram X on showcase" /
 "sketch this on showcase"; the agent calls `publish_surface` and a card appears.
-Or directly: `node bin/showcase.js mermaid flow.mmd --title "Flow"` (also
+Or directly: `node packages/cli/bin/showcase.js mermaid flow.mmd --title "Flow"` (also
 `publish`, `diff`, `markdown`, `code`, `image`, …).
 
 **Iterate** — the agent calls `update_surface {id, parts}` → _same card, new
@@ -153,12 +154,19 @@ local API), pinned to the v24 node binary:
 
 - Claude Code — user scope in `~/.claude.json`, `SHOWCASE_AGENT=claude-code`.
 - Cursor — global `~/.cursor/mcp.json`, `SHOWCASE_AGENT=cursor`.
-  Only requirement: keep `npm run serve` running, then talk to either agent.
+  Only requirement: keep `pnpm serve` running, then talk to either agent.
   Restart the editor after MCP config changes.
 
 ---
 
 ## 3. Architecture map
+
+> **Workspace note:** the code is now a pnpm workspace — the files below moved
+> into `packages/{core,server,mcp,cli,viewer}/` (the runtime-agnostic half —
+> `types`, `surfacePage`, `themes`, `kits`, `blueprints`, `events`, `mcpSpec`,
+> `export` — is `@showcase/core`; `app`/`storage`/`mcpHttp`/`index` are
+> `@showcase/server`). Paths below are written in the pre-split form for brevity;
+> `AGENTS.md` has the canonical package map.
 
 - `server/app.ts` — Hono app (runtime-agnostic): routes, SSE `/api/events`,
   long-poll `/api/comments`, the `/s/:id` sandboxed renderer, and the shared
@@ -207,10 +215,10 @@ The agent receives it when it next touches showcase:
   `<iframe>`s, and `.thread .cmt.user` carrying the comment text) so it survives
   a restyle but catches a broken change. **Keep these hooks intact.** (Gap: desktop-chromium
   only — see Pillar F.)
-- **Verify before reporting done** (all must pass): `npm run typecheck`
-  (node + viewer tsc), `npm run lint` (oxlint, warnings = errors),
-  `npm run build:viewer`, `npx playwright test`. For UI, screenshot via a headless
-  Playwright script and look at it. `npm run format` last.
+- **Verify before reporting done** (all must pass): `pnpm typecheck`
+  (root test program + `pnpm -r typecheck`), `pnpm lint` (oxlint + core no-`node:`
+  boundary, warnings = errors), `pnpm build:viewer`, `npx playwright test`. For UI,
+  screenshot via a headless Playwright script and look at it. `pnpm format` last.
 - **Node:** prefix shells with a pinned v24 on PATH, e.g.
   `export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:/usr/bin:/bin:/usr/local/bin"`.
   This shell aliases `cat`→a missing tool (use Read/`sed`) and lacks `lsof`
@@ -408,7 +416,10 @@ validate` command so theme/kit/blueprint authors (`docs/themable-explainers.md`)
   "pnpm monorepo") are folded into it. The full plan — target package layout, the
   per-surface designs, the migration sequencing, and the open decisions — lives in
   **[§6.A below](#6a--platform-split-track-pnpm-monorepo--best-in-class-cli--mcp--viewer)**.
-  _Effort: large; do the monorepo split first, then the three surfaces on top of it._
+  **✅ Move 0 (the workspace split) is shipped** — five `@showcase/*` packages,
+  green on all gates, behavior-preserving. Moves 1–3 (per-surface reworks) inherited
+  their structural wins from it and are now additive-quality follow-ups; see §6.A.
+  _Effort: large; the split is done — the three surface reworks remain._
 
 #### 6.A — Platform-split track: pnpm monorepo + best-in-class CLI / MCP / viewer
 
@@ -430,9 +441,18 @@ validate` command so theme/kit/blueprint authors (`docs/themable-explainers.md`)
 > `commands/load-test/tui/`, and a separate `website/` (Next.js). Curly is a single
 > package, not a monorepo — borrow its **command layout**, not its packaging.
 
-##### Move 0 — pnpm workspace split (do this first)
+##### Move 0 — pnpm workspace split ✅ SHIPPED
 
-Target layout (names illustrative; `@showcase/*` scope):
+**Done.** The repo is a pnpm workspace of five `@showcase/*` packages — exactly
+the layout below. Cross-package imports use package names (per-package `exports`
+map `./*: ./*.ts`), which Node type-strips across the workspace symlink with no
+build step. Open decisions were resolved with the user: **pnpm** (not npm
+workspaces), **plain root scripts** (no turbo). The viewer-artifact question is
+answered by a `@showcase/viewer` `server-entry` that resolves its own built
+`dist/index.html`, so the server reads it without hard-coding the layout. The
+runtime-agnostic boundary is CI-enforced (`scripts/check-core-boundary.mjs` fails
+the lint gate on any `node:` import in core). All gates green; the e2e oracle is
+identical to the pre-split baseline (behavior-preserving). The shipped layout:
 
 ```
 showcase/
@@ -492,11 +512,12 @@ Things that must survive the split:
 
 ##### Move 1 — best-in-class CLI (`packages/cli`)
 
-**✅ Mostly shipped — the command-layout rework landed; only the package move
-remains.** The old single ~1400-line `bin/showcase.js` was reworked into a real
-CLI in the **current single-package layout** under `cli/` (the pnpm split is
-Move 0; this move was done on top of today's tree, so it relocates into
-`packages/cli` as part of move 0 rather than blocking on it). Modeled on curly:
+**✅ Shipped — the command-layout rework landed and the package move is done**
+(`packages/cli`, relocated as part of Move 0). The old single ~1400-line
+`bin/showcase.js` was reworked into a real CLI modeled on curly. It is strictly
+zero-dep and imports nothing from other packages (talks to the server over HTTP),
+so the package boundary holds without effort. _Optional polish remaining: add
+color/tables to the human output._ The shipped shape:
 
 - **Command router** ✅ — `bin/showcase.js` is now a thin launcher into
   `cli/main.ts`; a **command registry** (`cli/registry.ts`) holds one `Command`
@@ -518,9 +539,8 @@ Move 0; this move was done on top of today's tree, so it relocates into
   rework stayed **strictly zero-dep** (node built-ins only) and type-stripped like
   the server; no arg-parser/framework added. Note: the publish-family `--json`
   _part_ flag was renamed `--json-part` to free the global `--json`.
-- **Remaining:** relocate `cli/` into `packages/cli` (imports _types only_ from
-  `@showcase/core`, must not pull the viewer's React/Vite tree) when Move 0 lands;
-  optionally add color/tables to the human output.
+- **Package move** ✅ — `cli/` now lives in `packages/cli` (zero-dep, no viewer
+  tree). _Optional polish remaining: color/tables in the human output._
 
 ##### Move 2 — best-in-class MCP (`packages/mcp` + the server's HTTP transport)
 
@@ -528,11 +548,11 @@ The MCP already has two transports (stdio in `mcp/`, streamable-HTTP at `/mcp`) 
 already advertises **resources** (`showcase://surface/<id>`) and **prompts**
 (`review_pr`, `explainer`). Best-in-class means tightening, not rebuilding:
 
-- **One schema, two transports** — `mcpSpec.ts` moves to `@showcase/core` as the
-  single source of truth for tool schemas + field docs + prompt text; both the stdio
-  server and `mcpHttp.ts` import it. (Partly true today — make it total.)
+- **One schema, two transports** ✅ — `mcpSpec.ts` now lives in `@showcase/core`
+  as the single source of truth for tool schemas + field docs + prompt text; both
+  the stdio server (`packages/mcp`) and `mcpHttp.ts` import it from there.
 - **Typed + validated** — every tool input/output backed by a `zod` schema with
-  structured, actionable error responses (not stringly-typed failures).
+  structured, actionable error responses (not stringly-typed failures). _(Remaining.)_
 - **Round-trip completeness** — `get_surface` (content read-back) is shipped; extend
   resources to **sessions** and **assets**, and confirm `update_surface` in-place
   revision stays the iterate path. Keep tool descriptions excellent — the agent's
@@ -548,10 +568,11 @@ already advertises **resources** (`showcase://surface/<id>`) and **prompts**
 Already React 19 + zustand + Tailwind v4 + vendored shadcn, Vite → one self-contained
 `index.html`. Best-in-class here is about isolation, contract, and quality:
 
-- **Isolated dep tree** — the React/Vite/shadcn stack lives only in `@showcase/viewer`
-  so the CLI and stdio MCP stay lean and publishable without it.
-- **Typed wire contract** — import surface/part types from `@showcase/core` instead of
-  re-declaring them, so a server-side model change breaks the viewer build (good).
+- **Isolated dep tree** ✅ — the React/Vite/shadcn stack lives only in
+  `@showcase/viewer`; the CLI and stdio MCP carry none of it.
+- **Typed wire contract** ✅ — the viewer imports surface/part types from
+  `@showcase/core` (no re-declaration), so a server-side model change breaks the
+  viewer build.
 - **Keep the single-file artifact** — it's a feature (the server serves one file); do
   _not_ code-split. Note the tension with bundle growth and revisit only if it bites.
 - **Component/unit tests** — add `vitest` + Testing Library for the part renderers
@@ -563,27 +584,26 @@ Already React 19 + zustand + Tailwind v4 + vendored shadcn, Vite → one self-co
 
 ##### Sequencing & open decisions
 
-**Order:** (0) workspace split with packages 1:1 to today's folders and _no behavior
-change_ — get green on `typecheck`/`test`/`lint`/oracle first; **then** (1) CLI, (2)
-MCP, (3) viewer independently, each its own series of small commits. Don't combine
-the structural move with a surface rework — land the split boringly first.
+**Order:** (0) workspace split ✅ — landed boringly, behavior-preserving, green on
+`typecheck`/`test`/`lint`/oracle. **Then** (1) CLI, (2) MCP, (3) viewer
+independently, each its own series of small commits.
 
-**Open decisions to flag before starting** (see also §7):
+**Open decisions — all resolved when Move 0 landed:**
 
-- **`pnpm` migration itself** — replaces `npm` + the root `package-lock.json`;
-  confirm the user wants `pnpm` (vs. `npm` workspaces) before converting CLAUDE.md's
-  `npm run …` muscle-memory and the dev scripts.
-- **`turbo` (or not)** — task-graph + caching vs. keeping a few plain root scripts.
-  Lean "not yet" unless the per-package task graph genuinely hurts.
-- **CLI zero-dep stance** — keep it strictly zero-dep, or allow one small vetted
-  arg-parser/output helper now that it's a standalone publishable package? Weigh
-  against the install-friction goal.
-- **Viewer-artifact resolution** — how `@showcase/server` locates the built
-  `index.html` across the workspace boundary (resolved `node_modules` path vs. a
-  viewer-exported entry).
+- **`pnpm` migration** ✅ DECIDED — pnpm workspace (not npm workspaces);
+  `package-lock.json` is gone, `pnpm-lock.yaml` is the lockfile, and the
+  `npm run …` muscle-memory maps 1:1 to `pnpm …`.
+- **`turbo` (or not)** ✅ DECIDED — not yet. Plain root scripts + `pnpm -r`; revisit
+  only if the per-package task graph genuinely hurts.
+- **CLI zero-dep stance** ✅ DECIDED — kept strictly zero-dep.
+- **Viewer-artifact resolution** ✅ DECIDED — a `@showcase/viewer` `server-entry`
+  resolves its own built `dist/index.html`; the server imports the path, staying
+  ignorant of the workspace layout (chosen over a hard-coded `node_modules` path).
 
-_Effort: large. Treat move 0 as a self-contained PR; moves 1–3 as independent
-follow-ups that can land in any order once the workspace exists._
+_Effort: Move 0 done. Moves 1–3 are independent additive-quality follow-ups that can
+land in any order — much of their structural intent already came for free with the
+split (CLI isolated & zero-dep, viewer dep tree isolated + typed wire contract, one
+MCP schema in core)._
 
 _Deferred / punted (revisit later):_ a **durable searchable store** (SQLite +
 FTS5) for referencing old mockups/reviews — `JsonFileStore` is fine at personal
