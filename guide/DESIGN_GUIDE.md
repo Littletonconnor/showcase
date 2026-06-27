@@ -344,6 +344,13 @@ theme tokens, so kit output re-themes with the board.
   Reach for these raw classes to hand-build a custom review-overview surface. (To
   publish a structured code review, use the decision-queue review —
   `publish_decisions`; see **PLAYBOOK**.)
+- **`mockup`** — building blocks for **UI / design mockups**: a framed `.panel`,
+  an `.eyebrow` / `.label` section header, a tone `.callout` (`.ok`/`.warn`/
+  `.danger`/`.muted`) with a left accent bar, a labeled `.box`, stand-in controls
+  (`.btn` + `.primary`/`.ghost`, `.input`, `.pill`), a `.metric` stat, and a
+  `.swatch`. **Don't hand-roll a palette into a mockup's `<style>`** — compose
+  these classes and set the surface's `theme` (below) so a set of mockups stays
+  visually consistent and re-skins together instead of drifting.
 
 Copy-paste starting points — `issues` (a PR + CI tree), `slides` (a deck), and
 `animate` (a stepped explainer):
@@ -396,8 +403,27 @@ Copy-paste starting points — `issues` (a PR + CI tree), `slides` (a deck), and
 </div>
 ```
 
+```html
+<!-- kits: ["mockup"], theme: "brand" -->
+<div class="panel stack lg">
+  <div class="stack sm">
+    <span class="eyebrow">Leaning &amp; why</span>
+    <p>One store of structured facts, with a read-only summary generated on top.</p>
+  </div>
+  <div class="callout ok stack sm">
+    <span class="label">The change</span>
+    <p>Memory is a single list of facts — the source of truth.</p>
+  </div>
+  <div class="row">
+    <button class="btn primary">Save</button>
+    <button class="btn ghost">Cancel</button>
+  </div>
+</div>
+```
+
 ```sh
 showcase publish board.html --kit issues       # CLI (repeatable: --kit a --kit b)
+showcase publish mockup.html --kit mockup --theme brand   # a themed mockup
 ```
 
 ```js
@@ -426,6 +452,23 @@ compose with) so it adapts to light/dark automatically. Never hardcode colors;
 - Fonts: `--font-sans|serif|mono`; radius: `--border-radius-md|lg|xl` (8/12/16px)
 
 Mental test: if the background were near-black, would every element still read?
+
+### Per-surface themes
+
+A surface can render under its own **theme** — the palette every `--color-*`
+token resolves to. Set it once and the whole card (kit classes, rich parts, html)
+adopts it; reuse the same theme across a set of mockups so they stay consistent
+instead of each re-inventing a look. Themes:
+
+- **`showcase`** — the warm default (omit `theme` to get it).
+- **`brand`** — deep-indigo ink with a violet accent; the polished product look.
+- **`neutral`** — stark grayscale for wireframe / low-fidelity mockups.
+
+Set it on publish (`theme` on `publish_surface` / `publish_snippet`, or `--theme`
+on the CLI), change it later with `update_surface` (pass `null` to reset), or let
+the user switch it from the card's ⋯ menu. Because the tokens drive everything,
+**don't hardcode the palette** — pick a theme and compose with the tokens / the
+`mockup` kit.
 
 ## External resources
 

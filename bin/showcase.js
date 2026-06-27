@@ -37,6 +37,7 @@ usage:
       --json <file|->    add a json part from a JSON file (collapsible tree)
       --code <file|->    add a code part from a file (shiki-highlighted)
       --kit <id>        opt the html part into a kit (repeatable; see "showcase kits")
+      --theme <id>      render this surface under a theme (showcase | brand | neutral)
       --image <file>    upload an image and append it as an image part
       --session <id>    target session (default: auto per agent session)
       --session-title <t>  name for a newly created session — name the task,
@@ -351,6 +352,7 @@ function outSurface(surface) {
 // and add their own part-specific flags.
 const PUBLISH_OPTS = {
   title: { type: "string" },
+  theme: { type: "string" },
   session: { type: "string" },
   "session-title": { type: "string" },
   agent: { type: "string" },
@@ -498,6 +500,7 @@ async function publishSurface(parts, flags) {
     body: JSON.stringify({
       parts,
       title: flags.title,
+      theme: flags.theme,
       session,
       sessionTitle: flags["session-title"],
     }),
@@ -1336,6 +1339,7 @@ const commands = {
                 title: snip.title,
                 parts: snip.parts,
                 badge: snip.badge,
+                theme: snip.theme,
               }),
             })
           : await api("/api/snippets", {

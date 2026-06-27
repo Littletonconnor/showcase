@@ -12,7 +12,7 @@ import { preloadFileDiff } from "@pierre/diffs/ssr";
 import type { DiffPart as DiffPartData } from "./api.ts";
 import { themeById } from "../../server/themes.ts";
 import { SandboxedPart } from "./SandboxedPart.tsx";
-import { useActiveTheme, useResolvedMode } from "./theme.ts";
+import { useSurfaceTheme, useResolvedMode } from "./theme.ts";
 
 // Wrapper styles for the sandbox iframe. Each file's diff is a @pierre/diffs SSR
 // fragment mounted in its OWN declarative shadow root (it ships its own scoped
@@ -167,7 +167,7 @@ function DiffManifest(props: { files: DiffFileInfo[] }) {
 }
 
 export function DiffPart(props: { part: DiffPartData }) {
-  const activeTheme = useActiveTheme();
+  const activeTheme = useSurfaceTheme();
   const mode = useResolvedMode();
   const dark = mode === "dark";
   const [error, setError] = useState<string | null>(null);

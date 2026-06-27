@@ -236,6 +236,10 @@ export interface Surface {
   // A scannable status chip in the header — review severity ("Bug"/"Nit"/…),
   // or any short label. Versioned content (see SurfaceBadge).
   badge?: SurfaceBadge;
+  // Theme id this surface renders under (see server/themes.ts). Unset → the
+  // board default. Lets one mockup pick the brand palette while another stays
+  // neutral, without a global switch.
+  theme?: string;
 }
 
 // --- the agent-era review form factor (see docs/review-form-factor.md) ---
@@ -375,6 +379,7 @@ export interface CreateSurfaceInput {
   title?: string;
   parts: SurfacePart[];
   badge?: SurfaceBadge;
+  theme?: string;
 }
 
 export interface UpdateSurfaceInput {
@@ -382,6 +387,8 @@ export interface UpdateSurfaceInput {
   parts?: SurfacePart[];
   // `null` clears the badge; `undefined` leaves it unchanged.
   badge?: SurfaceBadge | null;
+  // `null` resets to the board default; `undefined` leaves it unchanged.
+  theme?: string | null;
 }
 
 export interface CreateCommentInput {

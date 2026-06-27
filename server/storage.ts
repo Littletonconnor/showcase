@@ -279,6 +279,7 @@ export class JsonFileStore implements Store {
       version: 1,
       history: [],
       ...(input.badge ? { badge: input.badge } : {}),
+      ...(input.theme ? { theme: input.theme } : {}),
     };
     this.surfaces.set(surface.id, surface);
     this.touch(input.sessionId);
@@ -290,6 +291,21 @@ export class JsonFileStore implements Store {
     await this.load();
     const surface = this.surfaces.get(id);
     if (!surface) return null;
+    // Theme is a rendering choice, not content — a theme-only change re-skins in
+    // place without snapshotting a new version (so flipping themes while
+    // comparing mockups doesn't fill the version dropdown with identical content).
+    const contentChange =
+      patch.title !== undefined || patch.parts !== undefined || patch.badge !== undefined;
+    if (patch.theme !== undefined) {
+      if (patch.theme === null) delete surface.theme;
+      else surface.theme = patch.theme;
+    }
+    if (!contentChange) {
+      surface.updatedAt = new Date().toISOString();
+      this.touch(surface.sessionId);
+      await this.persist();
+      return clone(surface);
+    }
     surface.history.push({
       version: surface.version,
       title: surface.title,

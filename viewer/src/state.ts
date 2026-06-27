@@ -26,9 +26,8 @@ import { routeGet, routeNavigate, type Route, root } from "./host.ts";
 // /                       → redirect to last-viewed session (localStorage)
 const LAST_SESSION_KEY = "showcase-last-session";
 
-// A comment as the viewer renders it: server comments plus the optimistic
-// local echo (pending until the POST confirms).
-export type ViewComment = Comment & { pending?: boolean };
+// A comment as the viewer renders it.
+export type ViewComment = Comment;
 
 const DISMISSED_UPDATE_KEY = "showcase-dismissed-update";
 
@@ -215,9 +214,8 @@ export function clearUnread(id: string) {
   });
 }
 
-// One toast helper for the whole app, now backed by shadcn Sonner. Call sites
-// are unchanged (`toast("…")`); the rendering moved from the hand-rolled #toast
-// div to the <Toaster/> mounted in App.
+// One toast helper for the whole app, backed by the shadcn Sonner <Toaster/>
+// mounted in App.
 export function toast(text: string) {
   sonnerToast(text);
 }
@@ -327,15 +325,6 @@ export async function refreshSessions(targetSurfaceId?: string | null) {
     });
   }
 }
-
-// Resolution markers posted by a card's Approve / Dismiss actions. A finding is
-// "resolved" once the user approves (fixed) or dismisses (won't change) it; the
-// header verdict bar strikes resolved findings. Kept here so the action that
-// posts the marker and the rollup that reads it can't drift apart.
-export const APPROVAL_MARK = "✓ Approved — this looks good.";
-export const DISMISS_MARK = "⊘ Dismissed — not changing this.";
-export const isResolutionComment = (c: { author: string; text: string }) =>
-  c.author === "user" && (c.text.startsWith("✓ Approved") || c.text.startsWith("⊘ Dismissed"));
 
 export async function select(
   id: string,
@@ -449,46 +438,6 @@ function mergeComments(list: Comment[]) {
     const fresh = list.filter((c) => !seen.has(c.id));
     return fresh.length > 0 ? { comments: [...state.comments, ...fresh] } : state;
   });
-}
-
-let localSeq = 0;
-
-// Echo the comment immediately (pending until the POST confirms), and on
-// failure report the error so the composer can put the text back — a user
-// message must never be silently lost. Returns the error message, or null.
-export async function sendComment(
-  body: Record<string, unknown>,
-  surfaceId: string | null,
-  text: string,
-): Promise<string | null> {
-  const local: ViewComment = {
-    id: `local-${++localSeq}`,
-    seq: 0,
-    sessionId: selectedNow() ?? "",
-    surfaceId,
-    surfaceTitle: null,
-    author: "user",
-    text,
-    createdAt: new Date().toISOString(),
-    pending: true,
-  };
-  set((state) => ({ comments: [...state.comments, local] }));
-  try {
-    const created = await api<Comment>("/api/comments", {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-    set((state) => {
-      // the SSE refetch may have rendered it already; keep one copy
-      if (state.comments.some((c) => c.id === created.id))
-        return { comments: state.comments.filter((c) => c.id !== local.id) };
-      return { comments: state.comments.map((c) => (c.id === local.id ? created : c)) };
-    });
-    return null;
-  } catch (err) {
-    set((state) => ({ comments: state.comments.filter((c) => c.id !== local.id) }));
-    return err instanceof Error && err.message ? err.message : "network error";
-  }
 }
 
 interface FeedEvent {

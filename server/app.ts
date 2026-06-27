@@ -8,7 +8,7 @@ import { buildExportBundle, exportFilename, renderExportHtml } from "./export.ts
 import { kitSummaries } from "./kits.ts";
 import { registerMcp } from "./mcpHttp.ts";
 import { renderHtmlPage } from "./surfacePage.ts";
-import { DEFAULT_THEME_ID, themeById } from "./themes.ts";
+import { DEFAULT_THEME_ID, isKnownTheme, themeById } from "./themes.ts";
 import {
   type Asset,
   type AssetKind,
@@ -202,6 +202,7 @@ const surfaceMeta = (s: Surface) => ({
   version: s.version,
   parts: stripParts(s.parts),
   ...(s.badge ? { badge: s.badge } : {}),
+  ...(s.theme ? { theme: s.theme } : {}),
 });
 
 function isPublicReadAllowed(path: string, mode: PublicReadMode): boolean {
@@ -231,6 +232,7 @@ const writeResult = (s: Surface) => ({
   version: s.version,
   kinds: s.parts.map((p) => p.kind),
   ...(s.badge ? { badge: s.badge } : {}),
+  ...(s.theme ? { theme: s.theme } : {}),
 });
 
 export interface CommentWait {
@@ -538,6 +540,7 @@ export function createApp({
     parts: SurfacePart[];
     title?: string;
     badge?: SurfaceBadge;
+    theme?: string;
     session?: string;
     sessionTitle?: string;
     agent?: string;
@@ -571,6 +574,7 @@ export function createApp({
       parts: input.parts,
       title: input.title?.slice(0, MAX_TITLE),
       badge: input.badge,
+      theme: isKnownTheme(input.theme) ? input.theme : undefined,
     });
     if (!surface) return { error: "session not found", status: 404 };
     bus.broadcast({ type: "surface-created", id: surface.id, sessionId, version: 1 });
@@ -665,7 +669,12 @@ export function createApp({
 
   async function reviseSurface(
     id: string,
-    patch: { parts?: SurfacePart[]; title?: string; badge?: SurfaceBadge | null },
+    patch: {
+      parts?: SurfacePart[];
+      title?: string;
+      badge?: SurfaceBadge | null;
+      theme?: string | null;
+    },
   ): Promise<
     { surface: Surface; userFeedback?: Feedback[] } | { error: string; status: 400 | 404 | 413 }
   > {
@@ -678,6 +687,8 @@ export function createApp({
       }
     }
     if (patch.title !== undefined) patch.title = patch.title.slice(0, MAX_TITLE);
+    // null clears the theme; a valid id sets it; an unknown id is ignored.
+    if (typeof patch.theme === "string" && !isKnownTheme(patch.theme)) delete patch.theme;
     const surface = await store.updateSurface(id, patch);
     if (!surface) return { error: "surface not found", status: 404 };
     bus.broadcast({
@@ -1165,6 +1176,7 @@ export function createApp({
       parts,
       title: typeof body.title === "string" ? body.title : undefined,
       badge: badge ?? undefined,
+      theme: typeof body.theme === "string" ? body.theme : undefined,
       session: typeof body.session === "string" ? body.session : undefined,
       sessionTitle: typeof body.sessionTitle === "string" ? body.sessionTitle : undefined,
       agent: typeof body.agent === "string" ? body.agent : undefined,
@@ -1200,6 +1212,16 @@ export function createApp({
       title: typeof body.title === "string" ? body.title : undefined,
       // `null` clears the badge; absent/malformed leaves it unchanged.
       badge: "badge" in body ? coerceSurfaceBadge(body.badge) : undefined,
+      // `null` resets to the default theme; a string sets it (validated in
+      // reviseSurface); absent leaves it unchanged.
+      theme:
+        "theme" in body
+          ? body.theme === null
+            ? null
+            : typeof body.theme === "string"
+              ? body.theme
+              : undefined
+          : undefined,
     });
     if ("error" in result) return c.json({ error: result.error }, result.status);
     return c.json({
@@ -1331,8 +1353,9 @@ export function createApp({
     if (!part || part.kind !== "html") return c.text("No html part at that index", 404);
     c.header("X-Content-Type-Options", "nosniff");
     // Theme: an explicit ?theme= (the viewer keys iframe srcs by it so a switch
-    // reloads the frame) wins; otherwise the persisted board theme; else default.
-    const themeId = c.req.query("theme") ?? DEFAULT_THEME_ID;
+    // reloads the frame) wins; otherwise the surface's own persisted theme; else
+    // the default. So opening a brand-themed mockup's link renders it in brand.
+    const themeId = c.req.query("theme") ?? surface.theme ?? DEFAULT_THEME_ID;
     // Scheme: the viewer passes the light/dark mode it resolved so the iframe is
     // pinned to it rather than re-deriving from the OS (which can diverge from
     // the chrome across the frame boundary). Absent/invalid → follow the OS.
