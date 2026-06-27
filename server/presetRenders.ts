@@ -14,12 +14,21 @@
 // and every agent string is escaped — a malformed field degrades to empty, never
 // breaks the layout or the surrounding markup.
 
-import type { SurfaceBadge } from "./types.ts";
+import { htmlPart, type ChartPart, type SurfaceBadge, type SurfacePart } from "./types.ts";
 
 export interface RenderedPreset {
   title: string;
-  html: string;
+  // The surface parts to publish. Most presets are a single html part; data-viz
+  // interleaves html scaffolding with native `chart` parts (Recharts, themed by
+  // the viewer) so the dashboard's charts are real, interactive, and re-theme.
+  parts: SurfacePart[];
   badge?: SurfaceBadge;
+}
+
+// A native chart part — rendered by the viewer, not as html, so it's interactive
+// and re-themes with the board (server/types.ts ChartPart).
+function chartPart(p: Omit<ChartPart, "kind">): ChartPart {
+  return { kind: "chart", ...p };
 }
 
 // --- coercion + escaping ----------------------------------------------------
@@ -48,40 +57,6 @@ const sec = (label: string) => `<span class="eyebrow">${esc(label)}</span>`;
 // A bulleted list from string[] (each item gets light inline fmt). Empty → "".
 const list = (items: unknown[]): string =>
   items.length ? `<ul>${items.map((i) => `<li>${fmt(i)}</li>`).join("")}</ul>` : "";
-
-// A themed horizontal bar chart (inline SVG) from {label, value} rows.
-function barsSvg(rows: { label: string; value: number }[]): string {
-  if (!rows.length) return "";
-  const w = 680;
-  const labelW = 96;
-  const max = Math.max(...rows.map((r) => r.value), 1);
-  const barMax = w - labelW - 56;
-  const rowH = 26;
-  const body = rows
-    .map((r, i) => {
-      const y = i * rowH + 6;
-      const bw = Math.max(2, Math.round((r.value / max) * barMax));
-      return `<text class="ts" x="0" y="${y + 14}">${esc(r.label)}</text>
-<rect x="${labelW}" y="${y + 4}" width="${bw}" height="14" rx="4" fill="var(--color-text-info)"/>
-<text class="ts num" x="${labelW + bw + 8}" y="${y + 15}">${esc(r.value)}</text>`;
-    })
-    .join("\n");
-  return `<svg width="100%" viewBox="0 0 ${w} ${rows.length * rowH + 12}">${body}</svg>`;
-}
-
-function sparklineSvg(values: number[]): string {
-  if (values.length < 2) return "";
-  const w = 680;
-  const h = 60;
-  const max = Math.max(...values);
-  const min = Math.min(...values);
-  const span = max - min || 1;
-  const step = w / (values.length - 1);
-  const pts = values
-    .map((v, i) => `${Math.round(i * step)},${Math.round(h - ((v - min) / span) * (h - 8) - 4)}`)
-    .join(" ");
-  return `<svg width="100%" viewBox="0 0 ${w} ${h}"><polyline points="${pts}" fill="none" stroke="var(--color-text-info)" stroke-width="2"/></svg>`;
-}
 
 // Auto-draw a left-to-right pipeline from component names (architecture overview).
 function pipelineSvg(names: string[]): string {
@@ -207,7 +182,7 @@ export function renderPostmortem(input: unknown): RenderedPreset {
     ${reminders ? `<div class="row">${reminders}</div>` : ""}
   </div>
 </div>`;
-  return { title, html, badge: { tone: "warning", label: "Postmortem" } };
+  return { title, parts: [htmlPart(html)], badge: { tone: "warning", label: "Postmortem" } };
 }
 
 // --- data-viz / dashboard ---------------------------------------------------
@@ -222,33 +197,66 @@ export function renderDashboard(input: unknown): RenderedPreset {
       return `<div class="box stack sm"><span class="label">${esc(o.label)}</span><span class="metric" style="font-size:20px">${esc(o.value)}</span></div>`;
     })
     .join("");
+  const delta = s(headline.delta) ? `<span class="dim"> · ${esc(headline.delta)}</span>` : "";
+
+  // Headline + stat boxes (html). The charts below are NATIVE parts.
+  const headHtml = `<div class="panel stack lg">
+  <div class="stack sm">${sec("Metrics")}<span class="title" style="font-size:20px">${esc(title)}</span></div>
+  <div class="row" style="gap:24px;align-items:flex-start">
+    <div class="stack sm">${sec("Headline")}<span class="metric">${esc(headline.value)}</span><span class="dim">${esc(headline.label)}${delta}</span></div>
+    ${stats}
+  </div>
+</div>`;
+
+  const parts: SurfacePart[] = [htmlPart(headHtml)];
+
+  // Breakdown — a real bar chart the viewer renders (themed, interactive).
   const bars = obj(d.bars);
-  const barRows = arr(bars.data).map((r) => {
-    const o = obj(r);
-    return { label: s(o.label), value: num(o.value) };
-  });
+  const barData = arr(bars.data)
+    .map((r) => {
+      const o = obj(r);
+      return { label: s(o.label), value: num(o.value) };
+    })
+    .filter((r) => r.label);
+  if (barData.length) {
+    parts.push(
+      chartPart({
+        chartType: "bar",
+        data: barData,
+        x: "label",
+        y: "value",
+        caption: ["Breakdown", s(bars.caption)].filter(Boolean).join(" · "),
+      }),
+    );
+  }
+
+  // Trend — a real area chart over the supplied series.
   const trend = obj(d.trend);
   const trendVals = arr(trend.values).map(num);
+  if (trendVals.length > 1) {
+    parts.push(
+      chartPart({
+        chartType: "area",
+        data: trendVals.map((v, i) => ({ t: i + 1, value: v })),
+        x: "t",
+        y: "value",
+        xLabel: s(trend.xLabel) || undefined,
+        caption: ["Trend", s(trend.caption)].filter(Boolean).join(" · "),
+      }),
+    );
+  }
+
+  // Detail + takeaway (html).
   const detail = arr(d.detail)
     .map((r) => {
       const o = obj(r);
       return `<li class="row"><span class="grow">${fmt(o.label)}</span><span class="mono num">${esc(o.value)}</span></li>`;
     })
     .join("");
-  const delta = s(headline.delta) ? `<span class="dim"> · ${esc(headline.delta)}</span>` : "";
+  const tailHtml = `${detail ? `<div class="stack sm">${sec("Detail")}<ul class="tree">${detail}</ul></div>` : ""}${s(d.takeaway) ? `<div class="callout ok stack sm">${sec("Takeaway")}<p>${fmt(d.takeaway)}</p></div>` : ""}`;
+  if (tailHtml) parts.push(htmlPart(tailHtml));
 
-  const html = `<div class="panel stack lg">
-  <div class="stack sm">${sec("Metrics")}<span class="title" style="font-size:20px">${esc(title)}</span></div>
-  <div class="row" style="gap:24px;align-items:flex-start">
-    <div class="stack sm">${sec("Headline")}<span class="metric">${esc(headline.value)}</span><span class="dim">${esc(headline.label)}${delta}</span></div>
-    ${stats}
-  </div>
-  ${barRows.length ? `<div class="stack sm">${sec("Breakdown")}${s(bars.caption) ? `<span class="dim">${esc(bars.caption)}</span>` : ""}${barsSvg(barRows)}</div>` : ""}
-  ${trendVals.length > 1 ? `<div class="stack sm">${sec("Trend")}${s(trend.caption) ? `<span class="dim">${esc(trend.caption)}</span>` : ""}${sparklineSvg(trendVals)}</div>` : ""}
-  ${detail ? `<div class="stack sm">${sec("Detail")}<ul class="tree">${detail}</ul></div>` : ""}
-  ${s(d.takeaway) ? `<div class="callout ok stack sm">${sec("Takeaway")}<p>${fmt(d.takeaway)}</p></div>` : ""}
-</div>`;
-  return { title, html, badge: { tone: "info", label: "Metrics" } };
+  return { title, parts, badge: { tone: "info", label: "Metrics" } };
 }
 
 // --- design-doc -------------------------------------------------------------
@@ -331,7 +339,7 @@ export function renderDesignDoc(input: unknown): RenderedPreset {
   ${s(d.rollout) || s(d.testing) ? `<div class="row" style="align-items:stretch;gap:10px">${s(d.rollout) ? `<div class="grow stack sm">${sec("Rollout plan")}<p class="faint">${fmt(d.rollout)}</p></div>` : ""}${s(d.testing) ? `<div class="grow stack sm">${sec("Testing & confidence")}<p class="faint">${fmt(d.testing)}</p></div>` : ""}</div>` : ""}
   ${openQ ? `<div class="callout muted stack sm">${sec("Open questions")}<ul>${openQ}</ul></div>` : ""}
 </div>`;
-  return { title, html, badge: { tone: "info", label: "Design" } };
+  return { title, parts: [htmlPart(html)], badge: { tone: "info", label: "Design" } };
 }
 
 // --- status report ----------------------------------------------------------
@@ -375,7 +383,7 @@ export function renderStatus(input: unknown): RenderedPreset {
   ${s(d.blockers) ? `<div class="callout warn stack sm">${sec("Blockers")}<p>${fmt(d.blockers)}</p></div>` : ""}
   ${next ? `<div class="stack sm">${sec("Next up")}<div class="row">${next}</div></div>` : ""}
 </div>`;
-  return { title, html, badge: { tone: "success", label: "Status" } };
+  return { title, parts: [htmlPart(html)], badge: { tone: "success", label: "Status" } };
 }
 
 // --- architecture -----------------------------------------------------------
@@ -409,7 +417,7 @@ export function renderArchitecture(input: unknown): RenderedPreset {
   ${s(d.decisions) ? `<div class="callout stack sm">${sec("Key decisions")}<p>${fmt(d.decisions)}</p></div>` : ""}
   ${s(d.scale) ? `<div class="callout warn stack sm">${sec("Scale & failure")}<p>${fmt(d.scale)}</p></div>` : ""}
 </div>`;
-  return { title, html, badge: { tone: "info", label: "Architecture" } };
+  return { title, parts: [htmlPart(html)], badge: { tone: "info", label: "Architecture" } };
 }
 
 // --- product demo (stepped, animate kit) ------------------------------------
@@ -482,7 +490,7 @@ export function renderProductDemo(input: unknown): RenderedPreset {
     </div>
   </div>
 </div>`;
-  return { title, html, badge: { tone: "info", label: "Demo" } };
+  return { title, parts: [htmlPart(html)], badge: { tone: "info", label: "Demo" } };
 }
 
 // Preset id → renderer. The publish flow (app.ts) pins the matching blueprint,

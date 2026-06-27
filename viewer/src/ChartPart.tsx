@@ -21,6 +21,7 @@ import {
   YAxis,
 } from "recharts";
 import type { ChartPart as ChartPartData } from "./api.ts";
+import { type Mode, themeById } from "../../server/themes.ts";
 import { useSurfaceTheme, useResolvedMode } from "./theme.ts";
 
 // Tone → fixed hue for the review charts (treemap cells, scatter points). These
@@ -54,18 +55,20 @@ interface ThemeColors {
   accent: string;
 }
 
-// Read the live chrome tokens. Like MermaidPart, this part renders in the
-// trusted origin, so getComputedStyle is fine; the values flip with light/dark.
-function readThemeColors(): ThemeColors {
-  const cs = getComputedStyle(document.body);
-  const v = (name: string, fallback: string) => cs.getPropertyValue(name).trim() || fallback;
+// Resolve chart colors from the SURFACE's theme (not the document root), so a
+// chart on a themed surface — e.g. a data-viz preset pinned to `ocean` — uses
+// that surface's palette instead of the board chrome's. Mirrors how the
+// sandboxed parts pass themeById(surfaceTheme) into their frame; reading
+// document.body here would always yield the board theme and ignore the override.
+function readThemeColors(themeId: string, mode: Mode): ThemeColors {
+  const p = mode === "dark" ? themeById(themeId).dark : themeById(themeId).light;
   return {
-    text: v("--text", "#1f2328"),
-    muted: v("--muted", "#59636e"),
-    faint: v("--faint", "#818b98"),
-    border: v("--border", "#d1d9e0"),
-    surface: v("--surface", "#ffffff"),
-    accent: v("--accent", "#0969da"),
+    text: p.text,
+    muted: p.muted,
+    faint: p.faint,
+    border: p.border,
+    surface: p.surface,
+    accent: p.info.text,
   };
 }
 
@@ -78,7 +81,7 @@ export function ChartPart(props: { part: ChartPartData }) {
   // Re-read tokens whenever the board theme or OS scheme flips so axes/grid/
   // tooltip stay in sync. applyTheme injects the vars before activeTheme
   // updates, so getComputedStyle already sees the new values.
-  const c = useMemo(readThemeColors, [activeTheme, mode]);
+  const c = useMemo(() => readThemeColors(activeTheme, mode), [activeTheme, mode]);
 
   const { part } = props;
   const series = Array.isArray(part.y) ? part.y : [part.y];

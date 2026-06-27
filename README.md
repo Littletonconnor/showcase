@@ -128,7 +128,7 @@ Each renders consistently in light and dark (gallery: `docs/images/presets/`):
 
 ![The design-doc preset: an RFC with metadata, an executive summary, a goal stated as a problem, invariants/preferences/assumptions, and a solution space framed as axes with discarded options](docs/images/presets/design-doc-light.png)
 
-![The data-viz preset in dark mode: a headline p95 stat, a per-endpoint bar chart, a trend sparkline, and a takeaway callout](docs/images/presets/data-viz-dark.png)
+![The data-viz preset: a headline p95 stat, a native per-endpoint bar chart, a native area trend chart, and a takeaway callout](docs/images/presets/data-viz-light.png)
 
 ![The postmortem preset: a summary, an incident timeline, impact metrics, a 5-Whys causal chain down to the systemic cause, and prioritized action items](docs/images/presets/postmortem-light.png)
 
@@ -148,11 +148,12 @@ fills typed slots and the output is byte-for-byte consistent every time — the 
 guarantee `publish_decisions` gives a code review. `publish_postmortem` takes
 `timeline[]` / `fiveWhys[]` / `fixes{immediate,necessary,additional}` /
 `followups[]`; `publish_dashboard` takes `headline` / `stats[]` / `bars` /
-`trend`; `publish_design_doc` takes `goal{problem}` / `solutionSpace{axes[]}` /
-… ; plus `publish_status`, `publish_architecture`, `publish_product_demo`. Every
-screenshot above is rendered by these tools (`server/presetRenders.ts`), not
-hand-authored. The generic `publish_surface` + `blueprint` path remains for
-free-form surfaces.
+`trend` and emits **native `chart` parts** (Recharts — real axes, interactive,
+themed to the surface), not a static image; `publish_design_doc` takes
+`goal{problem}` / `solutionSpace{axes[]}` / … ; plus `publish_status`,
+`publish_architecture`, `publish_product_demo`. Every screenshot above is rendered
+by these tools (`server/presetRenders.ts`), not hand-authored. The generic
+`publish_surface` + `blueprint` path remains for free-form surfaces.
 
 ### Defaults and your own presets — repo + user
 

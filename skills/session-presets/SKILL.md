@@ -40,7 +40,7 @@ layout server-side — so the output is identical every time, like `publish_deci
 does for a review. Prefer the tool over hand-authoring an html surface:
 
 - `publish_postmortem` — `summary`, `impact`, `timeline[]`, `fiveWhys[]{why,because}`, `contributingFactors`, `fixes{immediate,necessary,additional}`, `followups[]`, `impactLevel`/`reoccurrence`.
-- `publish_dashboard` — `headline{value,label}`, `stats[]`, `bars{data[]}`, `trend{values[]}`, `detail[]`, `takeaway`.
+- `publish_dashboard` — `headline{value,label}`, `stats[]`, `bars{data[]}`, `trend{values[]}`, `detail[]`, `takeaway`. The breakdown + trend render as native `chart` parts (real, interactive, themed), not images.
 - `publish_design_doc` — `goal{problem}` (a PROBLEM, no implementation leakage), `invariants{…}`, `solutionSpace{axes[]{axis,options[]{label,chosen},rationale}}`, `proposed{…}`, `openQuestions[]`. Follows the team RFC template.
 - `publish_status` — `state`, `headline`, `shipped[]`, `inFlight[]{item,pct}`, `blockers`, `next[]`.
 - `publish_architecture` — `components[]{name,role}` (auto-drawn pipeline), `dataFlow[]`, `decisions`, `scale`.
