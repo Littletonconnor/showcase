@@ -270,9 +270,9 @@ function DecisionSection(props: {
           </div>
         ) : null}
 
-        {/* how sure the agent is — the one honest signal we surface. The agent's
-            coverage/gaps are self-report with nothing behind them, so we don't
-            render them as if verified; trust is this + the agent's skill. */}
+        {/* how sure the agent is — the one honest signal we surface. We don't
+            render self-reported "what I verified" claims (nothing backs them);
+            trust is this confidence + the agent's skill. */}
         <div className="mt-1 flex items-center gap-2 border-t-[0.5px] border-border pt-3 text-[12.5px]">
           <span className="text-[11px] font-medium tracking-wide text-faint uppercase">
             How sure
@@ -415,9 +415,6 @@ function EvidencePane(props: { decision: Decision; index: number }) {
       key={props.index}
       className="animate-in fade-in-0 duration-200 flex max-h-[calc(100svh-3rem)] flex-col gap-4 overflow-auto"
     >
-      <div className="text-[11px] tracking-wide text-faint uppercase">
-        Evidence · decision {props.index + 1}
-      </div>
       {empty ? (
         <div className="rounded-lg border-[0.5px] border-dashed border-border px-4 py-10 text-center text-[13px] text-faint">
           No code to show — this one is judged from the description.
