@@ -38,6 +38,7 @@ usage:
       --code <file|->    add a code part from a file (shiki-highlighted)
       --kit <id>        opt the html part into a kit (repeatable; see "showcase kits")
       --theme <id>      render this surface under a theme (showcase | brand | neutral)
+      --blueprint <id>  apply an explainer blueprint preset (see "showcase blueprints")
       --image <file>    upload an image and append it as an image part
       --session <id>    target session (default: auto per agent session)
       --session-title <t>  name for a newly created session — name the task,
@@ -86,6 +87,7 @@ usage:
                         original line numbers instead of 1-based)
       (also: --session, --session-title, --agent, --new-session)
   showcase kits                           list the opt-in html kits this board offers
+  showcase blueprints                     list the explainer blueprint presets this board offers
   showcase update <id> <file|->           revise a surface (new version, same card)
       --title <t>       replace title
       --kit <id>        opt the html part into a kit (repeatable)
@@ -353,6 +355,7 @@ function outSurface(surface) {
 const PUBLISH_OPTS = {
   title: { type: "string" },
   theme: { type: "string" },
+  blueprint: { type: "string" },
   session: { type: "string" },
   "session-title": { type: "string" },
   agent: { type: "string" },
@@ -501,6 +504,7 @@ async function publishSurface(parts, flags) {
       parts,
       title: flags.title,
       theme: flags.theme,
+      blueprint: flags.blueprint,
       session,
       sessionTitle: flags["session-title"],
     }),
@@ -1213,6 +1217,13 @@ const commands = {
   async kits() {
     parse();
     out(await api("/api/kits"));
+  },
+
+  // List the explainer blueprints this board offers (id, label, summary, theme,
+  // kits, structure). Pair with `publish --blueprint <id>` to apply one.
+  async blueprints() {
+    parse();
+    out(await api("/api/blueprints"));
   },
 
   async export() {

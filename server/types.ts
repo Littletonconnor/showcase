@@ -240,6 +240,11 @@ export interface Surface {
   // board default. Lets one mockup pick the brand palette while another stays
   // neutral, without a global switch.
   theme?: string;
+  // Explainer blueprint applied at publish (see server/blueprints.ts). The
+  // blueprint's theme + kits are already baked into `theme`/parts above; the id
+  // rides along so the brand can be re-resolved at render and the provenance is
+  // visible. Unset → no blueprint.
+  blueprint?: string;
 }
 
 // --- the agent-era review form factor (see docs/review-form-factor.md) ---
@@ -380,6 +385,7 @@ export interface CreateSurfaceInput {
   parts: SurfacePart[];
   badge?: SurfaceBadge;
   theme?: string;
+  blueprint?: string;
 }
 
 export interface UpdateSurfaceInput {
@@ -389,6 +395,8 @@ export interface UpdateSurfaceInput {
   badge?: SurfaceBadge | null;
   // `null` resets to the board default; `undefined` leaves it unchanged.
   theme?: string | null;
+  // `null` clears the blueprint; `undefined` leaves it unchanged.
+  blueprint?: string | null;
 }
 
 export interface CreateCommentInput {

@@ -121,6 +121,10 @@ const ANIMATE_CSS = `
 .anim-play:hover{border-color:var(--color-border-primary)}
 .anim-range{flex:1;min-width:0;accent-color:var(--color-text-info);cursor:pointer}
 .anim-num{flex:none;font:400 13px/1 var(--font-mono);color:var(--color-text-tertiary);min-width:48px;text-align:right}
+/* Section eyebrow — shows the current step's data-label / data-section (a
+   blueprint's structure skeleton). Empty when a step carries neither, so a plain
+   .anim is untouched. */
+.anim-label{flex:none;font:600 11px/1 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-info);white-space:nowrap}
 /* Print / PDF: a stepper can't be played on paper, and steps default to hidden
    (JS reveals them) — so a print would be blank. Reveal every step stacked and
    drop the controls, turning the explainer into the full static explanation. */
@@ -136,10 +140,13 @@ const ANIMATE_JS = `
   var play=document.createElement('button');play.type='button';play.className='anim-play';play.setAttribute('aria-label','Play');play.textContent='\\u25B6';
   var range=document.createElement('input');range.type='range';range.className='anim-range';range.min='0';range.max=String(steps.length-1);range.value='0';range.setAttribute('aria-label','Step');
   var num=document.createElement('span');num.className='anim-num';
-  ctl.appendChild(play);ctl.appendChild(range);ctl.appendChild(num);
+  var label=document.createElement('span');label.className='anim-label';
+  ctl.appendChild(play);ctl.appendChild(label);ctl.appendChild(range);ctl.appendChild(num);
   anim.appendChild(ctl);
   function render(){
     steps.forEach(function(s,k){s.classList.toggle('on',k<=i);s.classList.toggle('now',k===i);});
+    var cur=steps[i];
+    label.textContent=cur.getAttribute('data-label')||cur.getAttribute('data-section')||'';
     range.value=String(i);num.textContent=(i+1)+' / '+steps.length;
   }
   function go(n){i=Math.max(0,Math.min(steps.length-1,n));render();}
@@ -347,16 +354,33 @@ export const KITS: Kit[] = [
   },
 ];
 
-const KIT_BY_ID = new Map(KITS.map((k) => [k.id, k]));
-
-export const isKnownKit = (id: unknown): id is string =>
-  typeof id === "string" && KIT_BY_ID.has(id);
-
+// Built-in kit ids, frozen at import (the MCP `kits` enum hint lists these).
 export const KIT_IDS = KITS.map((k) => k.id);
 
-// Compact descriptor for discovery (no CSS/JS payload).
+// --- user-extensible layer ---------------------------------------------------
+// Like themes, a board can load extra kits (a product's own visual vocabulary —
+// card chrome, brand font, a screenshot bezel) from local config
+// (server/userConfig.ts → registerKits at boot). The lookup map is rebuilt to
+// include them, user winning on id collision. The viewer never registers extras.
+let kitById = new Map(KITS.map((k) => [k.id, k]));
+
+// Replace the user kit set (idempotent — see registerThemes). Rebuilds the
+// lookup so built-ins come first, then extras OVERWRITE on duplicate id.
+export function registerKits(kits: Kit[]): void {
+  kitById = new Map(KITS.map((k) => [k.id, k]));
+  for (const k of kits) kitById.set(k.id, k);
+}
+
+export const isKnownKit = (id: unknown): id is string => typeof id === "string" && kitById.has(id);
+
+// Compact descriptor for discovery (no CSS/JS payload). Built-in + user kits.
 export const kitSummaries = () =>
-  KITS.map((k) => ({ id: k.id, label: k.label, summary: k.summary, classes: k.classes }));
+  [...kitById.values()].map((k) => ({
+    id: k.id,
+    label: k.label,
+    summary: k.summary,
+    classes: k.classes,
+  }));
 
 // Resolve a list of kit ids to the CSS/JS to inject. Unknown ids are ignored;
 // duplicates collapse; CORE ships once when any known kit is present.
@@ -365,7 +389,7 @@ export function kitAssets(ids: readonly string[] | undefined): { css: string; js
   const seen = new Set<string>();
   const chosen: Kit[] = [];
   for (const id of ids) {
-    const kit = KIT_BY_ID.get(id);
+    const kit = kitById.get(id);
     if (kit && !seen.has(id)) {
       seen.add(id);
       chosen.push(kit);

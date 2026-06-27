@@ -190,21 +190,30 @@ This is showcase's flagship review workflow, designed for the age of agents and 
 
 showcase's second flagship workflow — **learning & explainers.** When the user shares a screenshot or snippet and says _"explain this on showcase"_ (or asks you to teach a concept), don't dump a wall of prose — build an **animated explainer** they can play through and scrub.
 
+**Reach for a blueprint first.** A blueprint is a named preset that applies a
+theme + kit composition + a section structure in one shot — pass
+`blueprint:"concept"` for a neutral, chart-friendly teacher or
+`blueprint:"product-demo"` for a branded, fixed-arc walkthrough. It fills gaps
+only (an explicit `theme` or part `kits` still win), so you write the steps and
+it handles the rest. `get_design_guide` lists the blueprints this board offers
+(built-in + any the user defined) with each one's section skeleton; author your
+`.step`s to follow that skeleton, tagging each `data-section="<id>"` so the kit
+labels the beat. Omit `blueprint` for a one-off and just set `kits:["animate"]`.
+
 Publish ONE surface that combines:
 
 1. _(when explaining a screenshot)_ an **`image` part** of the thing itself — `upload_asset` the screenshot, then `{kind:"image", assetId}` so the source sits at the top;
-2. an **`html` part with `kits:["animate"]`** — author an `.anim` with `.step` children. Each step is one beat of the explanation; the kit reveals them one at a time, **building up**, and injects play/pause + a scrub bar. Wrap a key phrase in `<span class="cue">…</span>` to highlight it.
+2. an **`html` part** — author an `.anim` with `.step` children. Each step is one beat of the explanation; the kit reveals them one at a time, **building up**, and injects play/pause + a scrub bar. Wrap a key phrase in `<span class="cue">…</span>` to highlight it. The `animate` kit comes with `concept`/`product-demo`; add it yourself with `kits:["animate"]` if you skip the blueprint.
 
 ```jsonc
-// publish_surface — kits:["animate"] makes the html part a stepped, scrubbable explainer
+// publish_surface — blueprint:"concept" applies the animate kit + a question→mechanism→payoff arc
 {
   "title": "How the event loop works",
-  "badge": { "tone": "info", "label": "Explainer" },
+  "blueprint": "concept",
   "parts": [
     {
       "kind": "html",
-      "kits": ["animate"],
-      "html": "<div class=\"anim\"><div class=\"step\"><h2>The event loop</h2><p class=\"dim\">One thread — so how does async not block? Press play.</p></div><div class=\"step\"><p>The <b>call stack</b> runs your sync code, frame by frame.</p></div><div class=\"step\"><p>A <span class=\"cue\">setTimeout</span> hands its work to a Web API and returns — the stack keeps going.</p></div><div class=\"step\"><p>When the stack is empty, the <b>event loop</b> pulls the callback off the queue and runs it.</p></div></div>",
+      "html": "<div class=\"anim\"><div class=\"step\" data-section=\"question\"><h2>The event loop</h2><p class=\"dim\">One thread — so how does async not block? Press play.</p></div><div class=\"step\" data-section=\"mechanism\"><p>The <b>call stack</b> runs your sync code, frame by frame.</p></div><div class=\"step\" data-section=\"mechanism\"><p>A <span class=\"cue\">setTimeout</span> hands its work to a Web API and returns — the stack keeps going.</p></div><div class=\"step\" data-section=\"payoff\"><p>When the stack is empty, the <b>event loop</b> pulls the callback off the queue and runs it.</p></div></div>",
     },
   ],
 }

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BLUEPRINT_IDS } from "./blueprints.ts";
 import { KIT_IDS } from "./kits.ts";
 import { THEME_IDS } from "./themes.ts";
 
@@ -63,6 +64,9 @@ const d = {
   theme: `Optional theme this surface renders under (${THEME_IDS.join(
     " | ",
   )}). Sets the palette for the card's parts so themed mockups stay consistent — pick one and reuse it across a set of mockups instead of restyling each. Omit for the board default. On update_surface, pass null to reset.`,
+  blueprint: `Optional explainer blueprint — a named preset that applies a theme + kit composition + a section structure in one shot (built-ins: ${BLUEPRINT_IDS.join(
+    " | ",
+  )}; a board may define more — see get_design_guide). Use it for repeatable explainers: a branded "product-demo" or a neutral "concept" teacher. It fills gaps only — an explicit theme or part kits still win. Author your .anim steps to follow the blueprint's structure, tagging each step data-section="<id>". On update_surface, pass null to clear.`,
   timeout: "How long to wait, 0-300",
   afterSeq: "explicit cursor override (default: where the agent left off)",
   assetData: "base64-encoded file bytes",
@@ -270,6 +274,7 @@ export const HTTP_MCP_TOOLS = [
         parts: MCP_PARTS_JSON_SCHEMA,
         badge: MCP_BADGE_JSON_SCHEMA,
         theme: { type: "string", enum: THEME_IDS, description: d.theme },
+        blueprint: { type: "string", description: d.blueprint },
         session: { type: "string", description: d.session },
         sessionTitle: { type: "string", description: d.sessionTitle },
         agent: { type: "string", description: d.agent },
@@ -369,6 +374,7 @@ export const HTTP_MCP_TOOLS = [
         title: { type: "string", description: d.replacementTitle },
         badge: MCP_BADGE_JSON_SCHEMA,
         theme: { description: d.theme },
+        blueprint: { description: d.blueprint },
       },
       required: ["id"],
     },
@@ -383,6 +389,7 @@ export const HTTP_MCP_TOOLS = [
         html: { type: "string", description: d.html },
         kits: { type: "array", items: { type: "string" }, description: d.partKits },
         theme: { type: "string", enum: THEME_IDS, description: d.theme },
+        blueprint: { type: "string", description: d.blueprint },
         session: { type: "string", description: d.session },
         sessionTitle: { type: "string", description: "Session name (first publish only)" },
         agent: { type: "string", description: d.agent },
@@ -524,6 +531,7 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
     parts: z.array(mcpPartSchema).describe(MCP_PARTS_DESCRIPTION),
     badge: badgeStdioSchemas.badge,
     theme: z.string().optional().describe(d.theme),
+    blueprint: z.string().optional().describe(d.blueprint),
     sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
   },
   publishDecisions: {
@@ -574,12 +582,14 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
     title: z.string().optional().describe(d.replacementTitle),
     badge: badgeStdioSchemas.updateBadge,
     theme: z.string().nullable().optional().describe(d.theme),
+    blueprint: z.string().nullable().optional().describe(d.blueprint),
   },
   publishSnippet: {
     title: z.string().describe("Short human-readable title shown above the snippet"),
     html: z.string().describe(d.html),
     kits: z.array(z.string()).optional().describe(d.partKits),
     theme: z.string().optional().describe(d.theme),
+    blueprint: z.string().optional().describe(d.blueprint),
     sessionTitle: z.string().optional().describe("Session name (first publish only)"),
   },
   updateSnippet: {

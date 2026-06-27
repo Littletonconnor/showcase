@@ -6,6 +6,12 @@ composes the axes showcase already has (theme + kits) and adds two it doesn't
 (structure + brand) — loadable from user config so a person can define their own
 without touching the binary. If an implementation drifts, come back here._
 
+> **Shipped.** All four phases below are built (`server/blueprints.ts`,
+> `server/userConfig.ts`, the `blueprint` field threaded through
+> types/storage/app/MCP/CLI, brand injection in `renderHtmlPage`, and the
+> `data-section` labelling in the animate kit). Built-in blueprints: `product-demo`
+> and `concept`. The doc is the rationale; the code is the source of truth.
+
 ---
 
 ## The problem
@@ -52,26 +58,33 @@ brand on top.
   "id": "product-demo",
   "label": "Product demo",
   "summary": "Branded walkthrough — fixed five-beat arc, product palette + logo",
-  "extends": null,                  // optional: inherit another blueprint, then tweak
+  "extends": null, // optional: inherit another blueprint, then tweak
 
-  "theme": "acme-brand",            // a theme id (built-in OR user-defined)
-  "kits": ["animate", "mockup"],    // default kit composition for the html part
+  "theme": "acme-brand", // a theme id (built-in OR user-defined)
+  "kits": ["animate", "mockup"], // default kit composition for the html part
 
-  "structure": [                    // the ordered skeleton — what makes it "always the same"
-    { "id": "hook",    "label": "Hook",     "hint": "Lead with the outcome or the surprise" },
-    { "id": "problem", "label": "Problem",  "hint": "The pain before the product" },
-    { "id": "feature", "label": "Feature",  "hint": "Show the thing doing the thing" },
-    { "id": "proof",   "label": "Proof",    "hint": "A number, a before/after, a quote", "required": true },
-    { "id": "cta",     "label": "Next step","hint": "What the viewer does now" }
+  "structure": [
+    // the ordered skeleton — what makes it "always the same"
+    { "id": "hook", "label": "Hook", "hint": "Lead with the outcome or the surprise" },
+    { "id": "problem", "label": "Problem", "hint": "The pain before the product" },
+    { "id": "feature", "label": "Feature", "hint": "Show the thing doing the thing" },
+    {
+      "id": "proof",
+      "label": "Proof",
+      "hint": "A number, a before/after, a quote",
+      "required": true,
+    },
+    { "id": "cta", "label": "Next step", "hint": "What the viewer does now" },
   ],
 
-  "brand": {                        // optional: injected into the rendered html head
+  "brand": {
+    // optional: injected into the rendered html head
     "logoAssetId": "asset_…",
     "wordmark": "Acme",
-    "fontFamily": "Inter, system-ui"
+    "fontFamily": "Inter, system-ui",
   },
 
-  "defaults": { "badge": { "tone": "info", "label": "Demo" } }
+  "defaults": { "badge": { "tone": "info", "label": "Demo" } },
 }
 ```
 
@@ -85,22 +98,22 @@ The "general explainer" end of the axis is the same primitive, looser:
   "theme": "neutral",
   "kits": ["animate"],
   "structure": [
-    { "id": "question",  "label": "Question",  "hint": "The thing that's confusing" },
+    { "id": "question", "label": "Question", "hint": "The thing that's confusing" },
     { "id": "mechanism", "label": "Mechanism", "hint": "Reveal it beat by beat" },
-    { "id": "payoff",    "label": "Payoff",    "hint": "Why it now makes sense" }
-  ]
+    { "id": "payoff", "label": "Payoff", "hint": "Why it now makes sense" },
+  ],
 }
 ```
 
 ### Why these fields, mapped to the existing system
 
-| Field | Reuses | New |
-|---|---|---|
-| `theme` | `surface.theme` + the whole token pipeline (`tokenThemeCss`) | — |
-| `kits` | `htmlPart.kits[]` + `kitAssets()` injection | — |
-| `structure` | — | named, ordered sections the agent authors against |
-| `brand` | `upload_asset` for the logo | head injection of logo/wordmark/font |
-| `extends` | — | blueprint inheritance |
+| Field       | Reuses                                                       | New                                               |
+| ----------- | ------------------------------------------------------------ | ------------------------------------------------- |
+| `theme`     | `surface.theme` + the whole token pipeline (`tokenThemeCss`) | —                                                 |
+| `kits`      | `htmlPart.kits[]` + `kitAssets()` injection                  | —                                                 |
+| `structure` | —                                                            | named, ordered sections the agent authors against |
+| `brand`     | `upload_asset` for the logo                                  | head injection of logo/wordmark/font              |
+| `extends`   | —                                                            | blueprint inheritance                             |
 
 Two genuinely new ideas — **structure** and a **user config layer** (below).
 Everything else is composition of primitives that already ship.
@@ -229,45 +242,58 @@ those bundles come from user config.
 
 ---
 
-## Phased rollout
+## Phased rollout (all shipped)
 
-**Phase 0 — authoring-only (no renderer change, fully back-compat).**
-Two built-in blueprints as data (`product-demo`, `concept`) + `GET /api/blueprints`
-+ a `blueprint` param that resolves to `theme` + `kits` defaults. The agent reads
-the structure and authors against it. Ships the core value immediately; an old
-client that ignores `blueprint` still works.
+**Phase 0 — authoring core (no breaking change, fully back-compat). ✅**
+Two built-in blueprints (`product-demo`, `concept`) + `GET /api/blueprints` + a
+`blueprint` param that resolves to `theme` + `kits` defaults. The agent reads the
+structure (from the design guide) and authors against it. An old client that
+ignores `blueprint` still works unchanged.
 
-**Phase 1 — user config layer.**
-Load `~/.showcase/{themes,kits,blueprints}/*.json` and layer over the built-ins.
-This is the unlock for _"matches my product"_ and for _customizable + extendable_ —
-a user defines a brand theme + blueprint and never edits source.
+**Phase 1 — user config layer. ✅**
+`server/userConfig.ts` loads `~/.showcase/{themes,kits,blueprints}/*.json` (override
+the dir with `SHOWCASE_CONFIG`) and layers it over the built-ins. This is the unlock
+for _"matches my product"_ and for _customizable + extendable_ — a user defines a
+brand theme + blueprint and never edits source.
 
-**Phase 2 — brand assets + inheritance.**
-`brand.logoAssetId` / wordmark / font injected into the html head; `extends`
-resolution at load.
+**Phase 2 — brand assets + inheritance. ✅**
+`brand.fontFamily` overrides `--font-sans` for the part (zero author effort);
+`brand.logoAssetId` / `wordmark` are exposed as `--brand-logo` / `--brand-wordmark`
+tokens an author or kit opts into. `extends` is resolved at lookup (one chain,
+cycle-guarded). Brand is resolved at _render_ from the surface's stored blueprint
+id, so editing a blueprint re-skins every surface using it.
 
-**Phase 3 — render-enforced structure (optional rigor).**
-The `animate` kit reads `data-section` on `.step`, labels sections, and warns when
-a `required` section is missing — turning the product-demo skeleton from a
-convention into a guarantee.
+**Phase 3 — render-honored structure. ✅**
+The `animate` kit reads `data-section` / `data-label` on each `.step` and shows the
+current beat's label in the control bar — turning the product-demo skeleton from a
+convention the agent holds in its head into something the rendered explainer shows.
 
 ---
 
-## Touch points (for whoever builds Phase 0)
+## Where it lives (built)
 
-- `server/types.ts` — `Blueprint` interface; `blueprint?: string` on `Surface`,
-  `CreateSurfaceInput`, `UpdateSurfaceInput` (parallel to `theme`).
-- `server/blueprints.ts` _(new)_ — built-in `BLUEPRINTS`, `isKnownBlueprint`,
-  `blueprintById`, `blueprintSummaries()`. Mirrors `server/themes.ts` / `kits.ts`.
-- `server/app.ts` — resolve the blueprint in the publish/revise flow (fill `theme`
-  + part `kits`); add `GET /api/blueprints`. Validate id strict (REST) / loose
-  (MCP), exactly like kits.
-- `mcp/server.ts`, `server/mcpSpec.ts` — `blueprint` param + description sourced
-  from `BLUEPRINT_IDS`, same as the kit/theme params.
-- `guide/PLAYBOOK.md` — rewrite "Recipe: animated explainer" to start from
-  `blueprint: "concept"` / `"product-demo"` instead of hand-rolling the parts.
-
-Phase 1 adds `server/userConfig.ts` (the layered loader) and routes `THEMES` /
-`KITS` / `BLUEPRINTS` through it. Keep `server/{app,types,surfacePage}.ts`
-runtime-agnostic — the file-reading loader lives next to `storage.ts` in the Node
-wiring, and hands the merged registries in.
+- `server/types.ts` — `blueprint?: string` on `Surface`, `CreateSurfaceInput`,
+  `UpdateSurfaceInput` (parallel to `theme`).
+- `server/blueprints.ts` — `Blueprint` types, built-in `BLUEPRINTS`,
+  `isKnownBlueprint` / `blueprintById` (with `extends` merge) / `blueprintSummaries`,
+  the gap-filling `resolveBlueprint`, and `brandCss`. Mirrors `themes.ts` / `kits.ts`.
+- `server/themes.ts` / `server/kits.ts` — `registerThemes` / `registerKits` + merged
+  lookups, so the built-in arrays gain a user-extensible layer without `node:` leaks
+  (the viewer build still sees only the built-ins).
+- `server/storage.ts` — persists `blueprint` on create/update (a rendering choice,
+  not snapshotted as content — like `theme`).
+- `server/app.ts` — resolves the blueprint in the publish/revise flow (fills theme +
+  part kits + default badge), serves `GET /api/blueprints` and `/api/themes`, passes
+  brand to `renderHtmlPage` at `/s/:id`, and appends a live blueprint listing to
+  `/guide`. `createApp` takes `extraThemes/extraKits/extraBlueprints`.
+- `server/surfacePage.ts` — `renderHtmlPage` injects `brandCss` last (brand overrides
+  the theme's defaults for the part).
+- `server/mcpHttp.ts` / `server/mcpSpec.ts` / `mcp/server.ts` — `blueprint` param on
+  publish_surface / publish_snippet / update_surface, description sourced from
+  `BLUEPRINT_IDS`.
+- `server/userConfig.ts` / `server/index.ts` — the Node-only loader and its wiring;
+  keeps `server/{app,types,surfacePage,themes,kits,blueprints}.ts` runtime-agnostic.
+- `bin/showcase.js` — `--blueprint <id>` on publish + a `showcase blueprints` command.
+- `guide/PLAYBOOK.md` — the explainer recipe now starts from a blueprint.
+- `test/blueprints.test.ts` — resolution, inheritance, registry layering, brand CSS,
+  and the publish → render path end to end.
