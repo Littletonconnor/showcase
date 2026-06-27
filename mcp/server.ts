@@ -45,7 +45,8 @@ const text = (value: unknown) => ({
 });
 
 // One MCP server process lives as long as one agent conversation, so a
-// lazily-created session shared across tool calls maps cleanly onto it.
+// lazily-created session shared across tool calls maps cleanly onto it. The id
+// is cached in memory; `withSession` re-mints it when the backend forgets it.
 let sessionId: string | null = process.env.SHOWCASE_SESSION ?? null;
 
 // `title` is used only when this call creates the session — once one exists
@@ -62,6 +63,28 @@ async function ensureSession(title?: string): Promise<string> {
   return sessionId;
 }
 
+// This process outlives the backend. A 404 on our cached session means the
+// backend lost it — restarted, wiped its data file, or the user deleted the
+// session — and every later call would otherwise cling to the dead id. Drop it
+// and re-mint once, transparently, so a backend restart is invisible to the
+// agent instead of wedging the whole conversation's publishing.
+function sessionGone(err: unknown): boolean {
+  return err instanceof Error && /session .*not found/i.test(err.message);
+}
+
+async function withSession<T>(
+  title: string | undefined,
+  fn: (session: string) => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn(await ensureSession(title));
+  } catch (err) {
+    if (!sessionGone(err)) throw err;
+    sessionId = null;
+    return await fn(await ensureSession(title));
+  }
+}
+
 const server = new McpServer(MCP_SERVER_INFO, { instructions: MCP_INSTRUCTIONS });
 
 server.registerTool(
@@ -71,12 +94,11 @@ server.registerTool(
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.publishSurface,
   },
   async ({ title, parts, badge, theme, blueprint, sessionTitle }) => {
-    const session = await ensureSession(sessionTitle);
-    const created = JSON.parse(
-      await api("/api/surfaces", {
+    const created = await withSession(sessionTitle, (session) =>
+      api("/api/surfaces", {
         method: "POST",
         body: JSON.stringify({ title, parts, badge, theme, blueprint, session }),
-      }),
+      }).then(JSON.parse),
     );
     return text({ ...created, url: `${API}/session/${created.sessionId}/s/${created.id}` });
   },
@@ -89,14 +111,13 @@ server.registerTool(
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.publishDecisions,
   },
   async ({ brief, verdict, decisions, manifest, sessionTitle }) => {
-    const session = await ensureSession(sessionTitle);
-    const result = JSON.parse(
-      await api(`/api/sessions/${session}/review`, {
+    const result = await withSession(sessionTitle, (session) =>
+      api(`/api/sessions/${session}/review`, {
         method: "POST",
         body: JSON.stringify({ brief, verdict, decisions, manifest }),
-      }),
+      }).then(JSON.parse),
     );
-    return text({ ...result, url: `${API}/?review=${session}` });
+    return text({ ...result, url: `${API}/?review=${result.sessionId}` });
   },
 );
 
@@ -124,9 +145,8 @@ server.registerTool(
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.publishSnippet,
   },
   async ({ title, html, kits, theme, blueprint, sessionTitle }) => {
-    const session = await ensureSession(sessionTitle);
-    const created = JSON.parse(
-      await api("/api/surfaces", {
+    const created = await withSession(sessionTitle, (session) =>
+      api("/api/surfaces", {
         method: "POST",
         body: JSON.stringify({
           title,
@@ -135,7 +155,7 @@ server.registerTool(
           blueprint,
           session,
         }),
-      }),
+      }).then(JSON.parse),
     );
     return text({ ...created, url: `${API}/session/${created.sessionId}/s/${created.id}` });
   },
@@ -178,12 +198,11 @@ server.registerTool(
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.configureSession,
   },
   async ({ blueprint, theme }) => {
-    const session = await ensureSession();
-    const updated = JSON.parse(
-      await api(`/api/sessions/${session}`, {
+    const updated = await withSession(undefined, (session) =>
+      api(`/api/sessions/${session}`, {
         method: "PATCH",
         body: JSON.stringify({ blueprint, theme }),
-      }),
+      }).then(JSON.parse),
     );
     return text(updated);
   },
@@ -197,12 +216,11 @@ server.registerTool(
 // so we hand it a plain shape and read args dynamically — the server validates.
 function presetTool(name: string, preset: string, description: string, inputSchema: object) {
   const handler = async (args: Record<string, unknown>) => {
-    const session = await ensureSession(args.sessionTitle as string | undefined);
-    const created = JSON.parse(
-      await api(`/api/presets/${preset}`, {
+    const created = await withSession(args.sessionTitle as string | undefined, (session) =>
+      api(`/api/presets/${preset}`, {
         method: "POST",
         body: JSON.stringify({ ...args, session }),
-      }),
+      }).then(JSON.parse),
     );
     return text({ ...created, url: `${API}/session/${created.sessionId}/s/${created.id}` });
   };
@@ -259,12 +277,11 @@ server.registerTool(
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.waitForFeedback,
   },
   async ({ timeoutSeconds }) => {
-    const session = await ensureSession();
     const wait = timeoutSeconds ?? 120;
     // No client-side cursor: the server resumes author=user reads from the
     // session's agent cursor, shared with piggyback delivery.
-    const result = JSON.parse(
-      await api(`/api/comments?session=${session}&author=user&wait=${wait}`),
+    const result = await withSession(undefined, (session) =>
+      api(`/api/comments?session=${session}&author=user&wait=${wait}`).then(JSON.parse),
     );
     if (result.comments.length === 0) {
       return text({ comments: [], note: "no user feedback yet — continue, or wait again later" });
@@ -286,7 +303,13 @@ server.registerTool(
   { description: MCP_TOOL_DESCRIPTIONS.listSurfacesStdio, inputSchema: {} },
   async () => {
     if (!sessionId) return text([]);
-    return text(JSON.parse(await api(`/api/sessions/${sessionId}/surfaces`)));
+    try {
+      return text(JSON.parse(await api(`/api/sessions/${sessionId}/surfaces`)));
+    } catch (err) {
+      if (!sessionGone(err)) throw err;
+      sessionId = null; // backend forgot it; next publish re-mints
+      return text([]);
+    }
   },
 );
 
@@ -309,12 +332,11 @@ server.registerTool(
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.uploadAsset,
   },
   async ({ data, contentType, filename, kind }) => {
-    const session = await ensureSession();
-    const created = JSON.parse(
-      await api("/api/assets", {
+    const created = await withSession(undefined, (session) =>
+      api("/api/assets", {
         method: "POST",
         body: JSON.stringify({ data, contentType, filename, kind, session }),
-      }),
+      }).then(JSON.parse),
     );
     return text(created);
   },
@@ -337,7 +359,14 @@ server.registerResource(
   new ResourceTemplate(SURFACE_RESOURCE_TEMPLATE, {
     list: async () => {
       if (!sessionId) return { resources: [] };
-      const surfaces = JSON.parse(await api(`/api/sessions/${sessionId}/surfaces`));
+      let surfaces: any[];
+      try {
+        surfaces = JSON.parse(await api(`/api/sessions/${sessionId}/surfaces`));
+      } catch (err) {
+        if (!sessionGone(err)) throw err;
+        sessionId = null; // backend forgot it; next publish re-mints
+        return { resources: [] };
+      }
       return {
         resources: surfaces.map((s: any) => ({
           uri: `${SURFACE_RESOURCE_URI}${s.id}`,

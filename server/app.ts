@@ -293,6 +293,13 @@ export interface Feedback {
   at: string;
 }
 
+// A referenced session that doesn't exist is almost always a cached id that
+// outlived the backend (restart, wiped data file, deleted session). Say so, and
+// say the fix — omit the id to mint a fresh one — so a stale client self-heals
+// instead of wedging. The stdio MCP matches this text to re-mint automatically.
+const sessionNotFound = (id: string) =>
+  `session "${id}" not found — it may predate a server restart or have been deleted; omit the session id to start a fresh one`;
+
 // Lean comment shape attached to agent-facing responses.
 const feedbackView = (c: Comment): Feedback => ({
   surfaceId: c.surfaceId,
@@ -684,7 +691,7 @@ export function createApp({
     let sessionId = input.session;
     let session = sessionId ? await store.getSession(sessionId) : null;
     if (sessionId && !session) {
-      return { error: `session "${sessionId}" not found`, status: 404 };
+      return { error: sessionNotFound(sessionId), status: 404 };
     }
     if (!session) {
       // First publish pins the session's PRESET: the preset this publish names,
@@ -791,7 +798,7 @@ export function createApp({
 
     let sessionId = input.session;
     if (sessionId && !(await store.getSession(sessionId))) {
-      return { error: `session "${sessionId}" not found`, status: 404 };
+      return { error: sessionNotFound(sessionId), status: 404 };
     }
     if (!sessionId) {
       const session = await store.createSession({
@@ -832,7 +839,7 @@ export function createApp({
     }
     let sessionId = input.session;
     if (sessionId && !(await store.getSession(sessionId))) {
-      return { error: `session "${sessionId}" not found`, status: 404 };
+      return { error: sessionNotFound(sessionId), status: 404 };
     }
     if (!sessionId) {
       const session = await store.createSession({ agent: input.agent ?? "agent" });
@@ -1611,7 +1618,7 @@ export function createApp({
     if (isUnauthenticatedSessionRead(c)) {
       if (!sessionId && !surfaceId) return c.json({ error: "session or surface required" }, 401);
       if (sessionId && !(await store.getSession(sessionId))) {
-        return c.json({ error: "session not found" }, 404);
+        return c.json({ error: sessionNotFound(sessionId) }, 404);
       }
       if (surfaceId) {
         const surface = await store.getSurface(surfaceId);
