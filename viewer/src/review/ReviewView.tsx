@@ -11,9 +11,10 @@
 // its header) and ask in normal chat — no bespoke button for it. Disagree goes
 // over the existing comment channel and threads under the decision; when the
 // agent re-publishes, the decision updates in place. Local state is keyed by the
-// decision's text, so a re-publish never wipes the Accepts you've already made —
-// only a decision whose wording actually changed resets. Disabled in a static
-// export (no agent) and inert in `?review-preview`.
+// decision's stable id (falling back to its text for older reviews), so a
+// re-publish that merely rewords an assertion keeps the Accepts you've already
+// made — only a substantively new decision (a new id) resets. Disabled in a
+// static export (no agent) and inert in `?review-preview`.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Ban, ChevronRight, CircleAlert, CircleCheck } from "lucide-react";
 import type {
@@ -59,6 +60,11 @@ const DISPOSITION = {
   "reviewed-no-comment": { label: "reviewed · no comment", dot: "bg-muted-foreground/40" },
   "mechanical-skipped": { label: "mechanical · skipped", dot: "bg-border" },
 } satisfies Record<FileDisposition, { label: string; dot: string }>;
+
+// Adjudication key: the decision's stable id when present (so a reworded-but-same
+// decision carries the human's prior call across a re-publish), falling back to
+// the assertion text for older reviews minted before ids existed.
+const keyOf = (d: Decision) => d.id ?? d.assertion;
 
 // The complete changed-file manifest (Phase 1 — trust): every file in the diff,
 // each accounted for. Collapsed by default so it doesn't crowd the Brief; a file
@@ -215,6 +221,9 @@ function DecisionSection(props: {
   const conf = CONFIDENCE[d.confidence];
   const accepted = props.state === "accepted";
   const disputed = props.state === "disputed";
+  // A Disagree is settled once the agent has answered (a non-user reply threads
+  // under it); until then it's still waiting on a defend-or-revise.
+  const answered = props.thread.some((c) => c.author !== "user");
   return (
     <li
       ref={props.refCb}
@@ -327,11 +336,16 @@ function DecisionSection(props: {
             </div>
           ) : (
             <div className="mt-1 flex flex-col gap-2">
-              {disputed && (
-                <div className="text-[12px] text-amber-700 dark:text-amber-400">
-                  Waiting on the agent to defend or revise…
-                </div>
-              )}
+              {disputed &&
+                (answered ? (
+                  <div className="text-[12px] text-muted-foreground">
+                    The agent responded — read the reply, then Accept or Disagree again.
+                  </div>
+                ) : (
+                  <div className="text-[12px] text-amber-700 dark:text-amber-400">
+                    Waiting on the agent to defend or revise…
+                  </div>
+                ))}
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
@@ -483,9 +497,9 @@ export function ReviewView(props: {
   const itemRefs = useRef<(HTMLLIElement | null)[]>([]);
   const [active, setActive] = useState(0);
 
-  // Reviewer adjudication, keyed by the decision's TEXT (not its index) so a
-  // re-publish keeps the Accepts you've made — only a decision whose assertion
-  // actually changed (e.g. one the agent revised) resets. Drives the burndown.
+  // Reviewer adjudication, keyed by the decision's stable id (see keyOf) so a
+  // re-publish keeps the Accepts you've made — only a substantively new decision
+  // resets. Drives the burndown.
   const [state, setState] = useState<Record<string, "accepted" | "disputed">>({});
   const [composerOpen, setComposerOpen] = useState<number | null>(null);
 
@@ -519,9 +533,9 @@ export function ReviewView(props: {
   }
 
   function accept(idx: number) {
-    const key = r.decisions[idx].assertion;
+    const key = keyOf(r.decisions[idx]);
     setState((prev) => ({ ...prev, [key]: "accepted" }));
-    const next = r.decisions.findIndex((d, i) => i > idx && state[d.assertion] === undefined);
+    const next = r.decisions.findIndex((d, i) => i > idx && state[keyOf(d)] === undefined);
     if (next >= 0) {
       itemRefs.current[next]?.scrollIntoView({ behavior: "smooth", block: "start" });
       setActive(next);
@@ -532,7 +546,7 @@ export function ReviewView(props: {
     setActive(idx);
   }
   function undo(idx: number) {
-    const key = r.decisions[idx].assertion;
+    const key = keyOf(r.decisions[idx]);
     setState((prev) => {
       const n = { ...prev };
       delete n[key];
@@ -541,7 +555,7 @@ export function ReviewView(props: {
   }
   function disagree(idx: number, objection: string) {
     if (!objection.trim() || !interactive) return;
-    setState((prev) => ({ ...prev, [r.decisions[idx].assertion]: "disputed" }));
+    setState((prev) => ({ ...prev, [keyOf(r.decisions[idx])]: "disputed" }));
     setComposerOpen(null);
     void send(disagreeText(idx, r.decisions[idx].assertion, objection.trim()));
   }
@@ -589,8 +603,26 @@ export function ReviewView(props: {
     return () => window.removeEventListener("keydown", onKey);
   }, [active, r.decisions.length, interactive, state]);
 
-  const decided = r.decisions.filter((d) => state[d.assertion] === "accepted").length;
+  // Burndown toward a reachable "Review complete". A decision is *settled* once
+  // the human acted on it AND, for a Disagree, the agent has answered (defended
+  // or revised — i.e. a non-user reply threads under it). An unanswered Disagree
+  // is still *waiting*: it shows as waiting rather than freezing the burndown one
+  // short of done forever.
   const total = r.decisions.length;
+  const summary = useMemo(() => {
+    let settled = 0;
+    let waiting = 0;
+    r.decisions.forEach((d, i) => {
+      const s = state[keyOf(d)];
+      if (s === "accepted") settled++;
+      else if (s === "disputed") {
+        const answered = (threads.get(i) ?? []).some((c) => c.author !== "user");
+        if (answered) settled++;
+        else waiting++;
+      }
+    });
+    return { settled, waiting };
+  }, [r.decisions, state, threads]);
 
   return (
     <div
@@ -631,15 +663,27 @@ export function ReviewView(props: {
             </span>
             <span className="text-faint">
               {showVerbs
-                ? decided === total
-                  ? `Review complete · ${total} accepted`
-                  : `${decided} / ${total} accepted`
+                ? summary.settled === total
+                  ? `Review complete · ${total} decision${total === 1 ? "" : "s"}`
+                  : summary.waiting > 0
+                    ? `${summary.settled} / ${total} settled · ${summary.waiting} waiting`
+                    : `${summary.settled} / ${total} settled`
                 : `${total} decision${total === 1 ? "" : "s"}`}
             </span>
           </div>
 
           {/* The Brief — plain English, for anyone. Full-width; scrolls away. */}
           <p className="max-w-[68ch] text-[17px] leading-relaxed text-foreground">{r.brief}</p>
+
+          {/* A non-blocking format nudge: the server flags a Brief that reads like
+              code (jargon/identifiers), the skill resolves it on the next publish.
+              Never blocks — the loop stays live. */}
+          {r.briefWarning ? (
+            <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2 py-1 text-[11.5px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+              <CircleAlert className="size-3.5 shrink-0" />
+              {r.briefWarning}
+            </div>
+          ) : null}
 
           {/* one-line legend so the keys are obvious */}
           {showVerbs && (
@@ -676,7 +720,7 @@ export function ReviewView(props: {
                 index={i}
                 total={total}
                 active={i === active}
-                state={state[d.assertion]}
+                state={state[keyOf(d)]}
                 thread={threads.get(i) ?? []}
                 showVerbs={showVerbs}
                 interactive={interactive}

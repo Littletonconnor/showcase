@@ -267,6 +267,31 @@ const DECISION_CONFIDENCE = new Set(["high", "medium", "low"]);
 const FILE_DISPOSITIONS = new Set(["has-decision", "reviewed-no-comment", "mechanical-skipped"]);
 const nonNegInt = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0);
 
+// Pure FORMAT validation for the Brief — warn-only, never a reject (a mid-loop
+// rejection would break the publish→render→revise loop). It checks shape, never
+// quality: too many sentences, or code where plain English belongs (fenced/inline
+// backticks, file:line refs, fn() calls, snake_case / CamelCase identifiers).
+// Ordinary domain nouns and SHOUTY_ENV vars are allowed. Returns a short reason
+// for the viewer's chip, or undefined when the Brief is clean. See review-engine.md.
+export function checkBriefFormat(brief: string): string | undefined {
+  const reasons: string[] = [];
+  const sentences = brief
+    .trim()
+    .split(/[.!?]+(?:\s|$)/)
+    .filter((s) => s.trim().length > 0);
+  if (sentences.length > 4) reasons.push(`${sentences.length} sentences (aim for ≤4)`);
+  if (/`/.test(brief)) reasons.push("backtick code");
+  if (/[\w/.-]+\.[a-z]{1,6}:\d+/i.test(brief)) reasons.push("a file:line reference");
+  if (/\b[A-Za-z_]\w*\(\)/.test(brief)) reasons.push("a function() call");
+  // snake_case but NOT all-caps SHOUTY_ENV (SHOWCASE_TOKEN is an allowed token).
+  if (/\b[a-z]\w*_\w+\b/.test(brief)) reasons.push("snake_case identifiers");
+  // camelCase / PascalCase — an internal capital (someFn, ReviewView). A single
+  // Capitalized word (sentence start, a proper noun) is fine.
+  if (/\b[A-Za-z][a-z0-9]*[A-Z]\w*/.test(brief)) reasons.push("CamelCase identifiers");
+  if (reasons.length === 0) return undefined;
+  return `Brief reads like code, not plain English — contains ${reasons.join(", ")}.`;
+}
+
 export function coerceReview(raw: any): { review: CreateReviewInput } | { error: string } {
   if (!raw || typeof raw !== "object") return { error: "body must be an object" };
   if (typeof raw.brief !== "string" || !raw.brief.trim()) return { error: '"brief" is required' };
@@ -404,7 +429,16 @@ export function coerceReview(raw: any): { review: CreateReviewInput } | { error:
       };
     }
   }
-  return { review: { brief: raw.brief, verdict, decisions, manifest } };
+  const briefWarning = checkBriefFormat(raw.brief);
+  return {
+    review: {
+      brief: raw.brief,
+      verdict,
+      decisions,
+      manifest,
+      ...(briefWarning ? { briefWarning } : {}),
+    },
+  };
 }
 
 export function createApp({
@@ -556,7 +590,10 @@ export function createApp({
     sessionTitle?: string;
     agent?: string;
     cwd?: string;
-  }): Promise<{ sessionId: string; decisions: number } | { error: string; status: 400 | 404 }> {
+  }): Promise<
+    | { sessionId: string; decisions: number; briefWarning?: string }
+    | { error: string; status: 400 | 404 }
+  > {
     const parsed = coerceReview({
       brief: input.brief,
       verdict: input.verdict,
@@ -583,7 +620,11 @@ export function createApp({
     // Push the (re-)published review to any open review page so a Prove-it /
     // Challenge revise updates the decision in place (docs/review-form-factor.md).
     bus.broadcast({ type: "review-updated", sessionId });
-    return { sessionId, decisions: review.decisions.length };
+    return {
+      sessionId,
+      decisions: review.decisions.length,
+      ...(review.briefWarning ? { briefWarning: review.briefWarning } : {}),
+    };
   }
 
   // Store an uploaded blob. Like publishSurface, an explicit session is
