@@ -337,6 +337,43 @@ export function checkBriefFormat(brief: string): string | undefined {
   return `Brief reads like code, not plain English — contains ${reasons.join(", ")}.`;
 }
 
+// A real unified/git diff hunk header carries line ranges (`@@ -12,3 +12,4 @@`); a
+// hand-authored pseudo-patch with prose markers (`@@ writer (this PR) @@`) does not,
+// so @pierre/diffs parses it into empty hunks and the diff renders blank.
+const HUNK_HEADER_RE = /^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/m;
+
+// Warn-only checks on each decision's EVIDENCE — never a reject (same reasoning as
+// checkBriefFormat: a mid-loop rejection breaks the publish→render→revise loop).
+// Surfaces the two evidence failures dogfooding caught: a code decision with nothing
+// to look at, and a diff whose patch won't render.
+export function reviewEvidenceWarnings(decisions: Decision[]): string[] {
+  const out: string[] = [];
+  for (const d of decisions) {
+    const evidence = d.evidence ?? [];
+    const ref = d.id ? `"${d.id}"` : `"${d.assertion.slice(0, 40)}…"`;
+    // Points at specific code (changed-line / whole-file) but shows the reviewer
+    // nothing — no evidence diff, no suggested-fix. Codebase-scope calls can be
+    // legitimately prose-only, so they're exempt.
+    if (
+      evidence.length === 0 &&
+      !d.proposal &&
+      (d.scope === "changed-line" || d.scope === "whole-file")
+    ) {
+      out.push(
+        `Decision ${ref} (scope: ${d.scope}) has no evidence — attach a diff so the reviewer can see the code it judges.`,
+      );
+    }
+    for (const p of evidence) {
+      if (p.kind === "diff" && typeof p.patch === "string" && !HUNK_HEADER_RE.test(p.patch)) {
+        out.push(
+          `Decision ${ref}: evidence patch has no valid diff hunk header and won't render — use files:[{before,after}] or real \`git diff\` output.`,
+        );
+      }
+    }
+  }
+  return out;
+}
+
 export function coerceReview(raw: any): { review: CreateReviewInput } | { error: string } {
   if (!raw || typeof raw !== "object") return { error: "body must be an object" };
   if (typeof raw.brief !== "string" || !raw.brief.trim()) return { error: '"brief" is required' };
@@ -475,6 +512,7 @@ export function coerceReview(raw: any): { review: CreateReviewInput } | { error:
     }
   }
   const briefWarning = checkBriefFormat(raw.brief);
+  const warnings = reviewEvidenceWarnings(decisions);
   return {
     review: {
       brief: raw.brief,
@@ -482,6 +520,7 @@ export function coerceReview(raw: any): { review: CreateReviewInput } | { error:
       decisions,
       manifest,
       ...(briefWarning ? { briefWarning } : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
     },
   };
 }
@@ -739,7 +778,7 @@ export function createApp({
     agent?: string;
     cwd?: string;
   }): Promise<
-    | { sessionId: string; decisions: number; briefWarning?: string }
+    | { sessionId: string; decisions: number; briefWarning?: string; warnings?: string[] }
     | { error: string; status: 400 | 404 }
   > {
     const parsed = coerceReview({
@@ -772,6 +811,7 @@ export function createApp({
       sessionId,
       decisions: review.decisions.length,
       ...(review.briefWarning ? { briefWarning: review.briefWarning } : {}),
+      ...(review.warnings && review.warnings.length > 0 ? { warnings: review.warnings } : {}),
     };
   }
 

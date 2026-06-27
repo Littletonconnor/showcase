@@ -178,6 +178,10 @@ export function DiffPart(props: { part: DiffPartData }) {
   const [hotBody, setHotBody] = useState<string | null>(null);
   const [coldBody, setColdBody] = useState<string>("");
   const [showCold, setShowCold] = useState(false);
+  // A hand-authored `patch` that doesn't parse into renderable hunks (no
+  // `diff --git` header, fake `@@` markers, etc.) would otherwise render as a
+  // silent empty box. Fall back to the raw text so evidence is never lost.
+  const [rawFallback, setRawFallback] = useState<string | null>(null);
 
   // The shiki light/dark pair follows the board theme (kept identical to
   // MarkdownPart so a diff and a fenced code block read as one syntax theme).
@@ -193,10 +197,25 @@ export function DiffPart(props: { part: DiffPartData }) {
     void (async () => {
       try {
         const { diffs, langs } = buildFileDiffs(props.part);
-        if (diffs.length === 0) {
+        // A patch we couldn't parse into anything renderable: no files, or files
+        // that parsed to zero changed lines and aren't pure renames (which
+        // legitimately have none). A hand-authored pseudo-patch lands here — its
+        // fake `@@` markers parse into empty hunks, so churn is 0 across the
+        // board. Show the raw patch rather than an empty `−0 +0` shell.
+        const renderable = diffs.some((d) => {
+          const { added, removed } = fileChurn(d);
+          return added + removed > 0 || d.type === "rename-pure";
+        });
+        if (!renderable) {
+          if (props.part.patch) {
+            setRawFallback(props.part.patch);
+            setError(null);
+            return;
+          }
           setError("No diff content.");
           return;
         }
+        setRawFallback(null);
         await preloadHighlighter({
           themes: [shiki.dark, shiki.light],
           langs: langs as SupportedLanguages[],
@@ -263,6 +282,15 @@ export function DiffPart(props: { part: DiffPartData }) {
     <div className="border-t-[0.5px] border-border">
       {error ? (
         <div className="px-3.5 py-2.5 text-xs text-faint">Couldn't render diff — {error}</div>
+      ) : rawFallback ? (
+        <div className="flex flex-col gap-1.5 px-3.5 py-2.5">
+          <span className="text-[11px] text-faint">
+            Showing raw patch — couldn't parse it as a diff.
+          </span>
+          <pre className="overflow-auto rounded bg-muted/40 p-2.5 font-mono text-[12px] leading-relaxed whitespace-pre-wrap text-foreground">
+            {rawFallback}
+          </pre>
+        </div>
       ) : (
         <>
           {manifest.length > 1 ? <DiffManifest files={manifest} /> : null}

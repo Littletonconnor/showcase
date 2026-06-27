@@ -326,19 +326,26 @@ export interface Review {
   // like code, not plain English). Surfaced as a chip in the viewer and cleared on
   // the next clean re-publish; never rejects the publish. See coerceReview.
   briefWarning?: string;
+  // Non-blocking, server-computed warnings about the DECISIONS' evidence — a code
+  // decision with nothing to look at, or a diff whose patch won't render. They ride
+  // back on the publish response so the agent self-corrects, and surface as viewer
+  // chips. Never reject the publish. See coerceReview / reviewEvidenceWarnings.
+  warnings?: string[];
   createdAt: string;
   updatedAt: string;
 }
 
 // What a publisher hands in (the server stamps sessionId + timestamps).
-// `briefWarning` is the one field the publisher does NOT supply — coerceReview
-// derives it from the brief's shape and it rides through to the stored Review.
+// `briefWarning`/`warnings` are the fields the publisher does NOT supply —
+// coerceReview derives them from the review's shape and they ride through to the
+// stored Review.
 export interface CreateReviewInput {
   brief: string;
   verdict?: "block" | "approve" | "comment";
   decisions: Decision[];
   manifest?: ManifestFile[];
   briefWarning?: string;
+  warnings?: string[];
 }
 
 export interface Comment {
