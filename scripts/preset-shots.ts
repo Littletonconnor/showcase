@@ -398,12 +398,28 @@ async function main() {
   const written: string[] = [];
   for (const bp of BLUEPRINTS) {
     const renderer = PRESET_RENDERERS[bp.id];
-    const example = renderer && DATA[bp.id] ? renderer(DATA[bp.id]) : HAND[bp.id];
-    if (!example) continue;
+    let title: string;
+    let html: string;
+    if (renderer && DATA[bp.id]) {
+      const r = renderer(DATA[bp.id]);
+      // Native chart parts render in the viewer, not via renderHtmlPage — that
+      // shot is captured by e2e/preset-charts.spec.ts against the real app.
+      if (r.parts.some((p) => p.kind !== "html")) {
+        console.log(`skip ${bp.id} (native chart parts — viewer-rendered)`);
+        continue;
+      }
+      title = r.title;
+      html = r.parts.map((p) => (p.kind === "html" ? p.html : "")).join("\n");
+    } else if (HAND[bp.id]) {
+      title = HAND[bp.id].title;
+      html = HAND[bp.id].html;
+    } else {
+      continue;
+    }
     for (const mode of modes) {
       const doc = renderHtmlPage({
-        title: example.title,
-        html: example.html,
+        title,
+        html,
         origin: ORIGIN,
         theme: bp.theme,
         mode,

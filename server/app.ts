@@ -714,7 +714,7 @@ export function createApp({
     if (!render) return { error: `unknown preset "${input.preset}"`, status: 400 };
     const rendered = render(input.data);
     return publishSurface({
-      parts: [htmlPart(rendered.html)],
+      parts: rendered.parts,
       title: rendered.title,
       badge: rendered.badge,
       blueprint: input.preset,

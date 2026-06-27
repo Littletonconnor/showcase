@@ -14,6 +14,17 @@ import {
   renderStatus,
 } from "../server/presetRenders.ts";
 import { JsonFileStore } from "../server/storage.ts";
+import type { RenderedPreset } from "../server/presetRenders.ts";
+import type { ChartPart } from "../server/types.ts";
+
+// Concatenated html-part bodies of a rendered preset (most are a single html part).
+const htmlOf = (r: RenderedPreset): string =>
+  r.parts
+    .filter((p): p is { kind: "html"; html: string } => p.kind === "html")
+    .map((p) => p.html)
+    .join("\n");
+const chartsOf = (r: RenderedPreset): ChartPart[] =>
+  r.parts.filter((p): p is ChartPart => p.kind === "chart");
 
 test("every selected preset has a renderer", () => {
   for (const id of [
@@ -46,15 +57,16 @@ test("postmortem renders the template from typed data", () => {
   });
   assert.equal(r.title, "Checkout outage");
   assert.deepEqual(r.badge, { tone: "warning", label: "Postmortem" });
-  assert.match(r.html, /Root cause — 5 Whys/);
-  assert.match(r.html, /Why A\?/);
-  assert.match(r.html, /class="whys"/);
-  assert.match(r.html, /Immediate/);
-  assert.match(r.html, /T-1/); // follow-up ticket
-  assert.match(r.html, /Impact: Medium/);
+  const html = htmlOf(r);
+  assert.match(html, /Root cause — 5 Whys/);
+  assert.match(html, /Why A\?/);
+  assert.match(html, /class="whys"/);
+  assert.match(html, /Immediate/);
+  assert.match(html, /T-1/); // follow-up ticket
+  assert.match(html, /Impact: Medium/);
 });
 
-test("dashboard renders headline, a bar chart, and a takeaway", () => {
+test("dashboard emits native chart parts (bar + area) around html scaffolding", () => {
   const r = renderDashboard({
     title: "Latency",
     headline: { value: "86 ms", label: "p95" },
@@ -69,9 +81,26 @@ test("dashboard renders headline, a bar chart, and a takeaway", () => {
     trend: { values: [3, 2, 1] },
     takeaway: "faster now",
   });
-  assert.match(r.html, /86 ms/);
-  assert.match(r.html, /<svg/); // bars + sparkline
-  assert.match(r.html, /faster now/);
+  // Headline + takeaway live in html parts...
+  assert.match(htmlOf(r), /86 ms/);
+  assert.match(htmlOf(r), /faster now/);
+  // ...and the breakdown + trend are REAL chart parts, not inline SVG.
+  const charts = chartsOf(r);
+  assert.equal(charts.length, 2);
+  const bar = charts.find((c) => c.chartType === "bar");
+  assert.ok(bar, "bar chart part");
+  assert.equal(bar.x, "label");
+  assert.equal(bar.y, "value");
+  assert.deepEqual(bar.data, [
+    { label: "/a", value: 10 },
+    { label: "/b", value: 5 },
+  ]);
+  assert.match(String(bar.caption), /Breakdown/);
+  assert.ok(
+    charts.find((c) => c.chartType === "area"),
+    "area trend part",
+  );
+  assert.doesNotMatch(htmlOf(r), /<svg/); // no inline chart svg anymore
 });
 
 test("design-doc renders goal-as-problem and the axes solution space", () => {
@@ -91,19 +120,20 @@ test("design-doc renders goal-as-problem and the axes solution space", () => {
     },
     openQuestions: [{ question: "Q1?", owner: "me" }],
   });
-  assert.match(r.html, /Problem \(no implementation leakage\)/);
-  assert.match(r.html, /the problem/);
-  assert.match(r.html, /Axis · where\?/);
-  assert.match(r.html, /pill pick/); // the chosen option
-  assert.match(r.html, /Open questions/);
+  const html = htmlOf(r);
+  assert.match(html, /Problem \(no implementation leakage\)/);
+  assert.match(html, /the problem/);
+  assert.match(html, /Axis · where\?/);
+  assert.match(html, /pill pick/); // the chosen option
+  assert.match(html, /Open questions/);
 });
 
 test("status badge reflects state; in-flight renders progress bars", () => {
   const ok = renderStatus({ title: "wk", state: "on-track", inFlight: [{ item: "X", pct: 80 }] });
-  assert.match(ok.html, /badge ok/);
-  assert.match(ok.html, /width:80%/);
+  assert.match(htmlOf(ok), /badge ok/);
+  assert.match(htmlOf(ok), /width:80%/);
   const risk = renderStatus({ title: "wk", state: "off-track" });
-  assert.match(risk.html, /badge danger/);
+  assert.match(htmlOf(risk), /badge danger/);
 });
 
 test("architecture auto-draws a pipeline from component names", () => {
@@ -112,9 +142,10 @@ test("architecture auto-draws a pipeline from component names", () => {
     components: [{ name: "A" }, { name: "B" }, { name: "C" }],
     dataFlow: ["step one"],
   });
-  assert.match(r.html, /<svg/);
-  assert.match(r.html, /marker-end="url\(#arrow\)"/); // pipeline arrows
-  assert.match(r.html, /step one/);
+  const html = htmlOf(r);
+  assert.match(html, /<svg/);
+  assert.match(html, /marker-end="url\(#arrow\)"/); // pipeline arrows
+  assert.match(html, /step one/);
 });
 
 test("product-demo renders the five animate beats with data-section tags", () => {
@@ -126,10 +157,11 @@ test("product-demo renders the five animate beats with data-section tags", () =>
     proof: { stats: [{ value: "9x", label: "better" }], quote: "love it" },
     cta: { headline: "Start", actions: ["Go"] },
   });
+  const html = htmlOf(r);
   for (const sectionId of ["hook", "problem", "feature", "proof", "cta"]) {
-    assert.match(r.html, new RegExp(`data-section="${sectionId}"`), `${sectionId} step`);
+    assert.match(html, new RegExp(`data-section="${sectionId}"`), `${sectionId} step`);
   }
-  assert.match(r.html, /class="anim/);
+  assert.match(html, /class="anim/);
 });
 
 test("agent strings are escaped; backtick/bold inline fmt is applied", () => {
@@ -137,10 +169,11 @@ test("agent strings are escaped; backtick/bold inline fmt is applied", () => {
     title: "T",
     headline: "use `code` and **bold** and <script>x</script>",
   });
-  assert.match(r.html, /<span class="mono">code<\/span>/);
-  assert.match(r.html, /<b>bold<\/b>/);
-  assert.match(r.html, /&lt;script&gt;/); // the tag is escaped, not live
-  assert.doesNotMatch(r.html, /<script>x<\/script>/);
+  const html = htmlOf(r);
+  assert.match(html, /<span class="mono">code<\/span>/);
+  assert.match(html, /<b>bold<\/b>/);
+  assert.match(html, /&lt;script&gt;/); // the tag is escaped, not live
+  assert.doesNotMatch(html, /<script>x<\/script>/);
 });
 
 // --- the publish flow (HTTP) ------------------------------------------------
