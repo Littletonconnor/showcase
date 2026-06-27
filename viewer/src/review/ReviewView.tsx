@@ -601,62 +601,68 @@ export function ReviewView(props: {
       )}
     >
       <div className="mx-auto max-w-[1180px] px-6 py-8">
-        {/* top bar — back to board + the derived verdict + a burndown/legend */}
-        <div className="mb-4 flex flex-wrap items-center gap-2 text-[12px]">
-          {props.onBack && (
-            <button
-              type="button"
-              onClick={props.onBack}
-              className="rounded-md px-2 py-1 font-medium text-muted-foreground hover:bg-hover"
-            >
-              ← Board
-            </button>
-          )}
-          <span
-            className={cx(
-              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold",
-              r.verdict === "block"
-                ? "bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300"
-                : r.verdict === "approve"
-                  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
-                  : "bg-muted text-muted-foreground",
+        {/* The headline region is its own snap point. Without it, the only snap
+            targets are the decision <li>s, so any relayout (streaming comments,
+            a review re-fetch, async shiki highlighting) re-snaps the proximity
+            container to decision 1 and yanks the Brief out of view. */}
+        <header className="snap-start scroll-mt-8">
+          {/* top bar — back to board + the derived verdict + a burndown/legend */}
+          <div className="mb-4 flex flex-wrap items-center gap-2 text-[12px]">
+            {props.onBack && (
+              <button
+                type="button"
+                onClick={props.onBack}
+                className="rounded-md px-2 py-1 font-medium text-muted-foreground hover:bg-hover"
+              >
+                ← Board
+              </button>
             )}
-          >
-            {VERDICT_LABEL[r.verdict]}
-          </span>
-          <span className="text-faint">
-            {showVerbs
-              ? decided === total
-                ? `Review complete · ${total} accepted`
-                : `${decided} / ${total} accepted`
-              : `${total} decision${total === 1 ? "" : "s"}`}
-          </span>
-        </div>
-
-        {/* The Brief — plain English, for anyone. Full-width; scrolls away. */}
-        <p className="max-w-[68ch] text-[17px] leading-relaxed text-foreground">{r.brief}</p>
-
-        {/* one-line legend so the keys are obvious */}
-        {showVerbs && (
-          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-faint">
-            <span>
-              <Kbd>A</Kbd> accept
+            <span
+              className={cx(
+                "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold",
+                r.verdict === "block"
+                  ? "bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300"
+                  : r.verdict === "approve"
+                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+                    : "bg-muted text-muted-foreground",
+              )}
+            >
+              {VERDICT_LABEL[r.verdict]}
             </span>
-            <span>
-              <Kbd>D</Kbd> disagree — it defends or revises
-            </span>
-            <span>
-              <Kbd>J</Kbd>
-              <Kbd>K</Kbd> move
+            <span className="text-faint">
+              {showVerbs
+                ? decided === total
+                  ? `Review complete · ${total} accepted`
+                  : `${decided} / ${total} accepted`
+                : `${total} decision${total === 1 ? "" : "s"}`}
             </span>
           </div>
-        )}
 
-        {/* The complete changed-file manifest — every file accounted for, so the
+          {/* The Brief — plain English, for anyone. Full-width; scrolls away. */}
+          <p className="max-w-[68ch] text-[17px] leading-relaxed text-foreground">{r.brief}</p>
+
+          {/* one-line legend so the keys are obvious */}
+          {showVerbs && (
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-faint">
+              <span>
+                <Kbd>A</Kbd> accept
+              </span>
+              <span>
+                <Kbd>D</Kbd> disagree — it defends or revises
+              </span>
+              <span>
+                <Kbd>J</Kbd>
+                <Kbd>K</Kbd> move
+              </span>
+            </div>
+          )}
+
+          {/* The complete changed-file manifest — every file accounted for, so the
             risk-ranked queue never gives a false sense of "that's everything". */}
-        {r.manifest && r.manifest.length > 0 && (
-          <Manifest files={r.manifest} decisionIndex={decisionIndex} onJump={jumpToDecision} />
-        )}
+          {r.manifest && r.manifest.length > 0 && (
+            <Manifest files={r.manifest} decisionIndex={decisionIndex} onJump={jumpToDecision} />
+          )}
+        </header>
 
         {/* The decision region: left scrolls, right is sticky and snaps to active. */}
         <div className="mt-6 grid gap-x-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">

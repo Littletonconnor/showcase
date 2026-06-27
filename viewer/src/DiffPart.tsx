@@ -166,10 +166,7 @@ function DiffManifest(props: { files: DiffFileInfo[] }) {
   );
 }
 
-export function DiffPart(props: {
-  part: DiffPartData;
-  onLineClick?: (anchor: { line: number; lineType?: "context" | "addition" | "deletion" }) => void;
-}) {
+export function DiffPart(props: { part: DiffPartData }) {
   const activeTheme = useActiveTheme();
   const mode = useResolvedMode();
   const dark = mode === "dark";
@@ -211,11 +208,9 @@ export function DiffPart(props: {
           theme: { dark: shiki.dark, light: shiki.light },
           themeType: dark ? "dark" : "light",
           preferredHighlighter: "shiki-js",
-          // Word-level intra-line highlighting (Step D / P4): mark the changed
-          // SPANS within a modified line, not just the whole line, so the eye
-          // lands on the exact edit. @pierre/diffs computes the sub-line diff;
-          // the line rows (and their data-line-type/data-column-number hooks the
-          // click bridge rides) are unchanged, so line-anchored comments still work.
+          // Word-level intra-line highlighting: mark the changed SPANS within a
+          // modified line, not just the whole line, so the eye lands on the exact
+          // edit. @pierre/diffs computes the sub-line diff.
           lineDiffType: "word",
         } as const;
         const rendered = await Promise.all(
@@ -275,7 +270,6 @@ export function DiffPart(props: {
             class="block w-full border-0 bg-transparent"
             body={hotBody ?? ""}
             css={DIFF_CSS}
-            onLineClick={props.onLineClick}
           />
           {coldBody ? (
             <div className="border-t-[0.5px] border-border">
@@ -293,7 +287,6 @@ export function DiffPart(props: {
                   class="block w-full border-0 bg-transparent"
                   body={coldBody}
                   css={DIFF_CSS}
-                  onLineClick={props.onLineClick}
                 />
               ) : null}
             </div>

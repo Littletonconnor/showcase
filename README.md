@@ -13,7 +13,7 @@ comment on a card, or pin a note to an exact spot, and that feedback flows
 straight back to the agent. The loop — **publish → live render → comment →
 revise** — is the whole point. No GitHub thread or terminal scrollback does this.
 
-![A PR-review verdict card on the showcase surface: a risk band over size/surface/sensitivity/tests, a risk-weighted file manifest, and a findings summary table](docs/images/pr-review.png)
+![A decision-review on the showcase surface: a plain-English brief, a verdict, and a risk-ranked queue of decisions over a manifest of every changed file](docs/images/pr-review.png)
 
 A self-contained local-only engine: a Hono server, a React viewer, an MCP
 server, and a zero-dependency CLI. It runs entirely on your machine.
@@ -32,34 +32,36 @@ deciding before you build.
 ### 🔍 Review the code it wrote
 
 _"The future of code review is multimodal."_ When an agent (or a human) hands you
-a branch, run `showcase review <branch>`. The agent reviews it and publishes a
-**verdict card** — a risk read over four signals, a priority-ranked file manifest
-(sensitive first, mechanical collapsed away), and a findings summary — followed by
-**one finding card per issue**: a severity **badge** (Bug / Nit / Question /
-Praise), a plain-English explanation, and the **diff inline**. You read top-down,
-push back in the thread, and **Approve** or **Dismiss** to burn down a live
-verdict. Far faster than scrolling a wall of inline comments to decide whether the
-change is safe.
+a branch, the agent reviews it and publishes a **decision review** — a
+plain-English **brief** (no code identifiers), a **verdict** (block / approve /
+comment), and a **risk-ranked queue of decisions** the agent triaged out of the
+diff for you to adjudicate. Backing the queue is a **manifest** of every changed
+file, each tagged as carrying a decision, reviewed-no-comment, or
+mechanical-skipped — so nothing the agent touched is silently dropped. You read
+top-down and **Accept** (A) or **Disagree** (D) each decision; a Disagree threads
+a comment the agent must defend-or-concede, and re-publishing updates the decision
+in place. Far faster than scrolling a wall of inline comments to decide whether
+the change is safe.
 
-Each finding reads the same way no matter the PR — **the problem, then the fix as
-a before → after diff, then why it's better** — so big and small reviews stay
-scannable.
+Each decision reads the same way no matter the PR — an **assertion** at a `scope`
+(changed-line / whole-file / codebase), a `call` (block / ship / decide), a
+**confidence** (high / medium / low — the one surfaced honesty signal), and, when
+there's a fix, a before → after **proposal** rendered as a diff. So big and small
+reviews stay scannable.
 
-![A review finding rendered as a card: the problem in prose above a syntax-highlighted before-and-after diff of the fix](docs/images/finding-diff.png)
+![A decision rendered in the review queue: the assertion and its confidence above a syntax-highlighted before-and-after diff of the proposed fix](docs/images/finding-diff.png)
 
 **showcase doesn't review — it renders.** The analysis is delegated to the
 agent's own **`code-review` skill** (a generic, showcase-agnostic reviewer);
-showcase only formats the findings into cards + a verdict. The contract is the
-skill _name_: `showcase review` tells the agent to run its `code-review` skill, so
-anyone using showcase either has that skill or drops their own in under that name.
-The dependency is one-way — showcase knows about `code-review`, `code-review`
-knows nothing about showcase — so the reviewer stays reusable outside showcase,
-and showcase stays usable with any reviewer.
+showcase only formats the decisions into the review queue. The dependency is
+one-way — showcase knows about `code-review`, `code-review` knows nothing about
+showcase — so the reviewer stays reusable outside showcase, and showcase stays
+usable with any reviewer.
 
-**Make it _your_ reviewer:** drop a `~/.showcase/review.md` (or point
-`$SHOWCASE_REVIEW_PROFILE` at one) holding your standing review conventions and
-extra skills to load — `showcase review` folds it into every review prompt, so the
-agent applies your standards each time.
+A session that carries a stored review is treated as a review session: it chips
+its verdict in the sidebar and opens the queue inline. See
+[`docs/review-form-factor.md`](docs/review-form-factor.md) for the full form
+factor.
 
 ### 📚 Understand what it's explaining
 
@@ -179,7 +181,7 @@ claude mcp add showcase \
 ```
 
 Restart the editor after changing MCP config. The agent's tools: `publish_surface`,
-`update_surface`, `publish_review`, `reply_to_user`, `wait_for_feedback`,
+`update_surface`, `publish_decisions`, `reply_to_user`, `wait_for_feedback`,
 `list_surfaces`, `upload_asset`, `get_design_guide`.
 
 Then just ask in plain language:
@@ -191,11 +193,13 @@ Then just ask in plain language:
 A good PR-review prompt to paste:
 
 ```text
-Review this branch against main and publish a visual review to showcase.
-Run your code-review skill to do the analysis, then render its findings:
-call get_design_guide first, then ONE publish_review call — a verdict card plus
-one card per finding (severity badge, explanation, the diff, optional diagram).
-Then wait_for_feedback and revise cards in place as I comment.
+Review this branch against main and publish a decision review to showcase.
+Run your code-review skill to do the analysis, then render it:
+call get_design_guide first, then ONE publish_decisions call — a plain-English
+brief, a verdict, a risk-ranked decisions[] array (each with an assertion, scope,
+call, and confidence; a before→after proposal where there's a fix), and a manifest
+tagging every changed file. Then wait_for_feedback and update decisions in place
+as I Accept or Disagree.
 ```
 
 Shell-only agents can skip MCP entirely and drive showcase with the CLI or curl —
@@ -216,19 +220,22 @@ showcase chart latency.json --title "p99 latency"                       # native
 showcase code src/cache.ts --title "Cache layer" --language ts
 echo '<p>hi</p>' | showcase publish - --title "Quick note"
 
+showcase decisions <session> review.json       # publish a decision review for a session
+cat review.json | showcase decisions <session> -
+
 showcase wait --session <id> --timeout 600     # block until the user gives feedback
 ```
 
 `showcase --help` lists every command (`publish`, `diff`, `markdown`, `mermaid`,
-`code`, `chart`, `json`, `terminal`, `image`, `trace`, `review`, `update`, `wait`,
-`watch`, `demo`, `kits`, …).
+`code`, `chart`, `json`, `terminal`, `image`, `trace`, `decisions`, `update`,
+`wait`, `watch`, `demo`, `kits`, …).
 
 ---
 
 ## Surfaces (part kinds)
 
-A surface is an ordered list of **parts**. Combine them freely — a review finding
-card is `[markdown, mermaid, diff]`.
+A surface is an ordered list of **parts**. Combine them freely — a decision's
+evidence is `[markdown, mermaid, diff]`.
 
 | kind       | renders                                                               |
 | ---------- | --------------------------------------------------------------------- |

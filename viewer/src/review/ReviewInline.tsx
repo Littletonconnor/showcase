@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import type { FeedEvent } from "../../../server/events.ts";
 import type { Comment, Review } from "../../../server/types.ts";
-import { api, appPath } from "../api.ts";
+import { api, appPath, exportBundle, isReadonly } from "../api.ts";
 import { ReviewView } from "./ReviewView.tsx";
 
 export function ReviewInline(props: { sessionId: string }) {
@@ -14,6 +14,9 @@ export function ReviewInline(props: { sessionId: string }) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [missing, setMissing] = useState(false);
 
+  // A static export inlines the review and disables the verbs; render it
+  // read-only and skip the live channel (there's no server to stream from).
+  const readonly = isReadonly() || !!exportBundle();
   const sessionId = props.sessionId;
   useEffect(() => {
     let live = true;
@@ -28,6 +31,7 @@ export function ReviewInline(props: { sessionId: string }) {
     loadReview();
     loadComments();
 
+    if (readonly) return () => void (live = false);
     const es = new EventSource(appPath(`/api/events?session=${encodeURIComponent(sessionId)}`));
     es.onmessage = (ev) => {
       const e = JSON.parse(ev.data) as FeedEvent;
@@ -38,7 +42,7 @@ export function ReviewInline(props: { sessionId: string }) {
       live = false;
       es.close();
     };
-  }, [sessionId]);
+  }, [sessionId, readonly]);
 
   if (missing || !review) {
     return (
@@ -47,5 +51,13 @@ export function ReviewInline(props: { sessionId: string }) {
       </div>
     );
   }
-  return <ReviewView review={review} sessionId={sessionId} comments={comments} embedded />;
+  return (
+    <ReviewView
+      review={review}
+      sessionId={sessionId}
+      comments={comments}
+      readonly={readonly}
+      embedded
+    />
+  );
 }

@@ -1,9 +1,25 @@
 # The agent-era PR review form factor
 
 _A standardized structure for reviewing code in the age of agents. The form
-factor and its live interaction loop (Accept / Override / Prove-it / Challenge)
-are built — published via `publish_decisions`, rendered at `/?review=<session>`.
-This is the north star: if an implementation drifts, come back here._
+factor — a plain-English Brief + a risk-ranked decision queue — is built and is
+the **single** review path: published via `publish_decisions`, rendered at
+`/?review=<session>`. This is the north star: if an implementation drifts, come
+back here._
+
+> **Shipped reality (read this before treating the rest as gospec).** This doc is
+> the design north star and runs ahead of the code in two places:
+>
+> - **The interaction loop is Accept / Disagree, not Accept / Override / Prove-it /
+>   Challenge.** The human Accepts a decision or Disagrees (a scoped comment the
+>   agent must defend-or-concede); a re-publish updates the decision in place.
+>   **Prove-it** and the multi-verb spectrum below describe the intended design,
+>   not what ships today.
+> - **The honesty ledger is `confidence` only.** The per-decision
+>   coverage/gaps "ledger" described below was deliberately _not_ surfaced —
+>   nothing backs a self-reported "what I verified" claim — so the renderer shows
+>   only the agent's `confidence`. Reviving Prove-it in an _evidence-backed_ form
+>   (the agent actually runs the check and posts the artifact) is the open
+>   follow-up.
 
 ---
 

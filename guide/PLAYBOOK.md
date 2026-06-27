@@ -17,7 +17,7 @@ A surface is a card built from ordered **parts**, each with a `kind`:
 - **`trace`** — agent-run steps rendered as a vertical step list.
 - **`code`** — a source file rendered with syntax highlighting.
 - **`json`** — a JSON value rendered as a collapsible tree.
-- **`chart`** — row-oriented numeric data rendered as a native SVG chart (bar, line, area, pie, treemap, or scatter). Reach for it for metrics, distributions, before/after comparisons — anything a terminal can't draw. (`publish_review` builds the risk treemap + confidence×coverage quadrant for you.)
+- **`chart`** — row-oriented numeric data rendered as a native SVG chart (bar, line, area, pie, treemap, or scatter). Reach for it for metrics, distributions, before/after comparisons — anything a terminal can't draw.
 
 A surface can combine parts — `[html, diff]` is a diagram with its code review in one card. html parts are sandboxed (you author the markup); diff/markdown/mermaid/terminal/image/trace/code/json/chart parts are data rendered by the trusted viewer.
 
@@ -70,144 +70,34 @@ A surface can carry a `badge` — a short colored chip in the card header that t
 
 Pass `badge: { tone, label }` on `publish_surface` / `update_surface` (label ≤ 24 chars). On `update_surface`, pass `badge: null` to clear it — e.g. when a fix downgrades a `Bug` to a `Nit`, update the badge in the same call that revises the diff.
 
-## Recipe: visual PR review
+## Recipe: visual PR review (decision queue)
 
-This is showcase's flagship workflow — _"the future of code review is multimodal."_ A reviewing agent publishes one **finding card** per issue, each combining the explanation, a picture of the problem, and the fix, so the user grasps it far faster than a text thread.
+This is showcase's flagship review workflow, designed for the age of agents and large diffs. A flat diff scales with **lines**; a change only makes a handful of **decisions**. So instead of a wall of text, you triage the diff into a small, risk-ranked queue of decisions the human adjudicates — review time scales with **risk, not size.** Publish it with **`publish_decisions`** (MCP, on both the streamable-HTTP `/mcp` and the stdio server) or **`showcase decisions <session> <file.json>`** (CLI, `-` reads from stdin); REST is `POST /api/sessions/:id/review`. The user views it at `/?review=<session>`.
 
-**showcase does NOT define how to review — it renders what a review found.** The analysis is delegated to your **`code-review` skill** (a generic, showcase-agnostic reviewer): run it to do the actual review — it owns depth, criteria, reading the real code paths at runtime, and dispatch to any language-specific hygiene skills for the diff. This recipe is the **rendering contract**: how to turn `code-review`'s findings into a standardized visual review. (No `code-review` skill? Review carefully by hand against the same bar, then render the same way.) The dependency is one-way — showcase knows about `code-review`; `code-review` knows nothing about showcase.
+**showcase does NOT define how to review — it renders what a review found.** The analysis is delegated to your **`code-review` skill** (a generic, showcase-agnostic reviewer): run it first to do the actual review — it owns depth, criteria, reading the real code paths at runtime, and dispatch to any language-specific hygiene skills for the diff. This recipe is the **rendering contract**: how to map `code-review`'s findings into the decision grammar. (No `code-review` skill? Review carefully by hand against the same bar, then render the same way.) The dependency is one-way — showcase knows about `code-review`; `code-review` knows nothing about showcase.
 
-**Start from a scaffold:** `showcase review <branch> [--base <base>]` creates a "Review: <branch>" session seeded with a verdict-placeholder card (the diffstat + file list) and prints the session id + a ready-to-paste prompt that wires the `code-review` → showcase handoff. Render into that session — when you call `publish_review` with it, the placeholder **becomes** the verdict card (no duplicate).
-
-**Group the findings into the PR's critical pieces** — the entity, the wiring, the test coverage — not file-by-file.
-
-**Render the whole review in ONE `publish_review` call.** Do NOT write it as a single markdown surface — that wall of text is the exact failure this replaces. You hand over the **overview** (`intent`, `risk`, `budget`, `manifest`), a `verdict`, a `summary`/`coverage`, a `changeMap`, and a `findings[]` array (one entry per piece); showcase explodes it into a verdict card + one card per finding. This step is formatting, not re-reviewing — the structure is the API, so it can't become a wall.
-
-**The product is attention routing.** A diff browser scales with the size of the change; a review scales with the size of the _risk_. So lead with a map the reviewer reads _before_ the diff, and let them confidently skip the rest.
-
-**The structure is fixed, so every review reads the same** no matter how big or small the PR:
-
-- **Verdict card** (the map) — it LEADS with your **overview**: `intent` (1–2 sentences on what the PR is trying to do), a composite **risk** band over four sub-signals (`size`, `surfaceArea`, `sensitivity`, `testDelta` — each 0–3 — plus a `band`), a **budget** line ("~8 min · 3 files need real eyes · 9 mechanical"), and a priority-ranked **manifest** (`[{file, added, removed, priority, note}]` — `sensitive` first, `mechanical` collapses into a low-attention bucket). Then your `summary`, a finding **tally** + **severity table**, your `coverage` note, and the **change map** (`changeMap`) — the changed pieces and how they interact, color-coded new/modified/touched/removed, with edge `status` marking new/severed coupling.
-- **One card per finding** (top-to-bottom: trust signal → what's wrong → the change → why) — its head carries **confidence** + a **coverage** line (what you DID and did NOT check) + an optional **verified**/`scope` chip; then a severity badge + `file:line`, the **Problem**, a **before→after `suggestion`** rendered as an inline diff, **Why it's better** (`fix`), and an optional **blast radius** mini call-graph.
-
-**Risk & priority are yours to judge.** You have the semantic context a path regex never will — a 30-line auth-token change outranks a 900-line lockfile bump. `showcase review` seeds a churn-based manifest + risk as a _starting point_; refine them from your actual read.
-
-```jsonc
-// publish_review — one call → a verdict card + a card per finding
-{
-  "branch": "feat/stream-asset-uploads",
-  "base": "main",
-  "verdict": "request_changes", // request_changes | approve | comment
-  // OVERVIEW — read before any hunk. intent + risk + budget + manifest.
-  "intent": "Stream-caps asset uploads so an oversized request is rejected before the whole body is buffered into memory.",
-  "risk": {
-    "size": 1, // total churn, 0–3
-    "surfaceArea": 1, // distinct files/modules/exports touched, 0–3
-    "sensitivity": 3, // auth/data-model/migration/money/config weight, 0–3
-    "testDelta": 2, // did tests move with the logic (untouched = riskier), 0–3
-    "band": "elevated", // low | elevated | high
-  },
-  "budget": "~6 min · 1 file needs real eyes · 1 mechanical",
-  "manifest": [
-    // priority: sensitive | logic | mechanical (sensitive first; mechanical collapses)
-    {
-      "file": "server/app.ts",
-      "added": 24,
-      "removed": 6,
-      "priority": "sensitive",
-      "note": "upload path — unbounded buffer",
-    },
-    {
-      "file": "test/assets.test.ts",
-      "added": 18,
-      "removed": 0,
-      "priority": "logic",
-      "note": "covers the new size guard",
-    },
-    {
-      "file": "package-lock.json",
-      "added": 40,
-      "removed": 6,
-      "priority": "mechanical",
-      "note": "dependency bump",
-    },
-  ],
-  "summary": "Adds a content-length size guard + a streaming cap to the upload path, with tests. One blocker.",
-  "coverage": "Read the upload + size-check paths; did not test chunked uploads that omit content-length.",
-  // The headline visual: the changed pieces and how they interact. One node per
-  // changed file/symbol (status → color, kind → shape); one edge per interaction
-  // (edge status → new/severed/unchanged coupling).
-  "changeMap": {
-    "nodes": [
-      { "id": "ctrl", "label": "uploadAsset", "status": "modified", "kind": "function" },
-      { "id": "guard", "label": "sizeGuard", "status": "new", "kind": "function" },
-      { "id": "store", "label": "putAsset", "status": "touched", "kind": "function" },
-    ],
-    "edges": [
-      { "from": "ctrl", "to": "guard", "label": "checks", "status": "new" }, // new coupling
-      { "from": "ctrl", "to": "store", "label": "writes", "status": "existing" },
-    ],
-  },
-  "findings": [
-    {
-      "severity": "bug", // bug|nit|question|praise|note → the badge
-      "title": "Unbounded buffer before the size check",
-      "file": "server/app.ts",
-      "line": 747,
-      "confidence": "high", // REQUIRED — high|medium|low
-      "coverage": "Reproduced a 2 GB upload against a local board; did not test chunked uploads that omit content-length.", // REQUIRED — what you did/didn't check
-      "scope": "changed-lines", // changed-lines | whole-file | codebase (optional)
-      "problem": "`uploadAsset` calls `req.arrayBuffer()` to buffer the ENTIRE request body into memory before the `MAX_ASSET_BYTES` check, so an oversized request can exhaust heap before the 413 is ever returned.",
-      // The fix as a before→after pair — showcase computes the diff so it ALWAYS renders.
-      "suggestion": {
-        "before": "const buf = new Uint8Array(await req.arrayBuffer());\nif (buf.byteLength > MAX_ASSET_BYTES) return tooLarge();",
-        "after": "if (Number(req.headers.get('content-length')) > MAX_ASSET_BYTES) return tooLarge();\nconst buf = new Uint8Array(await req.arrayBuffer());",
-      },
-      "fix": "Reject on the content-length header before reading the body; a streaming cap can follow for chunked uploads that omit the header.",
-    },
-    {
-      "severity": "praise",
-      "title": "Size guard is well covered",
-      "file": "test/assets.test.ts",
-      "confidence": "medium",
-      "coverage": "Read the new cases; did not run the full suite.",
-      "problem": "The new test exercises both the under-limit and over-limit paths and asserts the 413 body — a clean guard against regressions.",
-    },
-  ],
-}
-```
-
-**Always use `suggestion:{before,after}` for a fix, not `patch`.** showcase builds the diff from the two contents, so the change always renders; a hand-written `patch` shows an empty "−0 +0" diff the moment it isn't a valid unified diff. Reserve `patch` for showing the PR's _actual_ change in context. Put **why** the change is better in `fix` — it renders under the diff as "Why it's better."
-
-**`confidence` + `coverage` are REQUIRED on every finding — a finding missing either is rejected.** The most dangerous LLM output is a confident-looking change in an unchecked area, so every finding must declare how sure you are and what you did vs didn't verify. Be honest: "did not run the migration" is more useful than false certainty. Add `verified: true` only when you actually ran/reproduced it, `scope` to say how far you had to look, and a `blastRadius: {nodes, edges}` call-graph when a finding's reach (callers / tests that do or don't cover it) is the point.
-
-**Carry `code-review`'s evidence through to the render.** Each `problem` names the symbol + `file:line` and the concrete impact (who hits it, how bad, under what input — quantify when you can); don't flatten the analysis's specifics into vague prose. Add a `diagram` to a finding when its own control/data flow matters. Findings aren't only problems — use `praise` for genuinely good work and `question` for what you couldn't judge. (To add a single finding later, `review_finding` takes the same fields — including the required `confidence`/`coverage` — for one card.)
-
-**The verdict card is built for you** from `publish_review`'s `verdict` + `summary` + `coverage` + `architecture` + the `findings[]` (the tally, severity table, and diagram). The session header **also** rolls every finding badge into a live count summary — "1 Bug · 1 Nit · 1 Praise" — each chip jumping to its finding, and it **burns down** as the user Approves/Dismisses cards. So write a real `summary` and an honest `coverage` note (what you reviewed and deliberately skipped), and the verdict reads as a verdict, not a sentence.
-
-**Calibrate severity honestly:** `critical`→Bug (wrong/unsafe), `warning`→Nit (style/maintainability), `info`→Question (you need context to judge), `success`→Praise (genuinely good — call it out, reviews aren't only negative). Don't inflate; don't pad with trivia.
-
-**Then run the loop** (below): the user reads each card, taps **Approve** or comments. On a change request, **`update_surface` the same card** with the revised diff — and downgrade or clear its badge — so the fix lands in place as a new version, not a new card. (`showcase demo` seeds a live example of this composition.)
-
-## Recipe: decision review (the form factor)
-
-_The next-generation review, designed for the age of agents and large diffs (`docs/review-form-factor.md`)._ A flat diff scales with **lines**; a change only makes a handful of **decisions**. So instead of finding cards, you triage the diff into a small, risk-ranked queue of decisions the human adjudicates — review time scales with **risk, not size.** Publish it with **`publish_decisions`** (MCP) or **`showcase decisions <session> <file.json>`** (CLI); the user views it at `/?review=<session>`.
-
-**Same delegation rule:** the ANALYSIS is your **`code-review` skill's** — run it first to actually read the code. This is the rendering contract: map its findings into the decision grammar.
+**Render the whole review in ONE `publish_decisions` call.** Do NOT write it as a single markdown surface — that wall of text is the exact failure this replaces. This step is formatting, not re-reviewing — the structure is the API, so it can't become a wall.
 
 **Two registers, by design:**
 
 - The **`brief`** is the ONE strictly plain-English part — ≤4 sentences, **no code identifiers** — so a PM, a designer, anyone grasps what the PR does, why, whether anything changes for users, and the one catch. (It's what makes the review shareable to non-engineers.)
 - The **decisions** are fully technical (symbols, `file:line`, diffs).
 
-**Each decision is one fixed grammar** — triage the diff so there's ONE decision per thing that genuinely needs a human call (the cold/mechanical stuff gets none), hardest first (`decisions[0]` is the lede):
+**The payload is a `brief` + a `verdict` + a risk-ranked `decisions[]` + a required `manifest`:**
+
+- **`verdict`** — `block | approve | comment` (the overall call).
+- **`decisions[]`** — ONE decision per thing that genuinely needs a human call (the cold/mechanical stuff gets none), hardest first (`decisions[0]` is the lede).
+- **`manifest`** — EVERY changed file (the trust signal; see below).
+
+**Each decision is one fixed grammar:**
 
 - **`id`** — a short, **stable** ref (e.g. `"d-stale-token"`). Keep it identical across re-publishes: it's the human's copy-paste handle, the manifest's link target, and what preserves their adjudication when you revise. Omit and the server mints one — but then it churns each publish, so supply your own.
 - **`call`** — `block | ship | decide` (your recommendation) · **`kind`** — bug/fix/capability/refactor/migration/risk · **`scope`** — `changed-line | whole-file | codebase` (how far the reviewer must look).
 - **`assertion`** — one sentence, the conclusion · **`impact`** — who hits it, how bad (optional).
 - **`details`** — the fuller explanation (markdown): the reasoning, how the code actually behaves, edge cases, what you traced. The `assertion` is the headline; `details` is the depth under it. Write it for anything non-obvious — a one-sentence assertion alone leaves the reviewer guessing.
-- **`confidence`** is **REQUIRED** — `high | medium | low`, how sure you are of the call. This is the one honesty signal the board surfaces, so set it truthfully: if you couldn't fully verify, drop to medium/low and say why in `details` rather than claiming high.
+- **`confidence`** is **REQUIRED** — `high | medium | low`, how sure you are of the call. This is **the one honesty signal the board surfaces**, so set it truthfully: if you couldn't fully verify, drop to medium/low and say why in `details` rather than claiming high.
 - **`pivot`** — `"flips to ✅/⛔ if …"`, ONLY when there's a real fork. Omit on a clean ship — never noise.
-- **`evidence`** — surface parts for the right pane (usually a `diff`, maybe a control-flow `mermaid`). Omit and the decision renders full-width.
+- **`evidence`** — surface parts for the synced right pane (usually a `diff`, maybe a control-flow `mermaid`). Omit and the decision renders full-width.
 - **`proposal`** — a concrete fix `{before, after, filename?, note?}` (current code → your fix). Renders under the evidence as a **"Suggested fix"** diff, so a `block`/`decide` shows the change _and_ how to unblock it. **Populate it whenever a concrete fix exists** — a blocked decision without one leaves the reviewer guessing.
 
 **`manifest` is REQUIRED — the complete changed-file list (trust).** Risk-ranked decisions hide the files you triaged out; a reviewer who can't see _that's everything_ stops trusting the review. So list **every file in the diff**, each `{path, disposition, added, removed, decisionId?, note?}`:
@@ -351,7 +241,7 @@ Feedback attaches to a surface (`surfaceId`); when it arrives, do substantial ch
 
 **Where the conversation happens.** The inline browser chat was removed. Each card shows a **copy-to-clipboard card id** in its header; the user copies it and talks to you about that surface in **your terminal** — so the back-and-forth lives where you're running, not in the tab. Refer to surfaces back to the user by id (`list_surfaces` fetches one's current content).
 
-**Review feedback from the browser.** While you are parked in a `wait_for_feedback` / `showcase wait`, the viewer shows a live green **"Listening"** badge in the session header, so the user can see you are reachable. On a review the user adjudicates in the tab — **Approve** / **Dismiss** on each finding card, and **Accept** / **Disagree** (or free-form chat scoped by a decision `id`) on a decision-queue review — and those land here as user comments. Act on them in your terminal and republish the review so the board burns down; when you stop waiting the badge goes idle, honestly telling the user their next signal will queue until you check back.
+**Review feedback from the browser.** While you are parked in a `wait_for_feedback` / `showcase wait`, the viewer shows a live green **"Listening"** badge in the session header, so the user can see you are reachable. On a review the user adjudicates in the tab — **Accept** / **Disagree** (or free-form chat scoped by a decision `id`) on each decision — and those land here as user comments. Act on them in your terminal and republish the review so the board burns down; when you stop waiting the badge goes idle, honestly telling the user their next signal will queue until you check back.
 
 ## Remote surfaces
 

@@ -76,15 +76,12 @@ a `kind`:
   the axes and `caption` sits below. Colors come from the live theme, so charts
   re-theme with the board; the first series uses the board accent. Pass `colors`
   (an array of CSS colors, one per series or per pie slice) to override — e.g.
-  `["#2f9e44", "#e03131"]` for green-added / red-removed churn. The two
-  review-oriented forms carry a second visual dimension via a per-row `tone`
-  field (a fixed palette, no color string to sanitize): a **`treemap`** sizes
-  each cell by its `y` value and tints it by `tone`
-  (`sensitive`→red / `logic`→amber / `mechanical`→gray) — a risk-weighted file
-  map where the eye is pulled to the big hot rectangle; a **`scatter`** plots
-  `x` vs `y` as a quadrant (`tone: "danger"` reddens a point) — the
-  confidence × coverage view whose bottom-right is the danger zone.
-  `publish_review` composes both automatically from the manifest and findings.
+  `["#2f9e44", "#e03131"]` for green-added / red-removed churn. A per-row `tone`
+  field (a fixed palette, no color string to sanitize) carries a second visual
+  dimension: a **`treemap`** sizes each cell by its `y` value and tints it by
+  `tone` (`sensitive`→red / `logic`→amber / `mechanical`→gray) — a risk-weighted
+  file map where the eye is pulled to the big hot rectangle; a **`scatter`** plots
+  `x` vs `y` as a quadrant (`tone: "danger"` reddens a point).
   Like image/json it is data, not markup — sent
   as values, rendered with escaped text nodes, so no sandbox is needed. Reach for
   it for metrics, distributions, and before/after comparisons.
@@ -218,8 +215,8 @@ The user can type comments under any surface. Comments attach to a surface
   keep working; when it exits with comments, handle them and re-arm. Always arm
   it on the session you actually published to.
 
-Feedback arrives as the user adjudicates in the browser (Approve / Dismiss
-findings, Prove-it / Challenge decisions) and references surfaces by their card id
+Feedback arrives as the user adjudicates in the browser (Accept / Disagree on
+each decision in a review) and references surfaces by their card id
 in your terminal — act on it and do substantial revisions as surface updates.
 
 ## HTML contract
@@ -292,11 +289,11 @@ exactly what it marks.
 Make the annotated element `position: relative`, drop an `<span class="anno …">`
 inside it, and pick the edge the tag sits on:
 
-| class                | effect                                                              |
-| -------------------- | ------------------------------------------------------------------- |
-| `anno`               | the callout tag (info tone, soft shadow, off by default no leader)  |
-| `a-r` `a-l` `a-t` `a-b` | which side of the target the tag sits on; draws the leader + dot  |
-| `a-warn` `a-ok` `a-muted` | tone: warning / success / neutral (default is info)            |
+| class                     | effect                                                             |
+| ------------------------- | ------------------------------------------------------------------ |
+| `anno`                    | the callout tag (info tone, soft shadow, off by default no leader) |
+| `a-r` `a-l` `a-t` `a-b`   | which side of the target the tag sits on; draws the leader + dot   |
+| `a-warn` `a-ok` `a-muted` | tone: warning / success / neutral (default is info)                |
 
 ```html
 <div class="navitem" style="position:relative">
@@ -338,21 +335,15 @@ theme tokens, so kit output re-themes with the board.
   step, the slider scrubs. Wrap a phrase in `.cue` to highlight it. This is the
   **explainer** kit — walk the reader through a concept; pair it with an `image`
   part of the thing you're explaining.
-- **`review`** — the PR-review **overview** vocabulary: a `.risk` band over four
+- **`review`** — a PR-review **overview** vocabulary: a `.risk` band over four
   `.signal` sub-bars (size / surface / sensitivity / tests), a `.budget` line,
   and a priority-ranked `.manifest` whose rows carry a priority `.pri` dot
   (`.sensitive`/`.logic`/`.mechanical`), a two-tone churn `.spark`, a note, and a
-  reviewed checkbox. `.finding-head` styles severity + confidence + verified
-  chips. The kit JS runs a live reviewed-checkbox burn-down and collapses the
-  mechanical bucket. **You normally don't hand-author this** — `publish_review`
-  composes it from `intent` / `risk` / `budget` / `manifest` (plus
-  per-finding `confidence` / `coverage` / `verified` / `scope` / `blastRadius`
-  and an edge-status `changeMap`); see **PLAYBOOK** for the full field set.
-  From that same structure the verdict card also gets the **risk-weighted
-  treemap** (from the manifest) and the **confidence × coverage quadrant** (from
-  the findings), and the session header draws a live **burn-down sparkline** as
-  findings resolve — all automatic. Reach for the raw classes only to build a
-  custom review surface.
+  reviewed checkbox. `.finding-head` styles severity + confidence chips. The kit
+  JS runs a live reviewed-checkbox burn-down and collapses the mechanical bucket.
+  Reach for these raw classes to hand-build a custom review-overview surface. (To
+  publish a structured code review, use the decision-queue review —
+  `publish_decisions`; see **PLAYBOOK**.)
 
 Copy-paste starting points — `issues` (a PR + CI tree), `slides` (a deck), and
 `animate` (a stepped explainer):
@@ -448,12 +439,11 @@ a `data:` URI, or an asset you uploaded to this server (`<img src="/a/<id>">`).
 Two globals are injected into every html part:
 
 - `sendPrompt(text)` — posts `text` to this surface's thread as a `surface`
-  message (not a user comment): the user sees it, but it does NOT reach you
-  through the feedback loop on its own, and it can never impersonate the user.
-  In the viewer it renders as a **"Suggested by this surface"** chip with a
-  **Send to agent** button — one tap relays it as a genuine user message that
-  reaches you. This is the **drill-down loop**: give an explainer buttons that
-  propose deeper follow-ups, and the user advances the conversation in place
+  message (not a user comment): the user sees it (a toast confirms it landed in
+  the thread), but it does NOT reach you through the feedback loop on its own,
+  and it can never impersonate the user — the user relays it deliberately if they
+  want it sent. This is the **drill-down loop**: give an explainer buttons that
+  propose deeper follow-ups, so the user advances the conversation in place
   without retyping. Example:
 
   ```html

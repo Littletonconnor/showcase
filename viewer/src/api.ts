@@ -2,7 +2,6 @@
 import type {
   ChartPart,
   Comment,
-  CommentAnchor,
   CodePart,
   DiffPart,
   HtmlPart,
@@ -24,7 +23,6 @@ import { basePath } from "./host.ts";
 export type {
   ChartPart,
   Comment,
-  CommentAnchor,
   CodePart,
   DiffPart,
   HtmlPart,
@@ -43,9 +41,9 @@ export type {
 
 export type PublicReadMode = "session" | "full";
 
-// What a session contains, computed server-side from its cards: a PR "review"
-// (finding/verdict cards or a decision-queue review) or a "visual" (a diagram /
-// explainer / chart / sketch — everything else). Names and icons the row.
+// What a session contains, computed server-side: a PR "review" (a decision-queue
+// review) or a "visual" (a diagram / explainer / chart / sketch — everything
+// else). Names and icons the row.
 export type SessionKind = "review" | "visual";
 
 // GET /api/sessions decorates each session with its surface count and whether
@@ -55,9 +53,6 @@ export interface SessionRow extends Session {
   listening?: boolean;
   // Whether this session is a PR review or a visualization/explainer.
   kind?: SessionKind;
-  // Unresolved review findings in this session (severity-badged cards the user
-  // hasn't Approved/Dismissed) — the sidebar's "where did I leave off" count.
-  openFindings?: number;
   // Set when the session carries a decision-queue review — the row chips the
   // verdict and links to /?review=<id> instead of the (empty) board view.
   reviewVerdict?: "block" | "approve" | "comment";
@@ -120,6 +115,10 @@ function resolveFromExport(b: ExportBundle, path: string): unknown {
     const found = b.surfaces.find((s) => s.id === decodeURIComponent(surf[1]));
     if (!found) throw new Error("404");
     return found;
+  }
+  if (/^\/api\/sessions\/[^/]+\/review$/.test(clean)) {
+    if (!b.review) throw new Error("404");
+    return b.review;
   }
   if (clean === "/api/comments") return { comments: b.comments };
   if (clean === "/api/version") return { current: null, latest: null, updateAvailable: false };

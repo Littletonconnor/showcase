@@ -44,38 +44,56 @@ test("buildExportBundle inlines surfaces, comments, and assets as data URIs", as
   assert.equal(bundle.surfaces.length, 1);
   assert.equal(bundle.comments.length, 1);
 
-  // The session row is decorated exactly like GET /api/sessions, so the exported
-  // viewer shows the same counts it had live.
+  // The session row is decorated exactly like GET /api/sessions. With no stored
+  // decision review, it's a visualization.
   const row = bundle.sessions[0] as {
     surfaceCount: number;
-    openFindings: number;
+    kind: string;
     listening: boolean;
   };
   assert.equal(row.surfaceCount, 1);
-  assert.equal(row.openFindings, 1); // an unresolved Bug finding
+  assert.equal(row.kind, "visual");
   assert.equal(row.listening, false);
+  assert.equal(bundle.review, null);
 
   // The referenced asset is inlined as a base64 data URI of its bytes.
   assert.match(bundle.assets[asset!.id], /^data:image\/png;base64,/);
 });
 
-test("openFindings drops to 0 once the finding is resolved", async () => {
+test("a decision-queue review is inlined and marks the session a review", async () => {
   const store = freshStore();
   const session = await store.createSession({ agent: "claude" });
-  const surface = await store.createSurface({
-    sessionId: session.id,
-    title: "f",
-    parts: [{ kind: "markdown", markdown: "x" }],
-    badge: { tone: "critical", label: "Bug" },
+  await store.putReview(session.id, {
+    brief: "Caps oversized uploads before buffering them into memory.",
+    verdict: "block",
+    decisions: [
+      {
+        id: "d1",
+        call: "block",
+        kind: "bug",
+        scope: "changed-line",
+        assertion: "Buffers the body before the size check.",
+        confidence: "high",
+      },
+    ],
+    manifest: [
+      {
+        path: "server/app.ts",
+        disposition: "has-decision",
+        decisionId: "d1",
+        added: 10,
+        removed: 2,
+      },
+    ],
   });
-  await store.createComment({
-    sessionId: session.id,
-    surfaceId: surface!.id,
-    author: "user",
-    text: "✓ Approved — fixed",
-  });
+
   const bundle = await buildExportBundle(store, session.id);
-  assert.equal((bundle!.sessions[0] as { openFindings: number }).openFindings, 0);
+  // The stored review rides in the bundle, so the exported page renders offline.
+  assert.ok(bundle!.review);
+  assert.equal(bundle!.review!.decisions.length, 1);
+  const row = bundle!.sessions[0] as { kind: string; reviewVerdict: string };
+  assert.equal(row.kind, "review");
+  assert.equal(row.reviewVerdict, "block");
 });
 
 test("renderExportHtml injects the read-only bundle before </head> and neutralizes </script>", async () => {

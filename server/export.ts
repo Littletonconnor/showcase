@@ -11,22 +11,7 @@
 // (the `btoa` global). Wired from server/app.ts.
 
 import { encodeBase64 } from "./base64.ts";
-import { collectAssetIds, type Comment, type Store, type Surface } from "./types.ts";
-
-// Kept in sync with app.ts FINDING_LABELS / isResolutionText (and the viewer's),
-// so an exported session shows the same sidebar open-count it had live.
-const FINDING_LABELS = new Set(["Bug", "Nit", "Question", "Praise"]);
-const isResolutionText = (t: string) => t.startsWith("✓ Approved") || t.startsWith("⊘ Dismissed");
-// Review-shaped badge labels (findings + verdicts + the `showcase review`
-// placeholder) — a session carrying any of them is a PR review, else a
-// visualization. Kept in sync with app.ts so an export labels sessions the same.
-const REVIEW_BADGE_LABELS = new Set([
-  ...FINDING_LABELS,
-  "Request changes",
-  "Approve",
-  "Comments",
-  "In review",
-]);
+import { collectAssetIds, type Comment, type Review, type Store, type Surface } from "./types.ts";
 
 // A shared export shouldn't reveal which model/tool produced it. The agent's
 // identity lives in `session.agent` (rendered in the header + sidebar + agent
@@ -47,6 +32,9 @@ export interface ExportBundle {
   surfaces: Surface[];
   // GET /api/comments?session=… → { comments }.
   comments: Comment[];
+  // GET /api/sessions/:id/review — the stored decision-queue review, or null for
+  // a visualization session. Inlined so a shared review export renders offline.
+  review: Review | null;
   // assetId → a `data:` URI, so `/a/:id` references render with no server.
   assets: Record<string, string>;
 }
@@ -77,19 +65,11 @@ export async function buildExportBundle(
   if (!session) return null;
   const surfaces = await store.listSurfaces(sessionId);
   const comments = await store.listComments({ sessionId });
+  const review = await store.getReview(sessionId);
   const assets = await inlineAssets(store, surfaces);
 
-  const resolved = new Set<string>();
-  for (const cm of comments) {
-    if (cm.surfaceId && cm.author === "user" && isResolutionText(cm.text))
-      resolved.add(cm.surfaceId);
-  }
-  const openFindings = surfaces.filter(
-    (s) => s.badge && FINDING_LABELS.has(s.badge.label) && !resolved.has(s.id),
-  ).length;
-  const kind = surfaces.some((s) => s.badge && REVIEW_BADGE_LABELS.has(s.badge.label))
-    ? "review"
-    : "visual";
+  // A session is a PR review iff it carries a stored decision-queue review.
+  const kind = review ? "review" : "visual";
 
   return {
     sessionId,
@@ -98,13 +78,14 @@ export async function buildExportBundle(
         ...session,
         agent: REDACTED_AGENT,
         surfaceCount: surfaces.length,
-        openFindings,
         kind,
+        ...(review ? { reviewVerdict: review.verdict } : {}),
         listening: false,
       },
     ],
     surfaces,
     comments: comments.map((c) => ({ ...c, author: redactAuthor(c.author) })),
+    review,
     assets,
   };
 }

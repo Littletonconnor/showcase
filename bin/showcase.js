@@ -28,22 +28,6 @@ usage:
                                           run the surface as a background OS
                                           service (launchd/systemd) — no terminal
                                           tab; starts on login, restarts on crash
-  showcase review <branch> [options]      scaffold a review session from a diff
-      --base <branch>   base to diff against (default: origin/HEAD or main)
-      --title <t>       session title (default: "Review: <branch>")
-      prints the session id + URL + a churn-seeded manifest + risk + a
-      ready-to-paste prompt that delegates the analysis to your code-review
-      skill, then renders its findings to showcase.
-      Reads a review profile (your standing conventions + extra skills) from
-      $SHOWCASE_REVIEW_PROFILE or ~/.showcase/review.md and folds it in.
-  showcase finding [options]              publish one structured review finding
-      --title <t>       the finding (required)    --problem <text>  what's wrong (required)
-      --confidence <c>  high|medium|low (required) --coverage <text> what you did/didn't check (required)
-      --verified        you ran/reproduced it     --scope changed-lines|whole-file|codebase
-      --severity <s>    bug|nit|question|praise|note   --file <f> --line <n>
-      --before <file|-> --after <file|->  suggested fix as a before→after diff (preferred)
-      --fix <text>      why the change is better   --patch <file|->  raw diff (fallback)
-      --diagram <file|-> mermaid of the flow   (also: --session, --session-title)
   showcase publish <file|-> [options]     publish an HTML surface (one html part)
       --title <t>       surface title
       --md <file|->     add a markdown part (prose) — combine with html
@@ -748,94 +732,6 @@ async function ensureServerUp() {
   return false;
 }
 
-// --- git helpers, for `showcase review` ---
-
-// Run git, returning stdout. `soft` swallows failures (returns "") so callers
-// can probe for refs; otherwise a failure exits with a one-line hint.
-function git(args, { soft = false } = {}) {
-  try {
-    return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-  } catch {
-    if (soft) return "";
-    fail(`git ${args.join(" ")} failed — run inside a git repo with valid refs`);
-  }
-}
-
-function gitCurrentBranch() {
-  return git(["rev-parse", "--abbrev-ref", "HEAD"], { soft: true }).trim();
-}
-
-// The base branch to diff a review against: the target of origin/HEAD if set,
-// else whichever of main/master exists, else "main".
-function gitDefaultBase() {
-  const head = git(["symbolic-ref", "refs/remotes/origin/HEAD"], { soft: true }).trim();
-  if (head) return head.split("/").pop();
-  for (const b of ["main", "master"]) {
-    if (git(["rev-parse", "--verify", "--quiet", b], { soft: true }).trim()) return b;
-  }
-  return "main";
-}
-
-const FILE_STATUS = { A: "added", M: "modified", D: "deleted", R: "renamed", C: "copied" };
-
-// Path heuristics for the review manifest's default priority. The agent owns the
-// real call (§7 decision 1) — these only seed a starting point printed in the
-// prompt so the agent refines rather than invents. SENSITIVE: paths where a bug
-// is expensive (auth, data model, money, migrations, deploy/CI config).
-// MECHANICAL: generated/vendored noise that needs a glance, not real eyes.
-const SENSITIVE_RE =
-  /(^|\/)(auth|login|session|token|secret|password|credential|crypto|cipher|jwt|oauth|permission|acl|payment|billing|charge|money|invoice|migrat|schema)|\.(sql)$|(^|\/)(\.github|Dockerfile|docker-compose|Makefile)|\.(ya?ml|tf)$/i;
-const MECHANICAL_RE =
-  /(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|composer\.lock|Cargo\.lock|go\.sum)$|(^|\/)(dist|build|vendor|node_modules|__snapshots__|generated)\/|\.(min\.(js|css)|map|snap|lock)$|\.(svg|png|jpe?g|gif|ico|woff2?)$/i;
-const TEST_RE = /(^|\/)(test|tests|spec|__tests__|e2e)\/|\.(test|spec)\.[cm]?[jt]sx?$/i;
-
-function classifyPriority(file) {
-  if (MECHANICAL_RE.test(file)) return "mechanical";
-  if (SENSITIVE_RE.test(file)) return "sensitive";
-  return "logic";
-}
-
-// A 0–3 weight from a count, log-scaled so churn doesn't peg everything at 3.
-const weight = (n, scale) => Math.max(0, Math.min(3, Math.round(Math.log2(n / scale + 1))));
-
-// Seed a priority-ranked manifest from the diff's churn — one row per file, with
-// a default priority (path heuristic) and a one-line "why it matters" note.
-function manifestFromChurn(churn) {
-  return churn.map((c) => {
-    const priority = classifyPriority(c.file);
-    const note =
-      priority === "sensitive"
-        ? "sensitive path — read carefully"
-        : priority === "mechanical"
-          ? "generated / vendored — glance only"
-          : `${c.added + c.removed} lines changed`;
-    return { file: c.file, added: c.added, removed: c.removed, priority, note };
-  });
-}
-
-// Seed a composite risk from the diff (§ P1). size = total churn; surfaceArea =
-// files touched; sensitivity = how much sensitive code moved; testDelta = did
-// tests move with the logic (untouched logic = riskier, so a HIGH weight means
-// "logic changed, tests didn't"). Each 0–3; the band is the rounded average.
-function riskFromChurn(churn, manifest) {
-  const totalChurn = churn.reduce((s, c) => s + c.added + c.removed, 0);
-  const nonMechanical = manifest.filter((m) => m.priority !== "mechanical");
-  const sensitiveChurn = manifest
-    .filter((m) => m.priority === "sensitive")
-    .reduce((s, m) => s + m.added + m.removed, 0);
-  const logicFiles = manifest.filter((m) => m.priority === "logic");
-  const testFiles = churn.filter((c) => TEST_RE.test(c.file));
-  const size = weight(totalChurn, 40);
-  const surfaceArea = weight(nonMechanical.length, 2);
-  const sensitivity = sensitiveChurn > 0 ? weight(sensitiveChurn, 10) || 1 : 0;
-  // Logic changed but no tests moved → the dangerous gap → weight up.
-  const testDelta =
-    logicFiles.length > 0 && testFiles.length === 0 ? 3 : testFiles.length > 0 ? 1 : 0;
-  const avg = (size + surfaceArea + sensitivity * 1.5 + testDelta) / 4.5;
-  const band = avg >= 2 ? "high" : avg >= 1 ? "elevated" : "low";
-  return { size, surfaceArea, sensitivity, testDelta, band };
-}
-
 const commands = {
   async serve() {
     const { values: flags } = parse({
@@ -1316,126 +1212,6 @@ const commands = {
     out(await api("/api/kits"));
   },
 
-  // Scaffold a review session from a branch's diff: create a "Review: <branch>"
-  // session with a verdict-placeholder card (diffstat + file list), so an agent
-  // starts from a ready review instead of hand-building it. The ANALYSIS is
-  // delegated to the agent's `code-review` skill (which dispatches to any
-  // language-specific hygiene skills); showcase only RENDERS the findings. This
-  // just sets the stage and prints a ready-to-paste prompt wiring that handoff.
-  async review() {
-    const { values: flags, positionals } = parse({
-      allowPositionals: true,
-      options: {
-        base: { type: "string" },
-        title: { type: "string" },
-        agent: { type: "string" },
-      },
-    });
-    const branch = positionals[0] || gitCurrentBranch();
-    if (!branch) fail("usage: showcase review <branch> [--base <base>] [--title <t>]");
-    const base = flags.base || gitDefaultBase();
-    const range = `${base}...${branch}`;
-    const names = git(["diff", "--name-status", range]).trim();
-    if (!names) fail(`no changes for ${range} — check the branch and base`);
-    const stat = git(["diff", "--shortstat", range]).trim();
-
-    // Per-file line churn, ready to hand to publish_review's `churn` (it renders
-    // a churn-by-file chart). numstat prints "added\tremoved\tfile"; binary files
-    // show "-" counts, which become 0 and get dropped by the chart builder.
-    const numstat = git(["diff", "--numstat", range], { soft: true }).trim();
-    const churn = numstat
-      ? numstat
-          .split("\n")
-          .map((line) => {
-            const [added, removed, ...rest] = line.split("\t");
-            return {
-              file: rest.join(" "),
-              added: Number(added) || 0,
-              removed: Number(removed) || 0,
-            };
-          })
-          .filter((c) => c.file)
-      : [];
-
-    // Seed the overview heuristics from the diff — a priority-ranked manifest +
-    // composite risk the agent refines (it owns the real call, §7 decision 1).
-    const manifest = manifestFromChurn(churn);
-    const risk = riskFromChurn(churn, manifest);
-
-    const rows = names.split("\n").map((line) => {
-      const [status, ...pathParts] = line.split("\t");
-      const label = FILE_STATUS[status[0]] ?? status;
-      return `| ${label} | \`${pathParts.join(" → ")}\` |`;
-    });
-    const title = flags.title || `Review: ${branch}`;
-    const markdown = [
-      `## ${title}`,
-      "",
-      `Reviewing **\`${branch}\`** against **\`${base}\`**.`,
-      stat ? `\n\`${stat}\`` : "",
-      "",
-      "| Change | File |",
-      "| --- | --- |",
-      ...rows,
-      "",
-      "_One **finding card per critical piece** appears below as the agent reviews — each with its diff inline. Approve (👍) or dismiss (⊘) a card once it's addressed._",
-    ].join("\n");
-
-    const surface = await api("/api/surfaces", {
-      method: "POST",
-      body: JSON.stringify({
-        title,
-        sessionTitle: title,
-        agent: flags.agent ?? process.env.SHOWCASE_AGENT ?? "agent",
-        // "In review" is the sentinel publish_review looks for to reuse this card
-        // as the verdict (see REVIEW_PLACEHOLDER_LABEL in server/app.ts).
-        badge: { tone: "neutral", label: "In review" },
-        parts: [{ kind: "markdown", markdown }],
-      }),
-    });
-
-    // Review profile (optional): the user's standing review conventions + which
-    // skills to load. Injected verbatim into the prompt so every review applies
-    // their standards and loads their tools. See `showcase review --help`.
-    const profilePath =
-      process.env.SHOWCASE_REVIEW_PROFILE || join(userInfo().homedir, ".showcase", "review.md");
-    let profile = "";
-    try {
-      if (existsSync(profilePath)) profile = readFileSync(profilePath, "utf8").trim();
-    } catch {}
-
-    const prompt = [
-      `Do the ANALYSIS by running your \`code-review\` skill on branch ${branch} against ${base}. That skill owns the methodology — depth, criteria, and dispatch to any language-specific hygiene skills for the diff. showcase does NOT define how to review; it only RENDERS what code-review finds. If you have no \`code-review\` skill, fall back to a careful manual review against the same criteria.`,
-      profile && `Then apply your review profile (load any skills it names):\n${profile}`,
-      `Now take code-review's findings and publish them to showcase with ONE call to the publish_review tool (session ${surface.sessionId}). Call get_design_guide first. This step is FORMATTING, not re-reviewing: map each finding onto the publish_review fields below.`,
-      `Group the findings into the PR's CRITICAL PIECES — the entity, the wiring, the test coverage — not file-by-file.`,
-      `Call publish_review ONCE. LEAD the overview with: \`intent\` (1–2 sentences on what the PR is trying to do), \`risk\` ({size, surfaceArea, sensitivity, testDelta} each 0–3 + a \`band\` low|elevated|high), a \`budget\` line ("~N min · H files need real eyes · C mechanical"), and a \`manifest\` ([{file, added, removed, priority, note}] — priority sensitive|logic|mechanical). A churn-seeded manifest + risk are in this command's JSON output as a STARTING POINT — refine them from your actual read; you have the semantic context a path regex doesn't.`,
-      `Also pass a \`changeMap\` ({nodes, edges}) — the headline visual of the changed pieces and how they interact: one node per changed file/symbol tagged status (new|modified|touched|removed) + kind, and an edge for every interaction ({from, to, label, status?}). Mark each edge's \`status\`: new coupling the PR introduces (green), a call it severs (removed, red), or unchanged context (existing, gray).`,
-      `Then a findings[] array. EACH finding REQUIRES \`confidence\` (high|medium|low) and \`coverage\` (what you DID and did NOT check) — the honesty signal; a finding missing either is rejected. Optionally \`verified\` (you ran/reproduced it), \`scope\` (changed-lines|whole-file|codebase), and a \`blastRadius\` ({nodes, edges}) call-graph. For any fix pass \`suggestion:{before,after}\` (the CURRENT and PROPOSED code — rendered as a diff that always shows the change) and put WHY in \`fix\`; use \`patch\` only to show the PR's actual change in context.`,
-      `Do NOT write the review as a single markdown surface — that wall of text is the failure mode publish_review replaces. (publish_review automatically turns this session's "In review" placeholder card into the verdict — just call it with session ${surface.sessionId}.)`,
-    ]
-      .filter(Boolean)
-      .join("\n\n");
-
-    out({
-      session: surface.sessionId,
-      surface: surface.id,
-      url: `${BASE}/session/${surface.sessionId}/s/${surface.id}`,
-      range,
-      files: names.split("\n").length,
-      churn,
-      manifest,
-      risk,
-      profile: profile ? profilePath : null,
-      prompt,
-    });
-  },
-
-  // Static export: download a whole session as one self-contained, read-only
-  // file (surfaces + comments + assets inlined) you can send anyone — the
-  // sanctioned "share a review/explainer" path. Default is a standalone HTML
-  // (interactive, no server needed); `--pdf` renders that HTML through headless
-  // Chrome to a flat PDF for recipients who'd rather not open an HTML file.
   async export() {
     const { values: flags, positionals } = parse({
       allowPositionals: true,
@@ -1532,72 +1308,6 @@ const commands = {
     });
   },
 
-  // Publish ONE structured review finding — showcase composes the multimodal
-  // card (severity badge + explanation + inline diff + optional diagram) from
-  // the fields. The shell tier's review_finding: call it per finding, not one
-  // markdown wall. --patch/--diagram read a file (or - for stdin).
-  async finding() {
-    const { values: flags } = parse({
-      options: {
-        severity: { type: "string" },
-        title: { type: "string" },
-        file: { type: "string" },
-        line: { type: "string" },
-        problem: { type: "string" },
-        confidence: { type: "string" },
-        coverage: { type: "string" },
-        verified: { type: "boolean" },
-        scope: { type: "string" },
-        fix: { type: "string" },
-        before: { type: "string" },
-        after: { type: "string" },
-        patch: { type: "string" },
-        diagram: { type: "string" },
-        session: { type: "string" },
-        "session-title": { type: "string" },
-        agent: { type: "string" },
-      },
-    });
-    if (!flags.title || !flags.problem || !flags.confidence || !flags.coverage) {
-      fail(
-        "usage: showcase finding --title <t> --problem <text> --confidence high|medium|low --coverage <what you did/didn't check> [--verified] [--scope changed-lines|whole-file|codebase] [--severity bug|nit|question|praise|note] [--file f] [--line n] [--fix <text>] [--before <file|->] [--after <file|->] [--patch <file|->] [--diagram <file|->]",
-      );
-    }
-    // A before→after suggestion renders as a diff that always shows the change;
-    // prefer it over --patch. Each side reads a file (or - for stdin).
-    const suggestion =
-      flags.before !== undefined || flags.after !== undefined
-        ? {
-            before: flags.before !== undefined ? readContent(flags.before) : "",
-            after: flags.after !== undefined ? readContent(flags.after) : "",
-          }
-        : undefined;
-    const session = flags.session ?? (await resolveSession(flags, { create: true }));
-    outSurface(
-      await api("/api/findings", {
-        method: "POST",
-        body: JSON.stringify({
-          severity: flags.severity,
-          title: flags.title,
-          file: flags.file,
-          line: flags.line ? Number(flags.line) : undefined,
-          problem: flags.problem,
-          confidence: flags.confidence,
-          coverage: flags.coverage,
-          verified: flags.verified || undefined,
-          scope: flags.scope,
-          fix: flags.fix,
-          suggestion,
-          patch: flags.patch ? readContent(flags.patch) : undefined,
-          diagram: flags.diagram ? readContent(flags.diagram) : undefined,
-          session,
-          sessionTitle: flags["session-title"],
-          agent: flags.agent,
-        }),
-      }),
-    );
-  },
-
   async demo() {
     parse();
     const { DEMO_SESSIONS } = await import("./demoData.js");
@@ -1606,6 +1316,15 @@ const commands = {
         method: "POST",
         body: JSON.stringify({ agent: demo.agent, title: demo.title }),
       });
+      // A review session seeds a decision-queue review (the form factor); a
+      // visualization session seeds surfaces.
+      if (demo.review) {
+        await api(`/api/sessions/${session.id}/review`, {
+          method: "POST",
+          body: JSON.stringify(demo.review),
+        });
+        continue;
+      }
       for (const snip of demo.snippets) {
         // A snippet is html sugar (POST /api/snippets); a snippet carrying
         // `parts` is a full multi-part surface (POST /api/surfaces).

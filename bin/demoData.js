@@ -167,8 +167,8 @@ const QUEUE_LATENCY_CHART = {
 };
 
 // A drill-down html part: a button calls sendPrompt() to propose a deeper
-// follow-up. It surfaces as a "Suggested by this surface" chip the user relays
-// to the agent with one tap — the output → tap → revise loop.
+// follow-up. It lands in the surface's thread for the user to relay to the
+// agent — the output → propose → revise loop.
 const DRILLDOWN = `
 <div style="font-family: var(--font-sans); color: var(--color-text-primary);">
   <p style="margin: 0 0 4px; line-height: 1.6;">The batched dequeue pulls up to <strong>50 jobs</strong> per poll instead of one, so a burst drains in a few round-trips instead of hundreds.</p>
@@ -179,71 +179,12 @@ const DRILLDOWN = `
   </button>
 </div>`;
 
-// A review finding card — the flagship "visual PR review" composition: a tone
-// badge ("Bug") + prose naming the problem + a mermaid control-flow of the buggy
-// path + the fix diff, all in one surface. This is the screenshot, reproduced.
-const REVIEW_BUG_PROSE = `_High confidence · scope: changed lines · ✓ verified_
-
-**Coverage** — reproduced the OOM with a 2 GB upload against a local board; did not test chunked uploads that omit content-length.
-
-**What** — \`uploadAsset\` (server/app.ts:747) calls \`c.req.arrayBuffer()\` to buffer the **entire request body into memory** before the \`MAX_ASSET_BYTES\` check on line 759.
-
-**Why it matters** — the size guard never runs for an oversized request: a 2 GB upload allocates ~2 GB of heap and can OOM \`showcase serve\` before the 413 is ever returned. Local boards ship with no auth token, so any client on the network can trigger it.
-
-**Fix** — reject on the \`content-length\` header before reading the body (below). A streaming cap can follow for chunked uploads that omit the header.`;
-
 const REVIEW_BUG_FLOW = `flowchart LR
   Client([Client]) --> read[read body]
   read --> size{>5MB?}
   size -- yes --> late[413 late]
   size -- no --> store[store]
   read -. OOM .-> heap[heap exhausted]`;
-
-// The opinionated overview (the review-kit html part buildOverview emits):
-// intent + a composite risk band over four signal sub-bars + a review budget +
-// a priority-ranked manifest (sensitive first; the mechanical row collapses).
-// Hand-built here to match the server's output so the demo shows the real shape.
-const REVIEW_OVERVIEW = `<div class="stack lg">
-  <p class="title">Stream-cap asset uploads so an oversized request is rejected before the whole body is buffered into memory.</p>
-  <div class="risk">
-    <div class="between"><span class="risk-band elevated"><span class="lvl"></span>Risk: Elevated</span><span class="review-progress"></span></div>
-    <div class="signals">
-      <span class="sig-label">Size<span class="num">1/3</span></span><div class="signal cool"><i style="width:33%"></i></div>
-      <span class="sig-label">Surface<span class="num">1/3</span></span><div class="signal cool"><i style="width:33%"></i></div>
-      <span class="sig-label">Sensitivity<span class="num">3/3</span></span><div class="signal hot"><i style="width:100%"></i></div>
-      <span class="sig-label">Tests<span class="num">2/3</span></span><div class="signal warm"><i style="width:67%"></i></div>
-    </div>
-    <div class="budget">~6 min · <b>1 file</b> needs real eyes · 1 mechanical</div>
-  </div>
-  <ul class="manifest">
-    <li class="manifest-row sensitive"><span class="pri"></span><span class="file">server/app.ts</span><span class="spark"><span class="add" style="width:80%"></span><span class="del" style="width:20%"></span></span><span class="churn">+24 −6</span><span class="note">upload path — unbounded buffer</span><input class="rev" type="checkbox" aria-label="Mark server/app.ts reviewed"></li>
-    <li class="manifest-row logic"><span class="pri"></span><span class="file">test/assets.test.ts</span><span class="spark"><span class="add" style="width:100%"></span><span class="del" style="width:0%"></span></span><span class="churn">+18 −0</span><span class="note">covers the new size guard</span><input class="rev" type="checkbox" aria-label="Mark test/assets.test.ts reviewed"></li>
-  </ul>
-  <button class="cold-toggle" aria-expanded="false" type="button"><span class="caret">▸</span> 1 mechanical file (low attention)</button>
-  <div class="cold-bucket" hidden><ul class="manifest"><li class="manifest-row mechanical"><span class="pri"></span><span class="file">package-lock.json</span><span class="spark"><span class="add" style="width:70%"></span><span class="del" style="width:30%"></span></span><span class="churn">+210 −90</span><span class="note">generated / vendored — glance only</span><input class="rev" type="checkbox" aria-label="Mark package-lock.json reviewed"></li></ul></div>
-</div>`;
-
-// The verdict card's change map: the changed pieces and how they interact,
-// color-coded new/modified/touched (the shape buildChangeMap emits server-side).
-// Edges carry status too (§8.2): the size-guard + parseMime edges are NEW
-// coupling (green), the client call is unchanged context (gray).
-const REVIEW_CHANGEMAP = `flowchart LR
-  n0(["Client"]):::touched
-  n1["uploadAsset"]:::modified
-  n2["size guard"]:::new
-  n3["parseMime"]:::new
-  n4["publishSurface"]:::touched
-  n0 -->|"POST /api/assets"| n1
-  n1 -->|"checks"| n2
-  n3 -->|"used by"| n1
-  n3 -->|"used by"| n4
-  classDef new stroke:#2f9e44,color:#2f9e44,stroke-width:1.5px;
-  classDef modified stroke:#d9870a,color:#d9870a,stroke-width:1.5px;
-  classDef touched stroke:#9aa0a6,color:#9aa0a6;
-  linkStyle 0 stroke:#9aa0a6,stroke-width:1px;
-  linkStyle 1 stroke:#2f9e44,stroke-width:1.5px;
-  linkStyle 2 stroke:#2f9e44,stroke-width:1.5px;
-  linkStyle 3 stroke:#2f9e44,stroke-width:1.5px;`;
 
 // A nit's suggested fix as a before→after pair — the viewer computes the diff.
 const REVIEW_NIT_BEFORE = `const mime = (c.req.header('content-type') ?? '').split(';')[0].trim().toLowerCase();`;
@@ -331,90 +272,95 @@ export const DEMO_SESSIONS = [
   {
     agent: "claude-code",
     title: "Review: streaming asset uploads",
-    snippets: [
-      {
-        title: "Verdict — 1 blocker, 1 nit",
-        badge: { tone: "warning", label: "Request changes" },
-        parts: [
-          // The opinionated overview LEADS (intent + risk + budget + manifest),
-          // then the verdict markdown, then the change map — the standardized
-          // template the server composes from a publish_review call.
-          { kind: "html", html: REVIEW_OVERVIEW, kits: ["review"] },
-          {
-            kind: "markdown",
-            markdown:
-              "## Review summary\n\n**2 findings** · 1 bug · 1 nit — **request changes**\n\n| # | Severity | Finding | Location |\n|---|----------|---------|----------|\n| 1 | 🔴 Bug | Unbounded asset upload buffers the whole body before the size check | `server/app.ts:747` |\n| 2 | 🟡 Nit | `mime` parse duplicated across three handlers | `server/app.ts:182` |\n\n**Coverage** — read the asset upload + auth paths and the comment long-poll; did not exercise the SQL migration or the e2e suite.\n\nThe blocker (#1) is below. Tap **Approve** on a card once it's addressed.",
+    review: {
+      brief:
+        "This change makes the app turn away oversized file uploads before it starts reading them, so one giant upload can't run the server out of memory and crash it. Nothing changes for people using the app — it only affects what happens behind the scenes. One uncovered case is flagged as a follow-up: uploads that don't declare their size up front still slip past.",
+      verdict: "block",
+      decisions: [
+        {
+          id: "d-upload-buffer",
+          call: "block",
+          kind: "bug",
+          scope: "changed-line",
+          assertion: "The upload handler buffers the whole request body before the size check.",
+          impact:
+            "A 2 GB upload allocates ~2 GB of heap and can OOM the server before the 413 returns. Local boards ship without an auth token, so any client on the network can trigger it.",
+          details:
+            "`uploadAsset` reads the entire body into memory via `c.req.arrayBuffer()`, then checks `MAX_ASSET_BYTES` — so the guard never runs for an oversized request. Reject on the `content-length` header before reading the body; a streaming cap can follow for chunked uploads that omit it.",
+          confidence: "high",
+          pivot: "flips to ship once the content-length guard lands",
+          evidence: [
+            { kind: "mermaid", mermaid: REVIEW_BUG_FLOW },
+            { kind: "diff", patch: REVIEW_BUG_DIFF },
+          ],
+          proposal: {
+            filename: "server/app.ts",
+            before: "const buf = new Uint8Array(await c.req.arrayBuffer());",
+            after:
+              "const len = Number(c.req.header('content-length') ?? 0);\nif (len > MAX_ASSET_BYTES) return c.json({ error: 'too large' }, 413);\nconst buf = new Uint8Array(await c.req.arrayBuffer());",
+            note: "reject before buffering the body",
           },
-          // Where to look: the risk-weighted treemap (area = churn, color =
-          // sensitivity). The lockfile is one big gray block you skip; the small
-          // app.ts rectangle is hot red — attention routing as a visual reflex.
-          {
-            kind: "chart",
-            chartType: "treemap",
-            x: "name",
-            y: "size",
-            data: [
-              { name: "app.ts", size: 30, tone: "sensitive" },
-              { name: "assets.test.ts", size: 18, tone: "logic" },
-              { name: "package-lock.json", size: 300, tone: "mechanical" },
-            ],
-            caption: "Risk-weighted — area = churn, color = sensitivity (red) → mechanical (gray)",
+        },
+        {
+          id: "d-mime-dupe",
+          call: "decide",
+          kind: "refactor",
+          scope: "whole-file",
+          assertion: "The content-type to mime parse is copy-pasted across three handlers.",
+          impact:
+            "A future tweak (charset stripping, casing) has to be made in three places or they diverge.",
+          details:
+            "The split lives in `uploadAsset`, `publishSurface`, and the snippet handler. Extracting one `parseMime(c)` helper keeps the rules in a single place.",
+          confidence: "medium",
+          evidence: [
+            {
+              kind: "diff",
+              files: [
+                { filename: "server/app.ts", before: REVIEW_NIT_BEFORE, after: REVIEW_NIT_AFTER },
+              ],
+            },
+          ],
+          proposal: {
+            filename: "server/mime.ts",
+            before: REVIEW_NIT_BEFORE,
+            after: REVIEW_NIT_AFTER,
+            note: "extract a single parseMime helper",
           },
-          // Can I trust it: the confidence × coverage quadrant. The bug sits in
-          // the bottom-right danger zone — high confidence, low coverage.
-          {
-            kind: "chart",
-            chartType: "scatter",
-            x: "conf",
-            y: "cov",
-            xLabel: "confidence",
-            yLabel: "coverage",
-            data: [
-              { conf: 3, cov: 1, label: "Unbounded asset upload", tone: "danger" },
-              { conf: 2, cov: 2, label: "Duplicated content-type parse", tone: "normal" },
-            ],
-            caption:
-              "Confidence × coverage — bottom-right (sure but unverified) is the danger zone",
-          },
-          { kind: "mermaid", mermaid: REVIEW_CHANGEMAP },
-        ],
-      },
-      {
-        title: "Bug: unbounded asset upload — server/app.ts:747",
-        badge: { tone: "critical", label: "Bug" },
-        parts: [
-          { kind: "markdown", markdown: REVIEW_BUG_PROSE },
-          { kind: "mermaid", mermaid: REVIEW_BUG_FLOW },
-          { kind: "diff", patch: REVIEW_BUG_DIFF },
-        ],
-      },
-      {
-        title: "Nit: duplicated content-type parse — server/app.ts:182",
-        badge: { tone: "warning", label: "Nit" },
-        parts: [
-          {
-            kind: "markdown",
-            markdown:
-              "_Medium confidence · scope: whole file_\n\n**Coverage** — grepped for the split across the three handlers; did not check callers outside server/app.ts.\n\n**Problem** — the `content-type` → mime split is copy-pasted in `uploadAsset`, `publishSurface`, and the snippet handler. Three copies drift: a future tweak (charset stripping, casing) has to be made in three places or they diverge.",
-          },
-          {
-            kind: "diff",
-            files: [
-              {
-                filename: "server/app.ts",
-                before: REVIEW_NIT_BEFORE,
-                after: REVIEW_NIT_AFTER,
-              },
-            ],
-          },
-          {
-            kind: "markdown",
-            markdown:
-              "**Why it's better** — one `parseMime(c)` helper means charset/casing rules live in a single place; the three call sites can't diverge.",
-          },
-        ],
-      },
-    ],
+        },
+      ],
+      manifest: [
+        {
+          path: "server/app.ts",
+          disposition: "has-decision",
+          decisionId: "d-upload-buffer",
+          added: 24,
+          removed: 6,
+          note: "upload path — unbounded buffer",
+        },
+        {
+          path: "server/mime.ts",
+          disposition: "has-decision",
+          decisionId: "d-mime-dupe",
+          added: 12,
+          removed: 0,
+          note: "new shared content-type parser",
+        },
+        {
+          path: "test/assets.test.ts",
+          disposition: "reviewed-no-comment",
+          added: 18,
+          removed: 0,
+          note: "covers the new size guard",
+        },
+        {
+          path: "package-lock.json",
+          disposition: "mechanical-skipped",
+          added: 210,
+          removed: 90,
+          note: "generated / vendored — glance only",
+        },
+      ],
+    },
   },
   {
     agent: "pi",
