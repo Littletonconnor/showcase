@@ -32,7 +32,10 @@ export const MCP_INSTRUCTIONS =
   "design-doc session') call configure_session up front; otherwise pass `blueprint` on your first " +
   "publish and it pins for the rest of the session. Then author every surface to the preset's structure. " +
   "A repo or user can also set a default preset that new sessions start in. Discover presets via " +
-  "GET /api/blueprints. " +
+  "GET /api/blueprints. Several presets also have a TAILORED tool that takes typed fields and renders a " +
+  "fixed layout (so every instance looks identical, like publish_decisions does for a review): " +
+  "publish_postmortem, publish_dashboard, publish_design_doc, publish_status, publish_architecture, " +
+  "publish_product_demo. Prefer the tailored tool when one fits; fall back to publish_surface for free-form. " +
   "REFERENCING A SURFACE: every card shows a copy-to-clipboard card id in its header. The user copies " +
   "that id and mentions it to you in YOUR TERMINAL — that's where the conversation happens. Refer to " +
   "surfaces back to the user by id; list_surfaces fetches one if you need its current content. " +
@@ -260,6 +263,18 @@ export const MCP_TOOL_DESCRIPTIONS = {
     "Fetch the design contract: surface parts, html fragment rules, theme CSS variables, CDN allowlist, and the interactivity bridge. Call once per session before publishing.",
   configureSession:
     "Pin a PRESET (an explainer blueprint + optional theme) to a whole session, so EVERY surface you publish to it comes out in the same structure + look no matter what is asked — a 'design-doc session', a 'product-demo session'. Pass session + blueprint (and/or theme); pass null to clear a field. Returns the pinned preset and its section structure — author each later surface against that structure (tag steps data-section=\"<id>\") for a consistent series. You can also just pass `blueprint` on your first publish_surface to pin it; use this tool to set it up FRONT, before publishing, or to switch a running session's preset. List available presets via GET /api/blueprints or `showcase blueprints`.",
+  publishPostmortem:
+    "Publish a blameless incident POSTMORTEM as a structured surface — you supply typed fields, the server renders the fixed layout (so every postmortem looks the same). Pass: summary, impact{affected,experience,duration}, timeline[]{at,event}, fiveWhys[]{why,because} (the chain from the customer-visible failure to a SYSTEMIC cause), contributingFactors (the 'why didn't tests/monitoring catch it' note), fixes{immediate[],necessary[],additional[]}, wentWell/wentPainful, followups[]{item,owner,ticket,due,status}, and impactLevel/reoccurrence. Renders into a postmortem session.",
+  publishDashboard:
+    "Publish a metrics DASHBOARD (data-viz) as a structured surface. Pass: headline{value,label,delta}, stats[]{label,value}, bars{caption,data[]{label,value}}, trend{caption,values[]}, detail[]{label,value}, takeaway. The server renders the fixed dashboard layout (headline → breakdown chart → trend → detail → takeaway) so every dashboard reads the same.",
+  publishDesignDoc:
+    "Publish a DESIGN DOC / RFC as a structured surface following the detailed template. The GOAL must be a problem statement (no implementation leakage). Pass: status, meta{author,reviewers,links[]}, summary, goal{problem,metrics}, invariants{trueInvariants,preferences,assumptions}, background, solutionSpace{note,axes[]{axis,options[]{label,chosen},rationale}} (axes = independent technical decisions, candidates named by property), proposed{summary,failureModes,observability}, scope{inScope,outScope,milestones[]}, rollout, testing, openQuestions[]{question,owner}.",
+  publishStatus:
+    "Publish a recurring STATUS report as a structured surface. Pass: state (on-track|at-risk|off-track), headline, shipped[]{item,note}, inFlight[]{item,pct}, blockers, next[]. The server renders the fixed status layout so every weekly update reads identically.",
+  publishArchitecture:
+    "Publish a system ARCHITECTURE overview as a structured surface. Pass: components[]{name,role} (the server auto-draws a pipeline diagram from the names), overview, dataFlow[], decisions, scale. Fixed layout: overview diagram → components + data flow → key decisions → scale & failure.",
+  publishProductDemo:
+    "Publish a branded PRODUCT DEMO walkthrough as a structured, stepped surface (hook → problem → feature → proof → cta). Pass: hook{headline,sub,stats[]}, problem{text,stats[]}, featureTitle + features[]{title,body}, proof{stats[],quote,quoteBy}, cta{headline,body,actions[],tags[]}. The server renders the animate-kit stepper so the demo plays/scrubs the same way every time.",
 } as const;
 
 const MCP_BADGE_JSON_SCHEMA = {
@@ -471,6 +486,364 @@ export const HTTP_MCP_TOOLS = [
     },
   },
   {
+    name: "publish_postmortem",
+    description: MCP_TOOL_DESCRIPTIONS.publishPostmortem,
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        incidentId: { type: "string" },
+        summary: { type: "string" },
+        impact: {
+          type: "object",
+          properties: {
+            affected: { type: "string" },
+            experience: { type: "string" },
+            duration: { type: "string" },
+          },
+        },
+        timeline: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              at: { type: "string" },
+              event: { type: "string" },
+              marker: { type: "string", enum: ["ok", "warn", "danger", "info"] },
+            },
+            required: ["at", "event"],
+          },
+        },
+        fiveWhys: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { why: { type: "string" }, because: { type: "string" } },
+            required: ["why", "because"],
+          },
+        },
+        contributingFactors: { type: "string" },
+        fixes: {
+          type: "object",
+          properties: {
+            immediate: { type: "array", items: { type: "string" } },
+            necessary: { type: "array", items: { type: "string" } },
+            additional: { type: "array", items: { type: "string" } },
+          },
+        },
+        wentWell: { type: "string" },
+        wentPainful: { type: "string" },
+        followups: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              item: { type: "string" },
+              status: { type: "string", enum: ["open", "done"] },
+              ticket: { type: "string" },
+              owner: { type: "string" },
+              due: { type: "string" },
+            },
+            required: ["item"],
+          },
+        },
+        impactLevel: { type: "string", enum: ["Low", "Medium", "High"] },
+        reoccurrence: { type: "string", enum: ["Low", "Medium", "High"] },
+        session: { type: "string", description: d.session },
+        sessionTitle: { type: "string", description: d.sessionTitle },
+        agent: { type: "string", description: d.agent },
+      },
+      required: ["title", "summary", "fiveWhys"],
+    },
+  },
+  {
+    name: "publish_dashboard",
+    description: MCP_TOOL_DESCRIPTIONS.publishDashboard,
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        headline: {
+          type: "object",
+          properties: {
+            value: { type: "string" },
+            label: { type: "string" },
+            delta: { type: "string" },
+          },
+          required: ["value", "label"],
+        },
+        stats: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { label: { type: "string" }, value: { type: "string" } },
+            required: ["label", "value"],
+          },
+        },
+        bars: {
+          type: "object",
+          properties: {
+            caption: { type: "string" },
+            data: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { label: { type: "string" }, value: { type: "number" } },
+                required: ["label", "value"],
+              },
+            },
+          },
+        },
+        trend: {
+          type: "object",
+          properties: {
+            caption: { type: "string" },
+            values: { type: "array", items: { type: "number" } },
+          },
+        },
+        detail: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { label: { type: "string" }, value: { type: "string" } },
+          },
+        },
+        takeaway: { type: "string" },
+        session: { type: "string", description: d.session },
+        sessionTitle: { type: "string", description: d.sessionTitle },
+        agent: { type: "string", description: d.agent },
+      },
+      required: ["title", "headline"],
+    },
+  },
+  {
+    name: "publish_design_doc",
+    description: MCP_TOOL_DESCRIPTIONS.publishDesignDoc,
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        status: { type: "string", enum: ["Draft", "In review", "Approved", "Implemented"] },
+        meta: {
+          type: "object",
+          properties: {
+            author: { type: "string" },
+            reviewers: { type: "string" },
+            links: { type: "array", items: { type: "string" } },
+          },
+        },
+        summary: { type: "string" },
+        goal: {
+          type: "object",
+          properties: { problem: { type: "string" }, metrics: { type: "string" } },
+          required: ["problem"],
+        },
+        invariants: {
+          type: "object",
+          properties: {
+            trueInvariants: { type: "string" },
+            preferences: { type: "string" },
+            assumptions: { type: "string" },
+          },
+        },
+        background: { type: "string" },
+        solutionSpace: {
+          type: "object",
+          properties: {
+            note: { type: "string" },
+            axes: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  axis: { type: "string" },
+                  options: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        label: { type: "string" },
+                        chosen: { type: "boolean" },
+                      },
+                      required: ["label"],
+                    },
+                  },
+                  rationale: { type: "string" },
+                },
+                required: ["axis", "options"],
+              },
+            },
+          },
+        },
+        proposed: {
+          type: "object",
+          properties: {
+            summary: { type: "string" },
+            failureModes: { type: "string" },
+            observability: { type: "string" },
+          },
+        },
+        scope: {
+          type: "object",
+          properties: {
+            inScope: { type: "string" },
+            outScope: { type: "string" },
+            milestones: { type: "array", items: { type: "string" } },
+          },
+        },
+        rollout: { type: "string" },
+        testing: { type: "string" },
+        openQuestions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { question: { type: "string" }, owner: { type: "string" } },
+            required: ["question"],
+          },
+        },
+        session: { type: "string", description: d.session },
+        sessionTitle: { type: "string", description: d.sessionTitle },
+        agent: { type: "string", description: d.agent },
+      },
+      required: ["title", "summary", "goal"],
+    },
+  },
+  {
+    name: "publish_status",
+    description: MCP_TOOL_DESCRIPTIONS.publishStatus,
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        state: { type: "string", enum: ["on-track", "at-risk", "off-track"] },
+        headline: { type: "string" },
+        shipped: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { item: { type: "string" }, note: { type: "string" } },
+            required: ["item"],
+          },
+        },
+        inFlight: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { item: { type: "string" }, pct: { type: "number" } },
+            required: ["item"],
+          },
+        },
+        blockers: { type: "string" },
+        next: { type: "array", items: { type: "string" } },
+        session: { type: "string", description: d.session },
+        sessionTitle: { type: "string", description: d.sessionTitle },
+        agent: { type: "string", description: d.agent },
+      },
+      required: ["title"],
+    },
+  },
+  {
+    name: "publish_architecture",
+    description: MCP_TOOL_DESCRIPTIONS.publishArchitecture,
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        overview: { type: "string" },
+        components: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { name: { type: "string" }, role: { type: "string" } },
+            required: ["name"],
+          },
+        },
+        dataFlow: { type: "array", items: { type: "string" } },
+        decisions: { type: "string" },
+        scale: { type: "string" },
+        session: { type: "string", description: d.session },
+        sessionTitle: { type: "string", description: d.sessionTitle },
+        agent: { type: "string", description: d.agent },
+      },
+      required: ["title", "components"],
+    },
+  },
+  {
+    name: "publish_product_demo",
+    description: MCP_TOOL_DESCRIPTIONS.publishProductDemo,
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        hook: {
+          type: "object",
+          properties: {
+            headline: { type: "string" },
+            sub: { type: "string" },
+            stats: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { value: { type: "string" }, label: { type: "string" } },
+              },
+            },
+          },
+          required: ["headline"],
+        },
+        problem: {
+          type: "object",
+          properties: {
+            text: { type: "string" },
+            stats: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { value: { type: "string" }, label: { type: "string" } },
+              },
+            },
+          },
+        },
+        featureTitle: { type: "string" },
+        features: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { title: { type: "string" }, body: { type: "string" } },
+            required: ["title", "body"],
+          },
+        },
+        proof: {
+          type: "object",
+          properties: {
+            stats: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { value: { type: "string" }, label: { type: "string" } },
+              },
+            },
+            quote: { type: "string" },
+            quoteBy: { type: "string" },
+          },
+        },
+        cta: {
+          type: "object",
+          properties: {
+            headline: { type: "string" },
+            body: { type: "string" },
+            actions: { type: "array", items: { type: "string" } },
+            tags: { type: "array", items: { type: "string" } },
+          },
+          required: ["headline"],
+        },
+        session: { type: "string", description: d.session },
+        sessionTitle: { type: "string", description: d.sessionTitle },
+        agent: { type: "string", description: d.agent },
+      },
+      required: ["title", "hook"],
+    },
+  },
+  {
     name: "configure_session",
     description: MCP_TOOL_DESCRIPTIONS.configureSession,
     inputSchema: {
@@ -627,6 +1000,169 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
   configureSession: {
     blueprint: z.string().nullable().optional().describe(d.blueprint),
     theme: z.string().nullable().optional().describe(d.theme),
+  },
+  publishPostmortem: {
+    title: z.string(),
+    incidentId: z.string().optional(),
+    summary: z.string(),
+    impact: z
+      .object({
+        affected: z.string().optional(),
+        experience: z.string().optional(),
+        duration: z.string().optional(),
+      })
+      .optional(),
+    timeline: z
+      .array(
+        z.object({
+          at: z.string(),
+          event: z.string(),
+          marker: z.enum(["ok", "warn", "danger", "info"]).optional(),
+        }),
+      )
+      .optional(),
+    fiveWhys: z.array(z.object({ why: z.string(), because: z.string() })),
+    contributingFactors: z.string().optional(),
+    fixes: z
+      .object({
+        immediate: z.array(z.string()).optional(),
+        necessary: z.array(z.string()).optional(),
+        additional: z.array(z.string()).optional(),
+      })
+      .optional(),
+    wentWell: z.string().optional(),
+    wentPainful: z.string().optional(),
+    followups: z
+      .array(
+        z.object({
+          item: z.string(),
+          status: z.enum(["open", "done"]).optional(),
+          ticket: z.string().optional(),
+          owner: z.string().optional(),
+          due: z.string().optional(),
+        }),
+      )
+      .optional(),
+    impactLevel: z.enum(["Low", "Medium", "High"]).optional(),
+    reoccurrence: z.enum(["Low", "Medium", "High"]).optional(),
+    sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
+  },
+  publishDashboard: {
+    title: z.string(),
+    headline: z.object({ value: z.string(), label: z.string(), delta: z.string().optional() }),
+    stats: z.array(z.object({ label: z.string(), value: z.string() })).optional(),
+    bars: z
+      .object({
+        caption: z.string().optional(),
+        data: z.array(z.object({ label: z.string(), value: z.number() })),
+      })
+      .optional(),
+    trend: z.object({ caption: z.string().optional(), values: z.array(z.number()) }).optional(),
+    detail: z.array(z.object({ label: z.string(), value: z.string() })).optional(),
+    takeaway: z.string().optional(),
+    sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
+  },
+  publishDesignDoc: {
+    title: z.string(),
+    status: z.enum(["Draft", "In review", "Approved", "Implemented"]).optional(),
+    meta: z
+      .object({
+        author: z.string().optional(),
+        reviewers: z.string().optional(),
+        links: z.array(z.string()).optional(),
+      })
+      .optional(),
+    summary: z.string(),
+    goal: z.object({ problem: z.string(), metrics: z.string().optional() }),
+    invariants: z
+      .object({
+        trueInvariants: z.string().optional(),
+        preferences: z.string().optional(),
+        assumptions: z.string().optional(),
+      })
+      .optional(),
+    background: z.string().optional(),
+    solutionSpace: z
+      .object({
+        note: z.string().optional(),
+        axes: z.array(
+          z.object({
+            axis: z.string(),
+            options: z.array(z.object({ label: z.string(), chosen: z.boolean().optional() })),
+            rationale: z.string().optional(),
+          }),
+        ),
+      })
+      .optional(),
+    proposed: z
+      .object({
+        summary: z.string().optional(),
+        failureModes: z.string().optional(),
+        observability: z.string().optional(),
+      })
+      .optional(),
+    scope: z
+      .object({
+        inScope: z.string().optional(),
+        outScope: z.string().optional(),
+        milestones: z.array(z.string()).optional(),
+      })
+      .optional(),
+    rollout: z.string().optional(),
+    testing: z.string().optional(),
+    openQuestions: z
+      .array(z.object({ question: z.string(), owner: z.string().optional() }))
+      .optional(),
+    sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
+  },
+  publishStatus: {
+    title: z.string(),
+    state: z.enum(["on-track", "at-risk", "off-track"]).optional(),
+    headline: z.string().optional(),
+    shipped: z.array(z.object({ item: z.string(), note: z.string().optional() })).optional(),
+    inFlight: z.array(z.object({ item: z.string(), pct: z.number().optional() })).optional(),
+    blockers: z.string().optional(),
+    next: z.array(z.string()).optional(),
+    sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
+  },
+  publishArchitecture: {
+    title: z.string(),
+    overview: z.string().optional(),
+    components: z.array(z.object({ name: z.string(), role: z.string().optional() })),
+    dataFlow: z.array(z.string()).optional(),
+    decisions: z.string().optional(),
+    scale: z.string().optional(),
+    sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
+  },
+  publishProductDemo: {
+    title: z.string(),
+    hook: z.object({
+      headline: z.string(),
+      sub: z.string().optional(),
+      stats: z.array(z.object({ value: z.string(), label: z.string() })).optional(),
+    }),
+    problem: z
+      .object({
+        text: z.string().optional(),
+        stats: z.array(z.object({ value: z.string(), label: z.string() })).optional(),
+      })
+      .optional(),
+    featureTitle: z.string().optional(),
+    features: z.array(z.object({ title: z.string(), body: z.string() })).optional(),
+    proof: z
+      .object({
+        stats: z.array(z.object({ value: z.string(), label: z.string() })).optional(),
+        quote: z.string().optional(),
+        quoteBy: z.string().optional(),
+      })
+      .optional(),
+    cta: z.object({
+      headline: z.string(),
+      body: z.string().optional(),
+      actions: z.array(z.string()).optional(),
+      tags: z.array(z.string()).optional(),
+    }),
+    sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
   },
   waitForFeedback: {
     timeoutSeconds: z

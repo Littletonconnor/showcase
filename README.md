@@ -142,6 +142,18 @@ design-doc session"_) and it calls **`configure_session`**, or it passes
 and every later surface inherits it. Discover what's available with `showcase
 blueprints` (or `GET /api/blueprints`).
 
+**Tailored typed tools.** Six presets go further than a structure hint: they have
+a dedicated MCP tool whose **server-side renderer owns the layout**, so the agent
+fills typed slots and the output is byte-for-byte consistent every time — the same
+guarantee `publish_decisions` gives a code review. `publish_postmortem` takes
+`timeline[]` / `fiveWhys[]` / `fixes{immediate,necessary,additional}` /
+`followups[]`; `publish_dashboard` takes `headline` / `stats[]` / `bars` /
+`trend`; `publish_design_doc` takes `goal{problem}` / `solutionSpace{axes[]}` /
+… ; plus `publish_status`, `publish_architecture`, `publish_product_demo`. Every
+screenshot above is rendered by these tools (`server/presetRenders.ts`), not
+hand-authored. The generic `publish_surface` + `blueprint` path remains for
+free-form surfaces.
+
 ### Defaults and your own presets — repo + user
 
 Presets layer over the built-ins from two config dirs (more-specific wins by id):

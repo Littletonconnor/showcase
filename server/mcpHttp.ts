@@ -55,6 +55,13 @@ export interface McpDeps {
     | { sessionId: string; decisions: number; briefWarning?: string }
     | { error: string; status: number }
   >;
+  publishPreset(input: {
+    preset: string;
+    data: unknown;
+    session?: string;
+    sessionTitle?: string;
+    agent?: string;
+  }): FlowResult<Surface>;
   reviseSurface(
     id: string,
     patch: {
@@ -86,6 +93,16 @@ export interface McpDeps {
   }): Promise<{ asset: Omit<Asset, "data"> } | { error: string; status: number }>;
   guide: string;
 }
+
+// Tailored preset tools → their blueprint id (the renderer + theme + kits).
+const TOOL_TO_PRESET: Record<string, string> = {
+  publish_postmortem: "postmortem",
+  publish_dashboard: "data-viz",
+  publish_design_doc: "design-doc",
+  publish_status: "status",
+  publish_architecture: "architecture",
+  publish_product_demo: "product-demo",
+};
 
 export function registerMcp(app: Hono, deps: McpDeps) {
   const surfaceResult = (result: { surface: Surface; userFeedback?: Feedback[] }, origin: string) =>
@@ -267,6 +284,23 @@ export function registerMcp(app: Hono, deps: McpDeps) {
           null,
           2,
         );
+      }
+      case "publish_postmortem":
+      case "publish_dashboard":
+      case "publish_design_doc":
+      case "publish_status":
+      case "publish_architecture":
+      case "publish_product_demo": {
+        const preset = TOOL_TO_PRESET[name];
+        const result = await deps.publishPreset({
+          preset,
+          data: args,
+          session: typeof args.session === "string" ? args.session : undefined,
+          sessionTitle: typeof args.sessionTitle === "string" ? args.sessionTitle : undefined,
+          agent: typeof args.agent === "string" ? args.agent : undefined,
+        });
+        if ("error" in result) throw new Error(result.error);
+        return surfaceResult(result, origin);
       }
       case "configure_session": {
         const presetField = (v: unknown): string | null | undefined =>

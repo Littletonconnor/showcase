@@ -33,6 +33,22 @@ the root cause as a **5 Whys** chain down to the systemic cause. `product-mockup
 is for _"I have a product idea — show me what it looks like"_: mock the real
 screens with the `mockup` kit, not a marketing pitch (that's `product-demo`).
 
+## Tailored typed tools (prefer these)
+
+Six presets have a dedicated MCP tool that takes TYPED fields and renders a fixed
+layout server-side — so the output is identical every time, like `publish_decisions`
+does for a review. Prefer the tool over hand-authoring an html surface:
+
+- `publish_postmortem` — `summary`, `impact`, `timeline[]`, `fiveWhys[]{why,because}`, `contributingFactors`, `fixes{immediate,necessary,additional}`, `followups[]`, `impactLevel`/`reoccurrence`.
+- `publish_dashboard` — `headline{value,label}`, `stats[]`, `bars{data[]}`, `trend{values[]}`, `detail[]`, `takeaway`.
+- `publish_design_doc` — `goal{problem}` (a PROBLEM, no implementation leakage), `invariants{…}`, `solutionSpace{axes[]{axis,options[]{label,chosen},rationale}}`, `proposed{…}`, `openQuestions[]`. Follows the team RFC template.
+- `publish_status` — `state`, `headline`, `shipped[]`, `inFlight[]{item,pct}`, `blockers`, `next[]`.
+- `publish_architecture` — `components[]{name,role}` (auto-drawn pipeline), `dataFlow[]`, `decisions`, `scale`.
+- `publish_product_demo` — `hook`, `problem`, `features[]`, `proof{stats[],quote}`, `cta`.
+
+These pin their preset to the session too. For anything without a tailored tool
+(or a one-off shape), use the generic loop below.
+
 ## The loop
 
 1. **Discover** what's available on this board (built-ins + repo/user presets):

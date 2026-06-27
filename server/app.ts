@@ -26,6 +26,7 @@ import {
   themeIds,
 } from "./themes.ts";
 import { deriveTheme, type ThemeSeed } from "./themeDerive.ts";
+import { PRESET_RENDERERS } from "./presetRenders.ts";
 import {
   type Asset,
   type AssetKind,
@@ -693,6 +694,37 @@ export function createApp({
     return { surface, userFeedback: await collectFeedback(session.id) };
   }
 
+  // Publish a tailored PRESET surface — the typed form factors (postmortem,
+  // data-viz, design-doc, status, architecture, product-demo). The preset's
+  // renderer (server/presetRenders.ts) owns the layout: typed data in → one html
+  // part with a fixed structure out, so every instance looks identical. The
+  // matching blueprint is pinned, so the session's theme/kits resolve as usual
+  // and the preset pins to the session like any other (configurable, consistent).
+  async function publishPreset(input: {
+    preset: string;
+    data: unknown;
+    session?: string;
+    sessionTitle?: string;
+    agent?: string;
+    cwd?: string;
+  }): Promise<
+    { surface: Surface; userFeedback?: Feedback[] } | { error: string; status: 400 | 404 | 413 }
+  > {
+    const render = PRESET_RENDERERS[input.preset];
+    if (!render) return { error: `unknown preset "${input.preset}"`, status: 400 };
+    const rendered = render(input.data);
+    return publishSurface({
+      parts: [htmlPart(rendered.html)],
+      title: rendered.title,
+      badge: rendered.badge,
+      blueprint: input.preset,
+      session: input.session,
+      sessionTitle: input.sessionTitle,
+      agent: input.agent,
+      cwd: input.cwd,
+    });
+  }
+
   // Publish a decision-queue review (the agent-era form factor — see
   // docs/review-form-factor.md). Like publishSurface, an explicit session is
   // validated and a missing one auto-created. The Review is validated and stored
@@ -1214,6 +1246,32 @@ export function createApp({
       persisted = true;
     }
     return c.json({ id: theme.id, persisted, theme }, 201);
+  });
+
+  // Publish a tailored preset surface from typed data (the form factors behind
+  // publish_postmortem / publish_dashboard / …). The stdio MCP server posts here;
+  // the HTTP MCP calls publishPreset in-process. Body = the preset's typed fields
+  // plus session/sessionTitle/agent.
+  app.post("/api/presets/:id", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const result = await publishPreset({
+      preset: c.req.param("id"),
+      data: body,
+      session: typeof body.session === "string" ? body.session : undefined,
+      sessionTitle: typeof body.sessionTitle === "string" ? body.sessionTitle : undefined,
+      agent: typeof body.agent === "string" ? body.agent : undefined,
+      cwd: typeof body.cwd === "string" ? body.cwd : undefined,
+    });
+    if ("error" in result) return c.json({ error: result.error }, result.status);
+    return c.json(
+      {
+        id: result.surface.id,
+        sessionId: result.surface.sessionId,
+        version: result.surface.version,
+        ...(result.userFeedback ? { userFeedback: result.userFeedback } : {}),
+      },
+      201,
+    );
   });
 
   // --- sessions ---
@@ -1742,6 +1800,7 @@ export function createApp({
     basePath: requestBasePath,
     publishSurface,
     publishDecisions,
+    publishPreset,
     reviseSurface,
     deleteSurface,
     configureSession,
