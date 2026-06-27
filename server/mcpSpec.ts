@@ -160,6 +160,8 @@ const d = {
     "Optional — 'flips to ✅/⛔ if …'. ONLY when there's a real fork (an unverified gap that could change the call, or a load-bearing assumption). Omit on a clean ship — never noise.",
   decisionEvidence:
     "Optional right-pane artifacts for this decision: surface parts (usually a `diff`, plus maybe a `mermaid` control-flow or `code`). Absent → the decision renders full-width.",
+  decisionProposal:
+    "Optional concrete fix as {before, after, filename?, note?}: `before` is the current (changed) code, `after` is your proposed fix. Renders under the evidence as a 'Suggested fix' diff, so the reviewer sees the change AND the fix side by side. POPULATE IT whenever a concrete fix exists — especially on a block/decide — so a blocked decision shows how to unblock it.",
 };
 
 const MCP_PARTS_DESCRIPTION =
@@ -493,6 +495,17 @@ export const HTTP_MCP_TOOLS = [
               },
               pivot: { type: "string", description: d.decisionPivot },
               evidence: { ...MCP_PARTS_JSON_SCHEMA, description: d.decisionEvidence },
+              proposal: {
+                type: "object",
+                description: d.decisionProposal,
+                properties: {
+                  before: { type: "string" },
+                  after: { type: "string" },
+                  filename: { type: "string" },
+                  note: { type: "string" },
+                },
+                required: ["before", "after"],
+              },
             },
             required: ["call", "kind", "scope", "assertion", "confidence", "coverage"],
           },

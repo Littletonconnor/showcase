@@ -1660,6 +1660,12 @@ test("publishes and round-trips a decision-queue review", async () => {
         evidence: [
           { kind: "diff", files: [{ filename: "limit.ts", before: "a\n", after: "b\n" }] },
         ],
+        proposal: {
+          filename: "limit.ts",
+          before: "b\n",
+          after: "shared(b)\n",
+          note: "back it with a shared counter",
+        },
       },
       {
         id: "d-clean-429",
@@ -1698,6 +1704,9 @@ test("publishes and round-trips a decision-queue review", async () => {
   assert.equal(stored.decisions[0].id, "d-per-process");
   assert.equal(stored.decisions[0].evidence[0].kind, "diff");
   assert.equal(stored.decisions[0].gaps[0].what, "no shared store");
+  // The suggested fix (the change → the fix) round-trips for the blocked decision.
+  assert.equal(stored.decisions[0].proposal.after, "shared(b)\n");
+  assert.equal(stored.decisions[0].proposal.filename, "limit.ts");
   assert.equal(stored.manifest.length, 3);
 
   // GET round-trips the same review.

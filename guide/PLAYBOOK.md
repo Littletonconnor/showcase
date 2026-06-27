@@ -208,6 +208,7 @@ _The next-generation review, designed for the age of agents and large diffs (`do
 - **`gaps`** — declared uncertainties, each `{what, proveScope}`: what you didn't check + the scoped task the reviewer's **"Prove it"** would run. Be honest here; it's the interaction surface.
 - **`pivot`** — `"flips to ✅/⛔ if …"`, ONLY when there's a real fork. Omit on a clean ship — never noise.
 - **`evidence`** — surface parts for the right pane (usually a `diff`, maybe a control-flow `mermaid`). Omit and the decision renders full-width.
+- **`proposal`** — a concrete fix `{before, after, filename?, note?}` (current code → your fix). Renders under the evidence as a **"Suggested fix"** diff, so a `block`/`decide` shows the change _and_ how to unblock it. **Populate it whenever a concrete fix exists** — a blocked decision without one leaves the reviewer guessing.
 
 **`manifest` is REQUIRED — the complete changed-file list (trust).** Risk-ranked decisions hide the files you triaged out; a reviewer who can't see _that's everything_ stops trusting the review. So list **every file in the diff**, each `{path, disposition, added, removed, decisionId?, note?}`:
 
@@ -248,6 +249,12 @@ _The next-generation review, designed for the age of agents and large diffs (`do
           ],
         },
       ],
+      "proposal": {
+        "filename": "server/app.ts",
+        "before": "if (tooLarge(req)) return r413();\nconst buf = await req.arrayBuffer();\n",
+        "after": "if (tooLarge(req)) return r413();\nconst buf = await readCapped(req, MAX);\n",
+        "note": "Stream with a hard cap so a no-content-length body can't exhaust the heap either.",
+      },
     },
     {
       "id": "d-413-message",

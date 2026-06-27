@@ -461,16 +461,23 @@ function EvidencePane(props: { decision: Decision; index: number }) {
       ) : (
         <>
           {evidence.length > 0 && (
-            <div className="overflow-hidden rounded-lg border-[0.5px] border-border bg-card">
-              {evidence.map((p, i) => (
-                <EvidencePart key={i} part={p} />
-              ))}
+            <div className="flex flex-col gap-1.5">
+              {/* When a fix follows, name the evidence so it reads "the change
+                  → the suggested fix" — the pairing a blocked decision needs. */}
+              {proposal && (
+                <div className="text-[11px] tracking-wide text-faint uppercase">The change</div>
+              )}
+              <div className="overflow-hidden rounded-lg border-[0.5px] border-border bg-card">
+                {evidence.map((p, i) => (
+                  <EvidencePart key={i} part={p} />
+                ))}
+              </div>
             </div>
           )}
           {proposal && (
             <div className="flex flex-col gap-1.5">
               <div className="text-[11px] tracking-wide text-emerald-700 uppercase dark:text-emerald-400">
-                Suggested change
+                Suggested fix
               </div>
               <div className="overflow-hidden rounded-lg border-[0.5px] border-emerald-500/30 bg-card">
                 <DiffPart
