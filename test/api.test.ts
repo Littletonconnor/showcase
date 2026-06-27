@@ -453,6 +453,76 @@ test("publish_decisions flags a code-like Brief (warn, not reject) and clears it
   assert.ok(!storedClean.briefWarning, "the cleared warning is gone from the stored review");
 });
 
+test("publish_decisions warns on code decisions with no evidence and on unparseable patches (warn, not reject)", async () => {
+  const app = makeApp();
+  const decisions = [
+    {
+      // points at specific code but shows nothing → warns
+      id: "d-no-evidence",
+      call: "decide",
+      kind: "risk",
+      scope: "whole-file",
+      assertion: "A guard is effectively unreachable in production.",
+      confidence: "medium",
+    },
+    {
+      // a hand-authored pseudo-patch (prose @@ marker, no line numbers) → warns
+      id: "d-bad-patch",
+      call: "block",
+      kind: "bug",
+      scope: "changed-line",
+      assertion: "Buffers the whole body before the size check.",
+      confidence: "high",
+      evidence: [
+        { kind: "diff", patch: "@@ writer (this PR) @@\n+const buf = await req.arrayBuffer();\n" },
+      ],
+    },
+    {
+      // a codebase-scope prose call is exempt; real files[] evidence is clean
+      id: "d-clean",
+      call: "ship",
+      kind: "refactor",
+      scope: "codebase",
+      assertion: "The split keeps the module boundary.",
+      confidence: "high",
+    },
+  ];
+  const manifest = [
+    { path: "a.ts", disposition: "has-decision", decisionId: "d-no-evidence" },
+    { path: "b.ts", disposition: "has-decision", decisionId: "d-bad-patch" },
+    { path: "c.ts", disposition: "has-decision", decisionId: "d-clean" },
+  ];
+
+  const res = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(1, "tools/call", {
+        name: "publish_decisions",
+        arguments: { brief: "Plain English summary of the change.", decisions, manifest },
+      }),
+    )
+  ).json()) as any;
+  const out = JSON.parse(res.result.content[0].text);
+  assert.ok(out.sessionId, "must still publish");
+  assert.ok(Array.isArray(out.warnings) && out.warnings.length === 2, "two evidence warnings");
+  assert.ok(
+    out.warnings.some((w: string) => w.includes("d-no-evidence") && w.includes("no evidence")),
+    "flags the code decision with no evidence",
+  );
+  assert.ok(
+    out.warnings.some((w: string) => w.includes("d-bad-patch") && w.includes("hunk header")),
+    "flags the unparseable patch",
+  );
+  assert.ok(
+    !out.warnings.some((w: string) => w.includes("d-clean")),
+    "a codebase-scope prose call is not flagged",
+  );
+
+  // The warnings ride through to the stored review so the viewer can chip them.
+  const stored = (await (await app.request(`/api/sessions/${out.sessionId}/review`)).json()) as any;
+  assert.equal(stored.warnings?.length, 2, "warnings persist on the stored review");
+});
+
 test("re-publishing a decision review broadcasts review-updated so the open page refetches", async () => {
   const app = makeApp();
   const body = {

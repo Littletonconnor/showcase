@@ -52,7 +52,7 @@ export interface McpDeps {
     sessionTitle?: string;
     agent?: string;
   }): Promise<
-    | { sessionId: string; decisions: number; briefWarning?: string }
+    | { sessionId: string; decisions: number; briefWarning?: string; warnings?: string[] }
     | { error: string; status: number }
   >;
   publishPreset(input: {
@@ -158,6 +158,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
             decisions: result.decisions,
             url: `${origin}/?review=${result.sessionId}`,
             ...(result.briefWarning ? { briefWarning: result.briefWarning } : {}),
+            ...(result.warnings && result.warnings.length > 0 ? { warnings: result.warnings } : {}),
           },
           null,
           2,

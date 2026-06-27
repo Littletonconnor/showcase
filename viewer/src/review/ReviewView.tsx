@@ -13,7 +13,7 @@
 // Accepts you've already made — only a substantively new decision (a new id)
 // resets. Disabled in a static export (no agent) and inert in `?review-preview`.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Ban, ChevronRight, CircleAlert, CircleCheck } from "lucide-react";
+import { Ban, ChevronRight, CircleAlert, CircleCheck, Check, Copy } from "lucide-react";
 import type {
   Decision,
   DecisionCall,
@@ -190,8 +190,13 @@ function CopyRef(props: { id: string }) {
         setCopied(true);
         window.setTimeout(() => setCopied(false), 1200);
       }}
-      className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10.5px] text-muted-foreground hover:bg-hover"
+      className="inline-flex items-center gap-1 rounded border-[0.5px] border-border bg-muted px-1.5 py-0.5 font-mono text-[10.5px] text-muted-foreground transition-colors hover:bg-hover hover:text-foreground"
     >
+      {copied ? (
+        <Check className="size-3 text-emerald-600 dark:text-emerald-400" />
+      ) : (
+        <Copy className="size-3 opacity-70" />
+      )}
       {copied ? "copied" : props.id}
     </button>
   );
@@ -552,6 +557,23 @@ export function ReviewView(props: {
             <div className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2 py-1 text-[11.5px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
               <CircleAlert className="size-3.5 shrink-0" />
               {r.briefWarning}
+            </div>
+          ) : null}
+
+          {/* Evidence warnings — a code decision with nothing to look at, or a diff
+              whose patch won't render. Same non-blocking nudge as the Brief warning;
+              the agent self-corrects on the next publish. */}
+          {r.warnings && r.warnings.length > 0 ? (
+            <div className="mt-2 flex flex-col gap-1">
+              {r.warnings.map((w, i) => (
+                <div
+                  key={i}
+                  className="inline-flex items-start gap-1.5 rounded-md bg-amber-50 px-2 py-1 text-[11.5px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                >
+                  <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
+                  <span>{w}</span>
+                </div>
+              ))}
             </div>
           ) : null}
 

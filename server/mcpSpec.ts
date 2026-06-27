@@ -91,8 +91,10 @@ const d = {
   partMarkdown: "markdown part: prose (headings, lists, tables, code, links); raw HTML is escaped",
   partMermaid:
     "mermaid part: diagram source (flowchart, sequence, ERD, gantt, …), rendered to SVG by the viewer",
-  partPatch: "diff part: a unified/git diff string — the preferred, compact form",
-  partFiles: "diff part: before/after pairs — heavier (full contents); prefer patch",
+  partPatch:
+    "diff part: a REAL unified/git diff string (from `git diff`) — compact, with `@@ -n,m +n,m @@` hunk headers. Do NOT hand-write a pseudo-patch (prose `@@` markers, no line numbers): it won't parse and renders blank. If you don't have actual diff output, use `files:[{before,after}]` instead.",
+  partFiles:
+    "diff part: before/after pairs — heavier (full contents) but ROBUST for hand-authored evidence (no patch-format footguns). Prefer real `patch` from `git diff`; reach for this when you're constructing the snippet yourself.",
   partAssetId: "image/trace part: id returned by upload_asset",
   imageAlt: "image part: alt text",
   imageCaption: "image part: caption shown under the image",
@@ -139,7 +141,7 @@ const d = {
   decisionPivot:
     "Optional — 'flips to ✅/⛔ if …'. ONLY when there's a real fork (an unverified gap that could change the call, or a load-bearing assumption). Omit on a clean ship — never noise.",
   decisionEvidence:
-    "Optional right-pane artifacts for this decision: surface parts (usually a `diff`, plus maybe a `mermaid` control-flow or `code`). Absent → the decision renders full-width.",
+    "Right-pane artifacts for this decision: surface parts (usually a `diff`, plus maybe a `mermaid` control-flow or `code`). EFFECTIVELY REQUIRED for any decision about specific code — a changed-line / whole-file call with no evidence is unadjudicable (the reviewer can't see what you're judging) and the server warns on it. Omit ONLY for a genuinely codeless call (a process/architecture point), where it renders full-width.",
   decisionProposal:
     "Optional concrete fix as {before, after, filename?, note?}: `before` is the current (changed) code, `after` is your proposed fix. Renders under the evidence as a 'Suggested fix' diff, so the reviewer sees the change AND the fix side by side. POPULATE IT whenever a concrete fix exists — especially on a block/decide — so a blocked decision shows how to unblock it.",
 };
