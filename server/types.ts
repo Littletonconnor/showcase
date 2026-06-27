@@ -269,9 +269,11 @@ export interface Decision {
   // how the code actually behaves. Rendered under the one-line assertion/impact
   // for anyone who wants the depth; the assertion stays the scannable headline.
   details?: string;
-  confidence: DecisionConfidence;
-  coverage: string; // what was / wasn't verified — the honesty ledger
-  gaps?: DecisionGap[]; // declared uncertainties → each a scoped [Verify]
+  confidence: DecisionConfidence; // how sure the agent is — the surfaced honesty signal
+  // Accepted but NOT surfaced or required: agent self-report with nothing to
+  // verify it, so the UI shows `confidence` instead and trust rides on agent skill.
+  coverage?: string;
+  gaps?: DecisionGap[];
   pivot?: string; // conditional — "flips to ✅ if …"; omit unless there's a real fork
   evidence?: SurfacePart[]; // right-pane artifacts; absent → that decision is full-width
   // A concrete suggested change, rendered under the evidence as a before→after

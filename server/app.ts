@@ -1037,9 +1037,6 @@ export function coerceReview(raw: any): { review: CreateReviewInput } | { error:
     if (typeof d.assertion !== "string" || !d.assertion.trim()) {
       return { error: `decision ${i}: "assertion" is required` };
     }
-    if (typeof d.coverage !== "string" || !d.coverage.trim()) {
-      return { error: `decision ${i}: "coverage" is required (the honesty ledger)` };
-    }
     let evidence: SurfacePart[] | undefined;
     if (d.evidence != null) {
       const parsed = validateSurfaceParts(d.evidence);
@@ -1091,7 +1088,9 @@ export function coerceReview(raw: any): { review: CreateReviewInput } | { error:
       ...(typeof d.impact === "string" && d.impact.trim() ? { impact: d.impact } : {}),
       ...(typeof d.details === "string" && d.details.trim() ? { details: d.details } : {}),
       confidence: d.confidence,
-      coverage: d.coverage,
+      // coverage/gaps are accepted but no longer surfaced or required — they're
+      // unverified self-report, so trust rides on `confidence` + agent skill.
+      ...(typeof d.coverage === "string" && d.coverage.trim() ? { coverage: d.coverage } : {}),
       ...(gaps && gaps.length ? { gaps } : {}),
       ...(typeof d.pivot === "string" && d.pivot.trim() ? { pivot: d.pivot } : {}),
       ...(evidence ? { evidence } : {}),

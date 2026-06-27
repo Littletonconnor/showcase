@@ -205,8 +205,7 @@ _The next-generation review, designed for the age of agents and large diffs (`do
 - **`call`** — `block | ship | decide` (your recommendation) · **`kind`** — bug/fix/capability/refactor/migration/risk · **`scope`** — `changed-line | whole-file | codebase` (how far the reviewer must look).
 - **`assertion`** — one sentence, the conclusion · **`impact`** — who hits it, how bad (optional).
 - **`details`** — the fuller explanation (markdown): the reasoning, how the code actually behaves, edge cases, what you traced. The `assertion` is the headline; `details` is the depth under it. Write it for anything non-obvious — a one-sentence assertion alone leaves the reviewer guessing.
-- **`confidence`** + **`coverage`** are **REQUIRED** — the honesty ledger: what you DID and did NOT verify. The form factor mandates this so a confident-but-unchecked claim can't hide as prose.
-- **`gaps`** — declared uncertainties, each `{what, proveScope}`: what you didn't check + the scoped task the reviewer's **"Prove it"** would run. Be honest here; it's the interaction surface.
+- **`confidence`** is **REQUIRED** — `high | medium | low`, how sure you are of the call. This is the one honesty signal the board surfaces, so set it truthfully: if you couldn't fully verify, drop to medium/low and say why in `details` rather than claiming high. (`coverage`/`gaps` are still accepted but **no longer surfaced or required** — self-reported verification has nothing behind it, so fold any real doubt into `confidence` + `details` instead.)
 - **`pivot`** — `"flips to ✅/⛔ if …"`, ONLY when there's a real fork. Omit on a clean ship — never noise.
 - **`evidence`** — surface parts for the right pane (usually a `diff`, maybe a control-flow `mermaid`). Omit and the decision renders full-width.
 - **`proposal`** — a concrete fix `{before, after, filename?, note?}` (current code → your fix). Renders under the evidence as a **"Suggested fix"** diff, so a `block`/`decide` shows the change _and_ how to unblock it. **Populate it whenever a concrete fix exists** — a blocked decision without one leaves the reviewer guessing.
@@ -231,13 +230,6 @@ _The next-generation review, designed for the age of agents and large diffs (`do
       "impact": "A 2 GB upload exhausts heap before the 413 is returned.",
       "details": "The handler calls `req.arrayBuffer()` on the entry path, which fully reads the body into memory *before* `tooLarge()` runs — so the size guard only fires after the allocation it was meant to prevent. Under concurrent uploads the heap climbs to roughly N×body before any 413. A streaming read with a hard cap rejects mid-stream and also covers the chunked, no-content-length case the header check misses.",
       "confidence": "high",
-      "coverage": "Reproduced with a 2 GB upload; did not test chunked uploads with no content-length.",
-      "gaps": [
-        {
-          "what": "chunked uploads that omit content-length",
-          "proveScope": "test a chunked upload with no length header",
-        },
-      ],
       "pivot": "flips to ✅ once a streaming cap covers the no-length case",
       "evidence": [
         {
@@ -265,7 +257,6 @@ _The next-generation review, designed for the age of agents and large diffs (`do
       "scope": "changed-line",
       "assertion": "The 413 carries a clear message and the limit.",
       "confidence": "high",
-      "coverage": "Read the handler + a test asserting the body.",
     },
   ],
   "manifest": [
@@ -301,9 +292,9 @@ _The next-generation review, designed for the age of agents and large diffs (`do
 }
 ```
 
-**The human adjudicates** each decision: **Accept** (ratify), **Prove it** (tap a declared gap → you run the scoped check and revise in place), or **Challenge** (they push back → you defend with evidence or concede and revise). So fill the ledger honestly — the gaps you declare are exactly what they'll make you prove.
+**The human adjudicates** each decision: **Accept** (ratify, burns down) or **Disagree** (they push back → you defend with evidence or concede and revise). They can also just chat normally, pasting a decision's `id` to scope the ask ("re-check `d-stale-token` against the no-length case"). Either way you act, then re-publish.
 
-**The loop is live — stay parked after you publish.** Call `wait_for_feedback`; Prove-it and Challenge arrive as session comments the page sends for you, each tagged with the decision: `[Prove it · Decision N of M] …` (do _only_ the scoped check it names) or `[Challenge · Decision N of M] …` (defend with evidence, or concede — one or the other, no hedging). Either way, act, then **re-publish the whole review with `publish_decisions`** — the decision updates in place in front of the reviewer (the call may flip), and the burndown reflects it. Re-publishing is the resolution; keep the unchanged decisions as-is and revise only the one in question.
+**The loop is live — stay parked after you publish.** Call `wait_for_feedback`; a Disagree arrives as a session comment tagged with the decision: `[Disagree · Decision N of M] …` (defend with evidence, or concede — one or the other, no hedging). Free-form chat that names a decision `id` works the same way. Act, then **re-publish the whole review with `publish_decisions`** — the decision updates in place in front of the reviewer (the call may flip), and the burndown reflects it. Re-publishing is the resolution; keep the unchanged decisions as-is and revise only the one in question.
 
 ## Recipe: animated explainer
 
@@ -360,7 +351,7 @@ Feedback attaches to a surface (`surfaceId`); when it arrives, do substantial ch
 
 **Where the conversation happens.** The inline browser chat was removed. Each card shows a **copy-to-clipboard card id** in its header; the user copies it and talks to you about that surface in **your terminal** — so the back-and-forth lives where you're running, not in the tab. Refer to surfaces back to the user by id (`list_surfaces` fetches one's current content).
 
-**Review feedback from the browser.** While you are parked in a `wait_for_feedback` / `showcase wait`, the viewer shows a live green **"Listening"** badge in the session header, so the user can see you are reachable. On a review the user adjudicates in the tab — **Approve** / **Dismiss** on each finding card, and **Prove-it** / **Challenge** on a decision-queue review — and those land here as user comments. Act on them in your terminal and republish the review so the board burns down; when you stop waiting the badge goes idle, honestly telling the user their next signal will queue until you check back.
+**Review feedback from the browser.** While you are parked in a `wait_for_feedback` / `showcase wait`, the viewer shows a live green **"Listening"** badge in the session header, so the user can see you are reachable. On a review the user adjudicates in the tab — **Approve** / **Dismiss** on each finding card, and **Accept** / **Disagree** (or free-form chat scoped by a decision `id`) on a decision-queue review — and those land here as user comments. Act on them in your terminal and republish the review so the board burns down; when you stop waiting the badge goes idle, honestly telling the user their next signal will queue until you check back.
 
 ## Remote surfaces
 

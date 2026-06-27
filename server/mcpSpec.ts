@@ -153,11 +153,12 @@ const d = {
   decisionImpact: "Why it matters — who hits it, how bad, under what input. Optional.",
   decisionDetails:
     "Optional fuller explanation (markdown) rendered under the assertion/impact: the reasoning behind the call, how the code actually behaves, edge cases, what you traced. The `assertion` stays the one-line headline — put the depth here so a reviewer who wants more than a sentence isn't left guessing. Use it on anything non-obvious, especially block/decide.",
-  decisionConfidence: "REQUIRED — high | medium | low. How sure you are.",
+  decisionConfidence:
+    "REQUIRED — high | medium | low. How sure you are of this call. This is THE honesty signal the board surfaces, so set it truthfully: drop to medium/low when you couldn't fully verify, rather than claiming high and burying the doubt.",
   decisionCoverage:
-    "REQUIRED — the honesty ledger: what you DID and did NOT verify (e.g. 'reproduced with a test' / 'read the caller, did not run the migration'). The form factor mandates this so a confident-but-unchecked claim can't hide.",
+    "Optional, NOT surfaced — a private note on what you did/didn't verify. The board no longer renders self-reported coverage (nothing verifies it); express uncertainty through `confidence` instead. Safe to omit.",
   decisionGaps:
-    "Declared uncertainties, each a {what, proveScope?} — what you did NOT check, and the scoped task the reviewer's 'Prove it' would dispatch to close it. These ARE the interaction surface.",
+    "Optional, NOT surfaced — {what, proveScope?} notes on what you didn't check. No longer rendered; fold any real doubt into a lower `confidence` and the `details` text. Safe to omit.",
   decisionPivot:
     "Optional — 'flips to ✅/⛔ if …'. ONLY when there's a real fork (an unverified gap that could change the call, or a load-bearing assumption). Omit on a clean ship — never noise.",
   decisionEvidence:
@@ -510,7 +511,7 @@ export const HTTP_MCP_TOOLS = [
                 required: ["before", "after"],
               },
             },
-            required: ["call", "kind", "scope", "assertion", "confidence", "coverage"],
+            required: ["call", "kind", "scope", "assertion", "confidence"],
           },
         },
         manifest: {

@@ -857,8 +857,9 @@ test("publish_decisions MCP tool stores a decision review and returns the /?revi
   assert.equal(stored.manifest[0].decisionId, "d-limiter");
   assert.equal(stored.manifest[1].added, 0);
 
-  // A decision missing the required honesty ledger is rejected at the tool layer.
-  const bad = (await (
+  // coverage is no longer required (it's unverified self-report, no longer
+  // surfaced) — a decision without it publishes fine as long as the rest is sound.
+  const ok = (await (
     await app.request(
       "/mcp",
       mcpCall(3, "tools/call", {
@@ -867,6 +868,7 @@ test("publish_decisions MCP tool stores a decision review and returns the /?revi
           brief: "x",
           decisions: [
             {
+              id: "d-y",
               call: "ship",
               kind: "fix",
               scope: "changed-line",
@@ -874,11 +876,30 @@ test("publish_decisions MCP tool stores a decision review and returns the /?revi
               confidence: "high",
             },
           ],
+          manifest: [{ path: "y.ts", disposition: "has-decision", decisionId: "d-y" }],
         },
       }),
     )
   ).json()) as any;
-  assert.ok(bad.error || bad.result?.isError, "missing coverage should error");
+  assert.ok(!ok.error && !ok.result?.isError, "a review without coverage should publish");
+
+  // A decision missing a still-required field (confidence) is rejected.
+  const bad = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(4, "tools/call", {
+        name: "publish_decisions",
+        arguments: {
+          brief: "x",
+          decisions: [
+            { id: "d-z", call: "ship", kind: "fix", scope: "changed-line", assertion: "z" },
+          ],
+          manifest: [{ path: "z.ts", disposition: "has-decision", decisionId: "d-z" }],
+        },
+      }),
+    )
+  ).json()) as any;
+  assert.ok(bad.error || bad.result?.isError, "missing confidence should error");
 });
 
 test("re-publishing a decision review broadcasts review-updated so the open page refetches", async () => {
@@ -1731,7 +1752,7 @@ test("publishes and round-trips a decision-queue review", async () => {
   assert.equal(again.createdAt, stored.createdAt);
 });
 
-test("review validation: the honesty ledger is required; bad targets 4xx", async () => {
+test("review validation: required fields enforced; coverage optional; bad targets 4xx", async () => {
   const app = makeApp();
   const s = await newSession(app);
   const ok = {
@@ -1741,7 +1762,6 @@ test("review validation: the honesty ledger is required; bad targets 4xx", async
     scope: "changed-line",
     assertion: "x",
     confidence: "high",
-    coverage: "read it",
   };
   // A consistent manifest, so cases that should pass validation reach the
   // session/round-trip checks rather than tripping the manifest requirement.
@@ -1751,13 +1771,25 @@ test("review validation: the honesty ledger is required; bad targets 4xx", async
     (await app.request(`/api/sessions/${s.id}/review`, json({ decisions: [ok] }))).status,
     400,
   );
-  // a decision missing coverage (the ledger) is rejected
-  const noCoverage = { ...ok, coverage: undefined };
+  // coverage is no longer required — a decision without it publishes fine.
+  // (Use a throwaway session so s.id stays review-less for the 404 check below.)
+  const s2 = await newSession(app);
+  assert.equal(
+    (
+      await app.request(
+        `/api/sessions/${s2.id}/review`,
+        json({ brief: "b", decisions: [ok], manifest: okManifest }),
+      )
+    ).status,
+    201,
+  );
+  // a decision missing the still-required confidence is rejected
+  const noConfidence = { ...ok, confidence: undefined };
   assert.equal(
     (
       await app.request(
         `/api/sessions/${s.id}/review`,
-        json({ brief: "b", decisions: [noCoverage] }),
+        json({ brief: "b", decisions: [noConfidence], manifest: okManifest }),
       )
     ).status,
     400,

@@ -270,38 +270,17 @@ function DecisionSection(props: {
           </div>
         ) : null}
 
-        {/* the honesty ledger — how sure the agent is, what it verified, and
-            what it did NOT. Three aligned rows so anyone can scan it. */}
-        <div className="mt-1 flex flex-col gap-2 border-t-[0.5px] border-border pt-3 text-[12.5px]">
-          <div className="flex gap-2">
-            <span className="w-[92px] shrink-0 text-[11px] font-medium tracking-wide text-faint uppercase">
-              How sure
-            </span>
-            <span className="flex items-center gap-1.5 font-medium text-foreground">
-              <span className={cx("size-1.5 rounded-full", conf.dot)} />
-              {conf.label}
-            </span>
-          </div>
-          <div className="flex gap-2">
-            <span className="w-[92px] shrink-0 text-[11px] font-medium tracking-wide text-faint uppercase">
-              Verified
-            </span>
-            <span className="text-muted-foreground">{d.coverage}</span>
-          </div>
-          {(d.gaps ?? []).length > 0 && (
-            <div className="flex gap-2">
-              <span className="w-[92px] shrink-0 text-[11px] font-medium tracking-wide text-faint uppercase">
-                Not verified
-              </span>
-              <div className="flex flex-col gap-1.5">
-                {(d.gaps ?? []).map((g, i) => (
-                  <span key={i} className="text-red-600 dark:text-red-400">
-                    {g.what}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
+        {/* how sure the agent is — the one honest signal we surface. The agent's
+            coverage/gaps are self-report with nothing behind them, so we don't
+            render them as if verified; trust is this + the agent's skill. */}
+        <div className="mt-1 flex items-center gap-2 border-t-[0.5px] border-border pt-3 text-[12.5px]">
+          <span className="text-[11px] font-medium tracking-wide text-faint uppercase">
+            How sure
+          </span>
+          <span className="flex items-center gap-1.5 font-medium text-foreground">
+            <span className={cx("size-1.5 rounded-full", conf.dot)} />
+            {conf.label}
+          </span>
         </div>
 
         {/* the pivot (conditional) */}
