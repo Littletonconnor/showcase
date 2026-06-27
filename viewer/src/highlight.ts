@@ -1,4 +1,4 @@
-import type { Highlighter } from "shiki";
+import { type Highlighter, bundledLanguages } from "shiki";
 import { type Mode, THEMES as REGISTRY } from "../../server/themes.ts";
 
 export type ShikiPair = { light: string; dark: string };
@@ -36,8 +36,9 @@ export function setCurrentThemes(pair: ShikiPair): void {
 
 // One lazily-created highlighter shared across all parts that highlight code
 // (MarkdownPart fenced blocks, CodePart). Built on shiki's JavaScript regex
-// engine (no oniguruma WASM) — the grammars are already in the bundle via
-// @pierre/diffs, so this adds no meaningful weight. Languages load on demand.
+// engine (no oniguruma WASM); the "shiki" import is the curated shim
+// (viewer/src/shikiBundle.ts), so only the bundled grammars load on demand and
+// an uncurated language falls back to plain text.
 let highlighter: Highlighter | null = null;
 let highlighterPromise: Promise<Highlighter> | null = null;
 
@@ -78,5 +79,9 @@ export function highlight(code: string, lang: string): string | null {
 // fn that turns the throw into a settled rejection we ignore).
 export async function loadLangs(langs: string[]): Promise<void> {
   const hl = await getHighlighter();
-  await Promise.allSettled(langs.map(async (l) => hl.loadLanguage(l as never)));
+  // Resolve each id to a grammar loader through the curated bundle (the shim's
+  // Proxy yields a plain-text fallback for anything uncurated, so this never
+  // rejects on an unknown id).
+  const bundle = bundledLanguages as Record<string, unknown>;
+  await Promise.allSettled(langs.map(async (l) => hl.loadLanguage(bundle[l] as never)));
 }

@@ -1886,7 +1886,9 @@ export function createApp({
       bundle.sessions[0] ? (bundle.sessions[0] as any).title : null,
       id,
     );
-    return c.body(renderExportHtml(viewerHtml, bundle), 200, {
+    // ?flatten=1 (the --pdf path) renders rich parts inline so they paginate.
+    const flatten = c.req.query("flatten") != null;
+    return c.body(renderExportHtml(viewerHtml, bundle, flatten), 200, {
       "content-type": "text/html; charset=utf-8",
       "content-disposition": `attachment; filename="${filename}"`,
     });

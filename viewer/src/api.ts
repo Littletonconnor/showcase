@@ -81,6 +81,9 @@ declare global {
     // Set by a static export: the whole session inlined, so the viewer renders
     // with no server (see server/export.ts). Implies read-only.
     __SHOWCASE_EXPORT__?: ExportBundle;
+    // Set by the PDF export (`?flatten=1`): render rich parts inline in document
+    // flow instead of in srcdoc iframes, so they split across print page breaks.
+    __SHOWCASE_FLATTEN__?: boolean;
   }
 }
 
@@ -135,6 +138,15 @@ export function appPath(path: string): string {
 
 export function isReadonly(): boolean {
   return !!window.__SHOWCASE_READONLY__;
+}
+
+// The PDF export path: rich parts (markdown, code, diff, mermaid, terminal)
+// render inline in the document instead of in srcdoc iframes. An iframe can't be
+// fragmented across a print page break, so a tall part would otherwise be
+// stranded or clipped; inline content flows and paginates. Only the trusted,
+// library-built part HTML is inlined this way — raw `html` parts stay sandboxed.
+export function isFlatten(): boolean {
+  return !!window.__SHOWCASE_FLATTEN__;
 }
 
 export function publicReadMode(): PublicReadMode | undefined {

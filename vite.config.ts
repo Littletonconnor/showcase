@@ -11,7 +11,17 @@ export default defineConfig({
   root: "viewer",
   plugins: [react(), tailwindcss(), viteSingleFile()],
   resolve: {
-    alias: { "@": fileURLToPath(new URL("./viewer/src", import.meta.url)) },
+    alias: [
+      { find: "@", replacement: fileURLToPath(new URL("./viewer/src", import.meta.url)) },
+      // Swap shiki's full bundle (~9 MB of inlined grammars/themes) for a curated
+      // subset. Exact-match only so shiki/core, shiki/engine/*, shiki/wasm — the
+      // deep imports @pierre/diffs and the shim itself use — still resolve to the
+      // real package. See viewer/src/shikiBundle.ts.
+      {
+        find: /^shiki$/,
+        replacement: fileURLToPath(new URL("./viewer/src/shikiBundle.ts", import.meta.url)),
+      },
+    ],
   },
   build: {
     target: "es2022",

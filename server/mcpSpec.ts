@@ -131,6 +131,14 @@ const d = {
   traceTs: "ISO timestamp",
   terminalText: "terminal part: raw output (ANSI SGR color escapes are rendered)",
   terminalCols: "terminal part: optional render width in columns",
+  partChartType: "chart part: bar | line | area | pie | treemap | scatter",
+  partChartData: "chart part: row-oriented data — an array of objects, one per row/category",
+  partChartX: "chart part: the field naming the category (x axis / pie slice label)",
+  partChartY: "chart part: the numeric series field, or an array of fields for multiple series",
+  partChartStacked: "chart part: stack bars/areas instead of grouping (ignored for line/pie)",
+  partChartColors: "chart part: explicit series/slice colors (safe CSS color tokens only)",
+  partChartXLabel: "chart part: optional x-axis label",
+  partChartYLabel: "chart part: optional y-axis label",
 
   // publish_decisions — the agent-era review form factor (docs/review-form-factor.md)
   brief:
@@ -172,7 +180,11 @@ const MCP_PARTS_DESCRIPTION =
   "{kind:'trace', steps:[{label, kind?, detail?, ts?}]} renders a step timeline, and/or " +
   "{kind:'trace', assetId} for an uploaded trace file (downloadable). terminal: {kind:'terminal', " +
   "text:'<output>', cols?, title?} renders monospace terminal output (ANSI SGR colors supported; " +
-  "cursor-addressing TUIs are not resolved). Optional diff layout " +
+  "cursor-addressing TUIs are not resolved). chart: {kind:'chart', " +
+  "chartType:'bar'|'line'|'area'|'pie'|'treemap'|'scatter', data:[{…row}], x:'<categoryField>', " +
+  "y:'<numericField>'|['<f1>','<f2>'], stacked?, colors?, xLabel?, yLabel?, caption?} — row-oriented " +
+  "numeric data rendered with Recharts (data is an array of objects; x names the category field, y " +
+  "the numeric series — one field or several). Optional diff layout " +
   "'unified'|'split'. Combine freely, e.g. [{kind:'html',...},{kind:'image',assetId},{kind:'trace',steps}].";
 
 const MCP_PART_JSON_SCHEMA = {
@@ -180,7 +192,7 @@ const MCP_PART_JSON_SCHEMA = {
   properties: {
     kind: {
       type: "string",
-      enum: ["html", "markdown", "mermaid", "diff", "image", "trace", "terminal"],
+      enum: ["html", "markdown", "mermaid", "diff", "image", "trace", "terminal", "chart"],
     },
     html: { type: "string", description: d.partHtml },
     kits: { type: "array", items: { type: "string" }, description: d.partKits },
@@ -222,6 +234,21 @@ const MCP_PART_JSON_SCHEMA = {
         required: ["label"],
       },
     },
+    chartType: {
+      type: "string",
+      enum: ["bar", "line", "area", "pie", "treemap", "scatter"],
+      description: d.partChartType,
+    },
+    data: { type: "array", items: { type: "object" }, description: d.partChartData },
+    x: { type: "string", description: d.partChartX },
+    y: {
+      oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
+      description: d.partChartY,
+    },
+    stacked: { type: "boolean", description: d.partChartStacked },
+    colors: { type: "array", items: { type: "string" }, description: d.partChartColors },
+    xLabel: { type: "string", description: d.partChartXLabel },
+    yLabel: { type: "string", description: d.partChartYLabel },
   },
   required: ["kind"],
 } as const;
@@ -234,9 +261,9 @@ const MCP_PARTS_JSON_SCHEMA = {
 
 export const MCP_TOOL_DESCRIPTIONS = {
   publishSurfaceHttp:
-    "Publish a surface to the user's showcase board. A surface is an ordered list of parts (html, markdown, mermaid, diff, image, trace). Returns the surface id, view URL, and sessionId — pass sessionId as `session` on later calls. On your first publish, pass sessionTitle naming the task. If the result includes userFeedback, those are new comments from the user. Call get_design_guide first if you have not this session.",
+    "Publish a surface to the user's showcase board. A surface is an ordered list of parts (html, markdown, mermaid, diff, image, trace, chart). Returns the surface id, view URL, and sessionId — pass sessionId as `session` on later calls. On your first publish, pass sessionTitle naming the task. If the result includes userFeedback, those are new comments from the user. Call get_design_guide first if you have not this session.",
   publishSurfaceStdio:
-    "Publish a surface to the user's showcase board. A surface is an ordered list of parts (html, markdown, mermaid, diff, image, trace). Returns the surface id and view URL. On your first publish, pass sessionTitle naming the task. If the result includes userFeedback, those are new comments from the user. Call get_design_guide first if you have not this session.",
+    "Publish a surface to the user's showcase board. A surface is an ordered list of parts (html, markdown, mermaid, diff, image, trace, chart). Returns the surface id and view URL. On your first publish, pass sessionTitle naming the task. If the result includes userFeedback, those are new comments from the user. Call get_design_guide first if you have not this session.",
   updateSurface:
     "Revise a surface in place (same card, new version). Prefer this over publishing a near-duplicate. Pass the full replacement parts array. If the result includes userFeedback, read it.",
   publishReview:
