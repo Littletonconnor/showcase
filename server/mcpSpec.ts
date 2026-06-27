@@ -155,10 +155,6 @@ const d = {
     "Optional fuller explanation (markdown) rendered under the assertion/impact: the reasoning behind the call, how the code actually behaves, edge cases, what you traced. The `assertion` stays the one-line headline — put the depth here so a reviewer who wants more than a sentence isn't left guessing. Use it on anything non-obvious, especially block/decide.",
   decisionConfidence:
     "REQUIRED — high | medium | low. How sure you are of this call. This is THE honesty signal the board surfaces, so set it truthfully: drop to medium/low when you couldn't fully verify, rather than claiming high and burying the doubt.",
-  decisionCoverage:
-    "Optional, NOT surfaced — a private note on what you did/didn't verify. The board no longer renders self-reported coverage (nothing verifies it); express uncertainty through `confidence` instead. Safe to omit.",
-  decisionGaps:
-    "Optional, NOT surfaced — {what, proveScope?} notes on what you didn't check. No longer rendered; fold any real doubt into a lower `confidence` and the `details` text. Safe to omit.",
   decisionPivot:
     "Optional — 'flips to ✅/⛔ if …'. ONLY when there's a real fork (an unverified gap that could change the call, or a load-bearing assumption). Omit on a clean ship — never noise.",
   decisionEvidence:
@@ -486,16 +482,6 @@ export const HTTP_MCP_TOOLS = [
                 type: "string",
                 enum: ["high", "medium", "low"],
                 description: d.decisionConfidence,
-              },
-              coverage: { type: "string", description: d.decisionCoverage },
-              gaps: {
-                type: "array",
-                description: d.decisionGaps,
-                items: {
-                  type: "object",
-                  properties: { what: { type: "string" }, proveScope: { type: "string" } },
-                  required: ["what"],
-                },
               },
               pivot: { type: "string", description: d.decisionPivot },
               evidence: { ...MCP_PARTS_JSON_SCHEMA, description: d.decisionEvidence },

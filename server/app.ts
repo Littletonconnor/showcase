@@ -987,9 +987,8 @@ export function coerceOverview(raw: any): OverviewInput {
 
 // Validate a published Review (the decision-queue form factor — see
 // docs/review-form-factor.md). Returns the normalized input or an error string.
-// `coverage` is required on every decision — the honesty ledger is the API, the
-// same discipline that makes confidence/coverage required on a finding. Evidence
-// reuses the surface-part validator, so right-pane artifacts meet the card bar.
+// `confidence` is the one honesty signal surfaced per decision; evidence reuses
+// the surface-part validator, so right-pane artifacts meet the card bar.
 const endWithNewline = (s: string) => (s.length && !s.endsWith("\n") ? s + "\n" : s);
 const DECISION_CALLS = new Set(["block", "ship", "decide"]);
 const DECISION_SCOPES = new Set(["changed-line", "whole-file", "codebase"]);
@@ -1071,14 +1070,6 @@ export function coerceReview(raw: any): { review: CreateReviewInput } | { error:
           : {}),
       };
     }
-    const gaps = Array.isArray(d.gaps)
-      ? d.gaps
-          .filter((g: any) => g && typeof g.what === "string" && g.what.trim())
-          .map((g: any) => ({
-            what: g.what,
-            ...(typeof g.proveScope === "string" ? { proveScope: g.proveScope } : {}),
-          }))
-      : undefined;
     decisions.push({
       id,
       call: d.call,
@@ -1088,10 +1079,6 @@ export function coerceReview(raw: any): { review: CreateReviewInput } | { error:
       ...(typeof d.impact === "string" && d.impact.trim() ? { impact: d.impact } : {}),
       ...(typeof d.details === "string" && d.details.trim() ? { details: d.details } : {}),
       confidence: d.confidence,
-      // coverage/gaps are accepted but no longer surfaced or required — they're
-      // unverified self-report, so trust rides on `confidence` + agent skill.
-      ...(typeof d.coverage === "string" && d.coverage.trim() ? { coverage: d.coverage } : {}),
-      ...(gaps && gaps.length ? { gaps } : {}),
       ...(typeof d.pivot === "string" && d.pivot.trim() ? { pivot: d.pivot } : {}),
       ...(evidence ? { evidence } : {}),
       ...(proposal ? { proposal } : {}),
@@ -1419,9 +1406,8 @@ export function createApp({
 
   // Publish a decision-queue review (the agent-era form factor — see
   // docs/review-form-factor.md). Like publishSurface, an explicit session is
-  // validated and a missing one auto-created. The Review is validated (the
-  // honesty-ledger `coverage` is required on every decision) and stored per
-  // session; the viewer renders it at /?review=<sessionId>.
+  // validated and a missing one auto-created. The Review is validated and stored
+  // per session; the viewer renders it at /?review=<sessionId>.
   async function publishDecisions(input: {
     brief?: string;
     verdict?: string;

@@ -821,7 +821,6 @@ test("publish_decisions MCP tool stores a decision review and returns the /?revi
               scope: "whole-file",
               assertion: "The limiter counts per-process.",
               confidence: "high",
-              coverage: "read it; did not load-test",
               evidence: [
                 { kind: "diff", files: [{ filename: "limit.ts", before: "a\n", after: "b\n" }] },
               ],
@@ -857,8 +856,7 @@ test("publish_decisions MCP tool stores a decision review and returns the /?revi
   assert.equal(stored.manifest[0].decisionId, "d-limiter");
   assert.equal(stored.manifest[1].added, 0);
 
-  // coverage is no longer required (it's unverified self-report, no longer
-  // surfaced) — a decision without it publishes fine as long as the rest is sound.
+  // A minimal decision (just the required fields) publishes fine.
   const ok = (await (
     await app.request(
       "/mcp",
@@ -881,7 +879,7 @@ test("publish_decisions MCP tool stores a decision review and returns the /?revi
       }),
     )
   ).json()) as any;
-  assert.ok(!ok.error && !ok.result?.isError, "a review without coverage should publish");
+  assert.ok(!ok.error && !ok.result?.isError, "a minimal decision should publish");
 
   // A decision missing a still-required field (confidence) is rejected.
   const bad = (await (
@@ -914,7 +912,6 @@ test("re-publishing a decision review broadcasts review-updated so the open page
         scope: "whole-file",
         assertion: "The limiter counts per-process.",
         confidence: "high",
-        coverage: "read it; did not load-test",
       },
     ],
     manifest: [{ path: "limit.ts", disposition: "has-decision", decisionId: "d-limiter" }],
@@ -1676,8 +1673,6 @@ test("publishes and round-trips a decision-queue review", async () => {
         impact: "The real cap is N×workers.",
         details: "Each worker holds its own `Map`, so the cap multiplies by worker count.",
         confidence: "high",
-        coverage: "Read the limiter; did not load-test.",
-        gaps: [{ what: "no shared store", proveScope: "wire a shared counter and re-test" }],
         pivot: "flips to decide if single-worker",
         evidence: [
           { kind: "diff", files: [{ filename: "limit.ts", before: "a\n", after: "b\n" }] },
@@ -1696,7 +1691,6 @@ test("publishes and round-trips a decision-queue review", async () => {
         scope: "changed-line",
         assertion: "Returns a clean 429.",
         confidence: "high",
-        coverage: "Read the handler + a test.",
       },
     ],
     manifest: [
@@ -1726,7 +1720,6 @@ test("publishes and round-trips a decision-queue review", async () => {
   assert.equal(stored.decisions[0].id, "d-per-process");
   assert.match(stored.decisions[0].details, /own `Map`/);
   assert.equal(stored.decisions[0].evidence[0].kind, "diff");
-  assert.equal(stored.decisions[0].gaps[0].what, "no shared store");
   // The suggested fix (the change → the fix) round-trips for the blocked decision.
   assert.equal(stored.decisions[0].proposal.after, "shared(b)\n");
   assert.equal(stored.decisions[0].proposal.filename, "limit.ts");
@@ -1752,7 +1745,7 @@ test("publishes and round-trips a decision-queue review", async () => {
   assert.equal(again.createdAt, stored.createdAt);
 });
 
-test("review validation: required fields enforced; coverage optional; bad targets 4xx", async () => {
+test("review validation: required fields enforced; bad targets 4xx", async () => {
   const app = makeApp();
   const s = await newSession(app);
   const ok = {
@@ -1771,7 +1764,7 @@ test("review validation: required fields enforced; coverage optional; bad target
     (await app.request(`/api/sessions/${s.id}/review`, json({ decisions: [ok] }))).status,
     400,
   );
-  // coverage is no longer required — a decision without it publishes fine.
+  // a minimal valid decision (just the required fields) publishes fine.
   // (Use a throwaway session so s.id stays review-less for the 404 check below.)
   const s2 = await newSession(app);
   assert.equal(
@@ -1825,7 +1818,6 @@ test("review validation: the complete manifest is required and must agree with t
     scope: "changed-line",
     assertion: "x",
     confidence: "high",
-    coverage: "read it",
   };
   const post = (review: unknown) => app.request(`/api/sessions/${s.id}/review`, json(review));
 

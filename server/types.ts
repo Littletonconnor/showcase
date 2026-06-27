@@ -248,12 +248,6 @@ export type DecisionCall = "block" | "ship" | "decide";
 export type DecisionScope = "changed-line" | "whole-file" | "codebase";
 export type DecisionConfidence = "high" | "medium" | "low";
 
-// A declared verification gap — the scoped target of a "Prove it".
-export interface DecisionGap {
-  what: string; // what the agent did NOT check, in plain terms
-  proveScope?: string; // the scoped task "Prove it" dispatches to close it
-}
-
 export interface Decision {
   // Short, stable, copy-pasteable ref (e.g. "d-7Qa…"). Stable across
   // re-publishes so local adjudication + the chat trail survive a revise, and so
@@ -270,10 +264,6 @@ export interface Decision {
   // for anyone who wants the depth; the assertion stays the scannable headline.
   details?: string;
   confidence: DecisionConfidence; // how sure the agent is — the surfaced honesty signal
-  // Accepted but NOT surfaced or required: agent self-report with nothing to
-  // verify it, so the UI shows `confidence` instead and trust rides on agent skill.
-  coverage?: string;
-  gaps?: DecisionGap[];
   pivot?: string; // conditional — "flips to ✅ if …"; omit unless there's a real fork
   evidence?: SurfacePart[]; // right-pane artifacts; absent → that decision is full-width
   // A concrete suggested change, rendered under the evidence as a before→after
