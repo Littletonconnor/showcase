@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { createApp } from "../server/app.ts";
+import { createApp } from "@showcase/server/app";
 import {
   type Blueprint,
   blueprintById,
@@ -12,11 +12,11 @@ import {
   isKnownBlueprint,
   registerBlueprints,
   resolveBlueprint,
-} from "../server/blueprints.ts";
-import { isKnownKit, kitAssets, registerKits } from "../server/kits.ts";
-import { JsonFileStore } from "../server/storage.ts";
-import { isKnownTheme, registerThemes, themeById, themeIds } from "../server/themes.ts";
-import type { SurfacePart } from "../server/types.ts";
+} from "@showcase/core/blueprints";
+import { isKnownKit, kitAssets, registerKits } from "@showcase/core/kits";
+import { JsonFileStore } from "@showcase/server/storage";
+import { isKnownTheme, registerThemes, themeById, themeIds } from "@showcase/core/themes";
+import type { SurfacePart } from "@showcase/core/types";
 
 // register* is global module state that createApp resets per instance; reset to
 // the built-ins so a prior test's fixtures never leak into a unit assertion.

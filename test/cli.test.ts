@@ -6,10 +6,17 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
-import { createApp } from "../server/app.ts";
-import { JsonFileStore } from "../server/storage.ts";
+import { createApp } from "@showcase/server/app";
+import { JsonFileStore } from "@showcase/server/storage";
 
-const CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "bin", "showcase.js");
+const CLI = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "packages",
+  "cli",
+  "bin",
+  "showcase.js",
+);
 
 function run(...args: string[]) {
   return runWith({}, ...args);

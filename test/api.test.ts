@@ -3,8 +3,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { createApp } from "../server/app.ts";
-import { JsonFileStore } from "../server/storage.ts";
+import { createApp } from "@showcase/server/app";
+import { JsonFileStore } from "@showcase/server/storage";
 
 function makeApp(authToken?: string, opts?: { publicRead?: "session" | "full" }) {
   const dir = mkdtempSync(join(tmpdir(), "showcase-test-"));

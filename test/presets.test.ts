@@ -3,17 +3,17 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { createApp } from "../server/app.ts";
-import { JsonFileStore } from "../server/storage.ts";
+import { createApp } from "@showcase/server/app";
+import { JsonFileStore } from "@showcase/server/storage";
 import {
   loadBoardDefaults,
   loadUserExtensions,
   mergeExtensions,
   saveUserTheme,
   type UserExtensions,
-} from "../server/userConfig.ts";
-import type { Theme } from "../server/themes.ts";
-import { deriveTheme } from "../server/themeDerive.ts";
+} from "@showcase/server/userConfig";
+import type { Theme } from "@showcase/core/themes";
+import { deriveTheme } from "@showcase/core/themeDerive";
 
 function makeApp(opts?: { defaultBlueprint?: string; defaultTheme?: string }) {
   const dir = mkdtempSync(join(tmpdir(), "showcase-preset-"));

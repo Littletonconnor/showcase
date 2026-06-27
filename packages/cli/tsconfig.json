@@ -1,0 +1,6 @@
+{
+  // Strictly zero-dep: node built-ins only. `.ts` sources are type-stripped at
+  // runtime; the .js launcher + demo data are not typechecked.
+  "extends": "../../tsconfig.base.json",
+  "include": ["**/*.ts"]
+}

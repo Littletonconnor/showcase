@@ -1,0 +1,22 @@
+{
+  // The Vite-built React viewer: DOM lib + react JSX, bundler resolution. Unlike
+  // the type-stripped packages this code is compiled, so it is NOT
+  // erasable-syntax-only. server-entry.{js,d.ts} are excluded (Node-runtime glue
+  // for the server, not viewer source).
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": ["vite/client", "react", "react-dom"],
+    "jsx": "react-jsx",
+    "paths": { "@/*": ["./src/*"] },
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src", "vite.config.ts"]
+}

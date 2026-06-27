@@ -6,8 +6,8 @@ import {
   escapeHtml,
   renderHtmlPage,
   renderSandboxedPart,
-} from "../server/surfacePage.ts";
-import { themeById } from "../server/themes.ts";
+} from "@showcase/core/surfacePage";
+import { themeById } from "@showcase/core/themes";
 
 const ORIGIN = "http://localhost:4000";
 
