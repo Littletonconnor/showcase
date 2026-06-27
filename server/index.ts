@@ -1,9 +1,11 @@
 import { serve } from "@hono/node-server";
 import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp } from "./app.ts";
 import { JsonFileStore } from "./storage.ts";
+import { loadUserExtensions } from "./userConfig.ts";
 
 // Source layout puts this file at server/index.ts; the published package runs
 // the compiled copy at dist/server/index.js. viewer/ and guide/ live at the
@@ -24,12 +26,21 @@ const [viewerHtml, guideMarkdown, setupText, playbookText] = await Promise.all([
 const pr = process.env.SHOWCASE_PUBLIC_READ;
 const publicRead = pr === "session" || pr === "full" ? pr : undefined;
 
+// User-authored brand palettes, kits, and explainer blueprints layered over the
+// built-ins (docs/themable-explainers.md). Defaults to ~/.showcase; override
+// with SHOWCASE_CONFIG. Absent dir → no extensions, identical to before.
+const configDir = process.env.SHOWCASE_CONFIG ?? join(homedir(), ".showcase");
+const { themes, kits, blueprints } = await loadUserExtensions(configDir);
+
 const app = createApp({
   store: new JsonFileStore(process.env.SHOWCASE_DATA ?? join(root, "data", "showcase.json")),
   viewerHtml,
   guideMarkdown,
   setupText,
   playbookText,
+  extraThemes: themes,
+  extraKits: kits,
+  extraBlueprints: blueprints,
   authToken: process.env.SHOWCASE_TOKEN,
   publicRead,
   // `npm run dev` sets this; it adds the live-reload endpoint + snippet.

@@ -269,16 +269,44 @@ export const THEMES: Theme[] = [
 
 export const DEFAULT_THEME_ID = "showcase";
 
-// All registered theme ids, in registry order (drives the viewer picker and the
-// MCP/CLI theme allowlist).
+// Built-in theme ids, in registry order (drives the viewer picker and the MCP
+// `theme` enum, which is built at import time so it lists only the built-ins).
 export const THEME_IDS = THEMES.map((t) => t.id);
+
+// --- user-extensible layer ---------------------------------------------------
+// The built-in THEMES above ship with the binary; a board can ALSO load brand
+// palettes from local config (server/userConfig.ts → registerThemes at boot).
+// Lookups below resolve against built-ins ⊕ these extras, with a user id winning
+// on collision. The viewer never calls registerThemes, so its bundled copy only
+// ever sees the built-ins — no `node:`/fs leaks into the build, and the viewer
+// picker stays on the shipped set. Runtime-agnostic: pure in-memory state.
+let extraThemes: Theme[] = [];
+
+// Replace the user theme set (idempotent — each call resets, so createApp can
+// pass a fresh list per instance without leaking across test apps).
+export function registerThemes(themes: Theme[]): void {
+  extraThemes = themes.slice();
+}
+
+// Built-ins ⊕ user themes, user first so a user id shadows a built-in of the
+// same id in `find`-based lookups.
+export function allThemes(): Theme[] {
+  return extraThemes.length === 0 ? THEMES : [...extraThemes, ...THEMES];
+}
+
+// All resolvable theme ids (built-in + user), deduped, for discovery (/api/themes,
+// the design-guide listing). Distinct from THEME_IDS, which is the built-in-only
+// MCP enum frozen at import.
+export function themeIds(): string[] {
+  return [...new Set(allThemes().map((t) => t.id))];
+}
 
 // Is `id` a known theme? Used to validate the agent-supplied / query `theme`.
 export const isKnownTheme = (id: unknown): id is string =>
-  typeof id === "string" && THEMES.some((t) => t.id === id);
+  typeof id === "string" && allThemes().some((t) => t.id === id);
 
 // Resolve a theme by id, falling back to the default for null/unknown — so a
 // stale `?theme=` or a surface authored before a theme was removed still renders.
 export function themeById(id: string | null | undefined): Theme {
-  return THEMES.find((t) => t.id === id) ?? THEMES[0];
+  return allThemes().find((t) => t.id === id) ?? THEMES[0];
 }

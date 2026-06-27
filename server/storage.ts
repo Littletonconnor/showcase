@@ -280,6 +280,7 @@ export class JsonFileStore implements Store {
       history: [],
       ...(input.badge ? { badge: input.badge } : {}),
       ...(input.theme ? { theme: input.theme } : {}),
+      ...(input.blueprint ? { blueprint: input.blueprint } : {}),
     };
     this.surfaces.set(surface.id, surface);
     this.touch(input.sessionId);
@@ -299,6 +300,11 @@ export class JsonFileStore implements Store {
     if (patch.theme !== undefined) {
       if (patch.theme === null) delete surface.theme;
       else surface.theme = patch.theme;
+    }
+    // Blueprint, like theme, is a rendering choice — not snapshotted as content.
+    if (patch.blueprint !== undefined) {
+      if (patch.blueprint === null) delete surface.blueprint;
+      else surface.blueprint = patch.blueprint;
     }
     if (!contentChange) {
       surface.updatedAt = new Date().toISOString();

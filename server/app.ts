@@ -5,10 +5,25 @@ import { streamSSE } from "hono/streaming";
 import { decodeBase64 } from "./base64.ts";
 import { EventBus } from "./events.ts";
 import { buildExportBundle, exportFilename, renderExportHtml } from "./export.ts";
-import { kitSummaries } from "./kits.ts";
+import {
+  type Blueprint,
+  blueprintById,
+  blueprintSummaries,
+  isKnownBlueprint,
+  registerBlueprints,
+  resolveBlueprint,
+} from "./blueprints.ts";
+import { type Kit, kitSummaries, registerKits } from "./kits.ts";
 import { registerMcp } from "./mcpHttp.ts";
 import { renderHtmlPage } from "./surfacePage.ts";
-import { DEFAULT_THEME_ID, isKnownTheme, themeById } from "./themes.ts";
+import {
+  DEFAULT_THEME_ID,
+  isKnownTheme,
+  registerThemes,
+  type Theme,
+  themeById,
+  themeIds,
+} from "./themes.ts";
 import {
   type Asset,
   type AssetKind,
@@ -109,6 +124,13 @@ export interface AppOptions {
   guideMarkdown: string;
   setupText: string;
   playbookText?: string;
+  // User-authored extensions layered over the built-in registries (brand
+  // palettes, custom kits, explainer blueprints) — loaded from local config by
+  // server/userConfig.ts and registered before any route runs. Omitted → just
+  // the built-ins. See docs/themable-explainers.md.
+  extraThemes?: Theme[];
+  extraKits?: Kit[];
+  extraBlueprints?: Blueprint[];
   // Dev-only live reload. When true, the served viewer HTML gets a tiny
   // reconnecting EventSource snippet and a GET /api/livereload endpoint that
   // streams this process's boot id. `npm run dev` rebuilds viewer/dist and
@@ -203,6 +225,7 @@ const surfaceMeta = (s: Surface) => ({
   parts: stripParts(s.parts),
   ...(s.badge ? { badge: s.badge } : {}),
   ...(s.theme ? { theme: s.theme } : {}),
+  ...(s.blueprint ? { blueprint: s.blueprint } : {}),
 });
 
 function isPublicReadAllowed(path: string, mode: PublicReadMode): boolean {
@@ -217,6 +240,8 @@ function isPublicReadAllowed(path: string, mode: PublicReadMode): boolean {
   if (path === "/api/events") return true;
   if (path === "/api/version") return true;
   if (path === "/api/kits") return true;
+  if (path === "/api/blueprints") return true;
+  if (path === "/api/themes") return true;
   return false;
 }
 
@@ -233,6 +258,7 @@ const writeResult = (s: Surface) => ({
   kinds: s.parts.map((p) => p.kind),
   ...(s.badge ? { badge: s.badge } : {}),
   ...(s.theme ? { theme: s.theme } : {}),
+  ...(s.blueprint ? { blueprint: s.blueprint } : {}),
 });
 
 export interface CommentWait {
@@ -449,6 +475,9 @@ export function createApp({
   guideMarkdown,
   setupText,
   playbookText = setupText,
+  extraThemes,
+  extraKits,
+  extraBlueprints,
   dev = false,
   authenticate,
   authToken,
@@ -458,6 +487,13 @@ export function createApp({
   upgradeCommand,
   fetchLatestRelease,
 }: AppOptions) {
+  // Layer user config over the built-in registries before any route resolves a
+  // theme/kit/blueprint. Each register* call REPLACES its extras, so building a
+  // fresh app (e.g. per test) resets cleanly rather than accumulating.
+  registerThemes(extraThemes ?? []);
+  registerKits(extraKits ?? []);
+  registerBlueprints(extraBlueprints ?? []);
+
   const app = new Hono();
   const bus = new EventBus();
 
@@ -541,6 +577,7 @@ export function createApp({
     title?: string;
     badge?: SurfaceBadge;
     theme?: string;
+    blueprint?: string;
     session?: string;
     sessionTitle?: string;
     agent?: string;
@@ -569,12 +606,21 @@ export function createApp({
       bus.broadcast({ type: "session-created", id: session.id });
       sessionId = session.id;
     }
+    // A blueprint fills gaps only: an explicit theme/part-kits/badge always wins,
+    // and its theme + kits are baked into the stored surface here so everything
+    // downstream sees an ordinary themed surface (see server/blueprints.ts).
+    const resolved = resolveBlueprint({
+      blueprint: input.blueprint,
+      theme: input.theme,
+      parts: input.parts,
+    });
     const surface = await store.createSurface({
       sessionId,
-      parts: input.parts,
+      parts: resolved.parts,
       title: input.title?.slice(0, MAX_TITLE),
-      badge: input.badge,
-      theme: isKnownTheme(input.theme) ? input.theme : undefined,
+      badge: input.badge ?? resolved.defaultBadge,
+      theme: resolved.theme,
+      blueprint: resolved.blueprintId,
     });
     if (!surface) return { error: "session not found", status: 404 };
     bus.broadcast({ type: "surface-created", id: surface.id, sessionId, version: 1 });
@@ -674,6 +720,7 @@ export function createApp({
       title?: string;
       badge?: SurfaceBadge | null;
       theme?: string | null;
+      blueprint?: string | null;
     },
   ): Promise<
     { surface: Surface; userFeedback?: Feedback[] } | { error: string; status: 400 | 404 | 413 }
@@ -687,6 +734,22 @@ export function createApp({
       }
     }
     if (patch.title !== undefined) patch.title = patch.title.slice(0, MAX_TITLE);
+    // Blueprint: null clears it; a known id (re-)applies its theme + kit defaults
+    // to the replacement parts (gap-fill — an explicit theme/part-kits still
+    // wins); an unknown id is ignored. undefined leaves it unchanged.
+    if (typeof patch.blueprint === "string") {
+      if (!isKnownBlueprint(patch.blueprint)) delete patch.blueprint;
+      else if (patch.parts) {
+        const resolved = resolveBlueprint({
+          blueprint: patch.blueprint,
+          theme: typeof patch.theme === "string" ? patch.theme : undefined,
+          parts: patch.parts,
+        });
+        patch.parts = resolved.parts;
+        patch.blueprint = resolved.blueprintId;
+        if (patch.theme === undefined && resolved.theme) patch.theme = resolved.theme;
+      }
+    }
     // null clears the theme; a valid id sets it; an unknown id is ignored.
     if (typeof patch.theme === "string" && !isKnownTheme(patch.theme)) delete patch.theme;
     const surface = await store.updateSurface(id, patch);
@@ -999,7 +1062,26 @@ export function createApp({
     }
     return c.html(configuredViewerHtml(c));
   });
-  app.get("/guide", (c) => c.text(withOrigin(guideMarkdown, c)));
+  // Append a live blueprint listing so an agent fetching the design contract
+  // sees the presets this board actually offers — built-ins plus any user config.
+  const blueprintGuideMd = (): string => {
+    const bps = blueprintSummaries();
+    if (bps.length === 0) return "";
+    const rows = bps.map((b) => {
+      const arc = b.structure.map((s) => s.label).join(" → ") || "(free)";
+      const kits = b.kits.length > 0 ? b.kits.join(", ") : "—";
+      return `- **${b.id}** — ${b.summary}\n  theme \`${b.theme ?? "board default"}\` · kits \`${kits}\` · structure: ${arc}`;
+    });
+    return (
+      `\n\n## Explainer blueprints on this board\n\n` +
+      `Pass \`blueprint: "<id>"\` to publish_surface / publish_snippet for a named preset ` +
+      `(theme + kit composition + a section skeleton). It fills gaps only — an explicit ` +
+      `theme or part \`kits\` still wins. Author your \`.anim\` \`.step\`s to follow the ` +
+      `structure, tagging each \`data-section="<id>"\` so the animate kit labels the beat.\n\n` +
+      `${rows.join("\n")}\n`
+    );
+  };
+  app.get("/guide", (c) => c.text(withOrigin(guideMarkdown + blueprintGuideMd(), c)));
   app.get("/setup", (c) => c.text(withOrigin(setupText, c)));
   app.get("/playbook", (c) => c.text(withOrigin(playbookText, c)));
   // Back-compat alias: older installed skill bootstraps fetch /agent-howto.
@@ -1027,6 +1109,15 @@ export function createApp({
   // Opt-in html kits available on this board (id, label, summary, classes) —
   // for discovery (`showcase kits`); the CSS/JS payloads are server-only.
   app.get("/api/kits", (c) => c.json(kitSummaries()));
+
+  // Explainer blueprints available on this board (built-in + user config) — id,
+  // label, summary, the theme/kits they apply, and the section skeleton the
+  // agent authors against. For discovery (`showcase blueprints`).
+  app.get("/api/blueprints", (c) => c.json(blueprintSummaries()));
+
+  // Themes available on this board (built-in + user brand palettes) — just the
+  // ids, for discovery. The full palettes are server/viewer internals.
+  app.get("/api/themes", (c) => c.json(themeIds()));
 
   // --- sessions ---
 
@@ -1177,6 +1268,7 @@ export function createApp({
       title: typeof body.title === "string" ? body.title : undefined,
       badge: badge ?? undefined,
       theme: typeof body.theme === "string" ? body.theme : undefined,
+      blueprint: typeof body.blueprint === "string" ? body.blueprint : undefined,
       session: typeof body.session === "string" ? body.session : undefined,
       sessionTitle: typeof body.sessionTitle === "string" ? body.sessionTitle : undefined,
       agent: typeof body.agent === "string" ? body.agent : undefined,
@@ -1220,6 +1312,15 @@ export function createApp({
             ? null
             : typeof body.theme === "string"
               ? body.theme
+              : undefined
+          : undefined,
+      // `null` clears the blueprint; a string (re-)applies it; absent leaves it.
+      blueprint:
+        "blueprint" in body
+          ? body.blueprint === null
+            ? null
+            : typeof body.blueprint === "string"
+              ? body.blueprint
               : undefined
           : undefined,
     });
@@ -1361,6 +1462,9 @@ export function createApp({
     // the chrome across the frame boundary). Absent/invalid → follow the OS.
     const modeParam = c.req.query("mode");
     const mode = modeParam === "light" || modeParam === "dark" ? modeParam : undefined;
+    // Brand rides on the surface's blueprint and is resolved at render (not baked
+    // in), so editing a blueprint's logo/font re-skins every surface using it.
+    const brand = blueprintById(surface.blueprint)?.brand;
     return c.html(
       renderHtmlPage({
         title,
@@ -1369,6 +1473,7 @@ export function createApp({
         theme: themeById(themeId),
         mode,
         kits: part.kits,
+        brand,
       }),
     );
   });

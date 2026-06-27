@@ -65,12 +65,12 @@ server.registerTool(
     description: MCP_TOOL_DESCRIPTIONS.publishSurfaceStdio,
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.publishSurface,
   },
-  async ({ title, parts, badge, theme, sessionTitle }) => {
+  async ({ title, parts, badge, theme, blueprint, sessionTitle }) => {
     const session = await ensureSession(sessionTitle);
     const created = JSON.parse(
       await api("/api/surfaces", {
         method: "POST",
-        body: JSON.stringify({ title, parts, badge, theme, session }),
+        body: JSON.stringify({ title, parts, badge, theme, blueprint, session }),
       }),
     );
     return text({ ...created, url: `${API}/session/${created.sessionId}/s/${created.id}` });
@@ -101,11 +101,11 @@ server.registerTool(
     description: MCP_TOOL_DESCRIPTIONS.updateSurface,
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.updateSurface,
   },
-  async ({ id, parts, title, badge, theme }) => {
+  async ({ id, parts, title, badge, theme, blueprint }) => {
     const updated = JSON.parse(
       await api(`/api/surfaces/${id}`, {
         method: "PUT",
-        body: JSON.stringify({ parts, title, badge, theme }),
+        body: JSON.stringify({ parts, title, badge, theme, blueprint }),
       }),
     );
     return text({ ...updated, url: `${API}/session/${updated.sessionId}/s/${updated.id}` });
@@ -118,12 +118,18 @@ server.registerTool(
     description: MCP_TOOL_DESCRIPTIONS.publishSnippet,
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.publishSnippet,
   },
-  async ({ title, html, kits, theme, sessionTitle }) => {
+  async ({ title, html, kits, theme, blueprint, sessionTitle }) => {
     const session = await ensureSession(sessionTitle);
     const created = JSON.parse(
       await api("/api/surfaces", {
         method: "POST",
-        body: JSON.stringify({ title, parts: [{ kind: "html", html, kits }], theme, session }),
+        body: JSON.stringify({
+          title,
+          parts: [{ kind: "html", html, kits }],
+          theme,
+          blueprint,
+          session,
+        }),
       }),
     );
     return text({ ...created, url: `${API}/session/${created.sessionId}/s/${created.id}` });

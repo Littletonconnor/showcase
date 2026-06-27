@@ -25,6 +25,10 @@ product. When in doubt, optimize for the loop.
 - `server/surfacePage.ts` / `server/themes.ts` / `server/kits.ts` — sandboxed
   rendering, theme registry, opt-in html-part style bundles (`issues`, `slides`,
   `animate`, `review`).
+- `server/blueprints.ts` / `server/userConfig.ts` — explainer blueprints (named
+  theme + kits + structure + brand presets) and the local-config loader that
+  layers user-authored themes/kits/blueprints over the built-ins. See
+  `docs/themable-explainers.md`.
 - `viewer/` — React + TypeScript (zustand store, Tailwind, vendored shadcn/ui),
   Vite-built into a single self-contained `viewer/dist/index.html`.
 - `bin/showcase.js` — zero-dependency CLI. `guide/` — runtime agent instructions.

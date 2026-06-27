@@ -1,3 +1,4 @@
+import { type BlueprintBrand, brandCss } from "./blueprints.ts";
 import { kitAssets } from "./kits.ts";
 import {
   type Mode,
@@ -349,6 +350,9 @@ export function renderHtmlPage(doc: {
   // is plain inline script — same trust level as the bridge, already covered by
   // the html-part CSP's `script-src 'unsafe-inline'`. Unknown ids are ignored.
   kits?: string[];
+  // Brand tokens from the surface's blueprint (blueprints.ts). Injected LAST so
+  // the brand font/logo/wordmark override the theme's defaults for this part.
+  brand?: BlueprintBrand;
 }): string {
   const theme =
     typeof doc.theme === "string" || doc.theme == null ? themeById(doc.theme) : doc.theme;
@@ -360,7 +364,7 @@ export function renderHtmlPage(doc: {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="${buildCsp(doc.origin)}">
 <title>${escapeHtml(doc.title)}</title>
-<style>${tokenThemeCss(theme, doc.mode)}${TOKENS_CSS}${KIT_CSS}${kitAccentCss(doc.mode)}${kit.css}${colorSchemeCss(doc.mode)}</style>
+<style>${tokenThemeCss(theme, doc.mode)}${TOKENS_CSS}${KIT_CSS}${kitAccentCss(doc.mode)}${kit.css}${colorSchemeCss(doc.mode)}${brandCss(doc.brand, doc.origin)}</style>
 </head>
 <body>
 ${SVG_DEFS}

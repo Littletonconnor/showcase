@@ -36,6 +36,7 @@ export interface McpDeps {
     title?: string;
     badge?: SurfaceBadge;
     theme?: string;
+    blueprint?: string;
     session?: string;
     sessionTitle?: string;
     agent?: string;
@@ -59,6 +60,7 @@ export interface McpDeps {
       title?: string;
       badge?: SurfaceBadge | null;
       theme?: string | null;
+      blueprint?: string | null;
     },
   ): FlowResult<Surface>;
   deleteSurface(id: string): Promise<{ surface: Surface } | { error: string; status: number }>;
@@ -107,6 +109,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
           title: typeof args.title === "string" ? args.title : undefined,
           badge: coerceSurfaceBadge(args.badge) ?? undefined,
           theme: typeof args.theme === "string" ? args.theme : undefined,
+          blueprint: typeof args.blueprint === "string" ? args.blueprint : undefined,
           session: typeof args.session === "string" ? args.session : undefined,
           sessionTitle: typeof args.sessionTitle === "string" ? args.sessionTitle : undefined,
           agent: typeof args.agent === "string" ? args.agent : undefined,
@@ -144,6 +147,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
           title?: string;
           badge?: SurfaceBadge | null;
           theme?: string | null;
+          blueprint?: string | null;
         } = {
           title: typeof args.title === "string" ? args.title : undefined,
           ...("badge" in args ? { badge: coerceSurfaceBadge(args.badge) } : {}),
@@ -154,6 +158,16 @@ export function registerMcp(app: Hono, deps: McpDeps) {
                     ? null
                     : typeof args.theme === "string"
                       ? args.theme
+                      : undefined,
+              }
+            : {}),
+          ...("blueprint" in args
+            ? {
+                blueprint:
+                  args.blueprint === null
+                    ? null
+                    : typeof args.blueprint === "string"
+                      ? args.blueprint
                       : undefined,
               }
             : {}),
