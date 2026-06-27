@@ -147,6 +147,10 @@ const d = {
     "block | approve | comment — the bottom line (a consequence of the decisions; render it as a chip).",
   decisions:
     "The risk-ranked queue the human adjudicates — ONE decision per thing that needs a human call, hardest/riskiest first (decisions[0] is the lede). Triage the diff into a handful of decisions; the cold/mechanical stuff doesn't get one.",
+  decisionId:
+    "Optional short, stable ref for this decision (e.g. 'd-auth-refresh'). KEEP IT STABLE across re-publishes — it's the human's copy-paste handle for the decision in chat, the manifest's link target, and what preserves their adjudication when you revise. The server mints one when you omit it; supply your own so it survives revisions.",
+  decisionManifest:
+    "REQUIRED — the COMPLETE changed-file manifest: EVERY file in the diff, nothing omitted. Each {path, disposition, added, removed, decisionId?, note?}. disposition is has-decision (surfaced as a Decision — set decisionId to that decision's id) | reviewed-no-comment (you read it, nothing to flag) | mechanical-skipped (lockfile/generated/formatting — note why). This is the trust backbone: a file the human can't see they're not seeing destroys trust in the whole review. Every decision must be claimed by at least one has-decision file.",
   decisionCall: "block | ship | decide — your recommendation for this decision.",
   decisionKind:
     "bug | fix | capability | refactor | migration | risk — what kind of decision this is.",
@@ -155,15 +159,16 @@ const d = {
   decisionAssertion:
     "One sentence — the conclusion (e.g. 'Token refresh accepts a stale token on a cache hit').",
   decisionImpact: "Why it matters — who hits it, how bad, under what input. Optional.",
-  decisionConfidence: "REQUIRED — high | medium | low. How sure you are.",
-  decisionCoverage:
-    "REQUIRED — the honesty ledger: what you DID and did NOT verify (e.g. 'reproduced with a test' / 'read the caller, did not run the migration'). The form factor mandates this so a confident-but-unchecked claim can't hide.",
-  decisionGaps:
-    "Declared uncertainties, each a {what, proveScope?} — what you did NOT check, and the scoped task the reviewer's 'Prove it' would dispatch to close it. These ARE the interaction surface.",
+  decisionDetails:
+    "Optional fuller explanation (markdown) rendered under the assertion/impact: the reasoning behind the call, how the code actually behaves, edge cases, what you traced. The `assertion` stays the one-line headline — put the depth here so a reviewer who wants more than a sentence isn't left guessing. Use it on anything non-obvious, especially block/decide.",
+  decisionConfidence:
+    "REQUIRED — high | medium | low. How sure you are of this call. This is THE honesty signal the board surfaces, so set it truthfully: drop to medium/low when you couldn't fully verify, rather than claiming high and burying the doubt.",
   decisionPivot:
     "Optional — 'flips to ✅/⛔ if …'. ONLY when there's a real fork (an unverified gap that could change the call, or a load-bearing assumption). Omit on a clean ship — never noise.",
   decisionEvidence:
     "Optional right-pane artifacts for this decision: surface parts (usually a `diff`, plus maybe a `mermaid` control-flow or `code`). Absent → the decision renders full-width.",
+  decisionProposal:
+    "Optional concrete fix as {before, after, filename?, note?}: `before` is the current (changed) code, `after` is your proposed fix. Renders under the evidence as a 'Suggested fix' diff, so the reviewer sees the change AND the fix side by side. POPULATE IT whenever a concrete fix exists — especially on a block/decide — so a blocked decision shows how to unblock it.",
 };
 
 const MCP_PARTS_DESCRIPTION =
@@ -485,6 +490,7 @@ export const HTTP_MCP_TOOLS = [
           items: {
             type: "object",
             properties: {
+              id: { type: "string", description: d.decisionId },
               call: {
                 type: "string",
                 enum: ["block", "ship", "decide"],
@@ -498,32 +504,53 @@ export const HTTP_MCP_TOOLS = [
               },
               assertion: { type: "string", description: d.decisionAssertion },
               impact: { type: "string", description: d.decisionImpact },
+              details: { type: "string", description: d.decisionDetails },
               confidence: {
                 type: "string",
                 enum: ["high", "medium", "low"],
                 description: d.decisionConfidence,
               },
-              coverage: { type: "string", description: d.decisionCoverage },
-              gaps: {
-                type: "array",
-                description: d.decisionGaps,
-                items: {
-                  type: "object",
-                  properties: { what: { type: "string" }, proveScope: { type: "string" } },
-                  required: ["what"],
-                },
-              },
               pivot: { type: "string", description: d.decisionPivot },
               evidence: { ...MCP_PARTS_JSON_SCHEMA, description: d.decisionEvidence },
+              proposal: {
+                type: "object",
+                description: d.decisionProposal,
+                properties: {
+                  before: { type: "string" },
+                  after: { type: "string" },
+                  filename: { type: "string" },
+                  note: { type: "string" },
+                },
+                required: ["before", "after"],
+              },
             },
-            required: ["call", "kind", "scope", "assertion", "confidence", "coverage"],
+            required: ["call", "kind", "scope", "assertion", "confidence"],
+          },
+        },
+        manifest: {
+          type: "array",
+          description: d.decisionManifest,
+          items: {
+            type: "object",
+            properties: {
+              path: { type: "string" },
+              disposition: {
+                type: "string",
+                enum: ["has-decision", "reviewed-no-comment", "mechanical-skipped"],
+              },
+              added: { type: "number" },
+              removed: { type: "number" },
+              decisionId: { type: "string" },
+              note: { type: "string" },
+            },
+            required: ["path", "disposition"],
           },
         },
         session: { type: "string", description: d.session },
         sessionTitle: { type: "string", description: d.sessionTitle },
         agent: { type: "string", description: d.agent },
       },
-      required: ["brief", "decisions"],
+      required: ["brief", "decisions", "manifest"],
     },
   },
   {

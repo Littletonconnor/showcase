@@ -815,16 +815,26 @@ test("publish_decisions MCP tool stores a decision review and returns the /?revi
           verdict: "block",
           decisions: [
             {
+              id: "d-limiter",
               call: "block",
               kind: "bug",
               scope: "whole-file",
               assertion: "The limiter counts per-process.",
               confidence: "high",
-              coverage: "read it; did not load-test",
               evidence: [
                 { kind: "diff", files: [{ filename: "limit.ts", before: "a\n", after: "b\n" }] },
               ],
             },
+          ],
+          manifest: [
+            {
+              path: "limit.ts",
+              disposition: "has-decision",
+              decisionId: "d-limiter",
+              added: 9,
+              removed: 1,
+            },
+            { path: "package-lock.json", disposition: "mechanical-skipped", note: "lockfile" },
           ],
         },
       }),
@@ -839,10 +849,15 @@ test("publish_decisions MCP tool stores a decision review and returns the /?revi
     await app.request(`/api/sessions/${payload.sessionId}/review`)
   ).json()) as any;
   assert.equal(stored.decisions[0].call, "block");
+  assert.equal(stored.decisions[0].id, "d-limiter");
   assert.equal(stored.decisions[0].evidence[0].kind, "diff");
+  // The complete manifest round-trips, churn defaulted where omitted.
+  assert.equal(stored.manifest.length, 2);
+  assert.equal(stored.manifest[0].decisionId, "d-limiter");
+  assert.equal(stored.manifest[1].added, 0);
 
-  // A decision missing the required honesty ledger is rejected at the tool layer.
-  const bad = (await (
+  // A minimal decision (just the required fields) publishes fine.
+  const ok = (await (
     await app.request(
       "/mcp",
       mcpCall(3, "tools/call", {
@@ -851,6 +866,7 @@ test("publish_decisions MCP tool stores a decision review and returns the /?revi
           brief: "x",
           decisions: [
             {
+              id: "d-y",
               call: "ship",
               kind: "fix",
               scope: "changed-line",
@@ -858,11 +874,30 @@ test("publish_decisions MCP tool stores a decision review and returns the /?revi
               confidence: "high",
             },
           ],
+          manifest: [{ path: "y.ts", disposition: "has-decision", decisionId: "d-y" }],
         },
       }),
     )
   ).json()) as any;
-  assert.ok(bad.error || bad.result?.isError, "missing coverage should error");
+  assert.ok(!ok.error && !ok.result?.isError, "a minimal decision should publish");
+
+  // A decision missing a still-required field (confidence) is rejected.
+  const bad = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(4, "tools/call", {
+        name: "publish_decisions",
+        arguments: {
+          brief: "x",
+          decisions: [
+            { id: "d-z", call: "ship", kind: "fix", scope: "changed-line", assertion: "z" },
+          ],
+          manifest: [{ path: "z.ts", disposition: "has-decision", decisionId: "d-z" }],
+        },
+      }),
+    )
+  ).json()) as any;
+  assert.ok(bad.error || bad.result?.isError, "missing confidence should error");
 });
 
 test("re-publishing a decision review broadcasts review-updated so the open page refetches", async () => {
@@ -871,14 +906,15 @@ test("re-publishing a decision review broadcasts review-updated so the open page
     brief: "Adds a guard so one client can't overwhelm the server.",
     decisions: [
       {
+        id: "d-limiter",
         call: "block",
         kind: "bug",
         scope: "whole-file",
         assertion: "The limiter counts per-process.",
         confidence: "high",
-        coverage: "read it; did not load-test",
       },
     ],
+    manifest: [{ path: "limit.ts", disposition: "has-decision", decisionId: "d-limiter" }],
   };
   // A session to publish the review into.
   const snip = (await (
@@ -1629,27 +1665,50 @@ test("publishes and round-trips a decision-queue review", async () => {
     verdict: "block",
     decisions: [
       {
+        id: "d-per-process",
         call: "block",
         kind: "bug",
         scope: "whole-file",
         assertion: "The limiter counts per-process.",
         impact: "The real cap is N×workers.",
+        details: "Each worker holds its own `Map`, so the cap multiplies by worker count.",
         confidence: "high",
-        coverage: "Read the limiter; did not load-test.",
-        gaps: [{ what: "no shared store", proveScope: "wire a shared counter and re-test" }],
         pivot: "flips to decide if single-worker",
         evidence: [
           { kind: "diff", files: [{ filename: "limit.ts", before: "a\n", after: "b\n" }] },
         ],
+        proposal: {
+          filename: "limit.ts",
+          before: "b\n",
+          after: "shared(b)\n",
+          note: "back it with a shared counter",
+        },
       },
       {
+        id: "d-clean-429",
         call: "ship",
         kind: "fix",
         scope: "changed-line",
         assertion: "Returns a clean 429.",
         confidence: "high",
-        coverage: "Read the handler + a test.",
       },
+    ],
+    manifest: [
+      {
+        path: "limit.ts",
+        disposition: "has-decision",
+        decisionId: "d-per-process",
+        added: 20,
+        removed: 2,
+      },
+      {
+        path: "handler.ts",
+        disposition: "has-decision",
+        decisionId: "d-clean-429",
+        added: 5,
+        removed: 1,
+      },
+      { path: "README.md", disposition: "reviewed-no-comment", added: 3, removed: 0 },
     ],
   };
   const pub = await app.request(`/api/sessions/${s.id}/review`, json(review));
@@ -1658,47 +1717,72 @@ test("publishes and round-trips a decision-queue review", async () => {
   assert.equal(stored.sessionId, s.id);
   assert.equal(stored.verdict, "block");
   assert.equal(stored.decisions.length, 2);
+  assert.equal(stored.decisions[0].id, "d-per-process");
+  assert.match(stored.decisions[0].details, /own `Map`/);
   assert.equal(stored.decisions[0].evidence[0].kind, "diff");
-  assert.equal(stored.decisions[0].gaps[0].what, "no shared store");
+  // The suggested fix (the change → the fix) round-trips for the blocked decision.
+  assert.equal(stored.decisions[0].proposal.after, "shared(b)\n");
+  assert.equal(stored.decisions[0].proposal.filename, "limit.ts");
+  assert.equal(stored.manifest.length, 3);
 
   // GET round-trips the same review.
   const got = (await (await app.request(`/api/sessions/${s.id}/review`)).json()) as any;
   assert.match(got.brief, /per-request guard/);
 
-  // Re-publishing replaces it (one review per session) and keeps createdAt.
+  // Re-publishing replaces it (one review per session) and keeps createdAt. The
+  // sliced manifest must agree with the sliced decision set.
   const again = (await (
     await app.request(
       `/api/sessions/${s.id}/review`,
-      json({ ...review, decisions: [review.decisions[1]] }),
+      json({
+        ...review,
+        decisions: [review.decisions[1]],
+        manifest: [review.manifest[1], review.manifest[2]],
+      }),
     )
   ).json()) as any;
   assert.equal(again.decisions.length, 1);
   assert.equal(again.createdAt, stored.createdAt);
 });
 
-test("review validation: the honesty ledger is required; bad targets 4xx", async () => {
+test("review validation: required fields enforced; bad targets 4xx", async () => {
   const app = makeApp();
   const s = await newSession(app);
   const ok = {
+    id: "d-ok",
     call: "ship",
     kind: "fix",
     scope: "changed-line",
     assertion: "x",
     confidence: "high",
-    coverage: "read it",
   };
+  // A consistent manifest, so cases that should pass validation reach the
+  // session/round-trip checks rather than tripping the manifest requirement.
+  const okManifest = [{ path: "a.ts", disposition: "has-decision", decisionId: "d-ok" }];
   // missing brief
   assert.equal(
     (await app.request(`/api/sessions/${s.id}/review`, json({ decisions: [ok] }))).status,
     400,
   );
-  // a decision missing coverage (the ledger) is rejected
-  const noCoverage = { ...ok, coverage: undefined };
+  // a minimal valid decision (just the required fields) publishes fine.
+  // (Use a throwaway session so s.id stays review-less for the 404 check below.)
+  const s2 = await newSession(app);
+  assert.equal(
+    (
+      await app.request(
+        `/api/sessions/${s2.id}/review`,
+        json({ brief: "b", decisions: [ok], manifest: okManifest }),
+      )
+    ).status,
+    201,
+  );
+  // a decision missing the still-required confidence is rejected
+  const noConfidence = { ...ok, confidence: undefined };
   assert.equal(
     (
       await app.request(
         `/api/sessions/${s.id}/review`,
-        json({ brief: "b", decisions: [noCoverage] }),
+        json({ brief: "b", decisions: [noConfidence], manifest: okManifest }),
       )
     ).status,
     400,
@@ -1710,13 +1794,100 @@ test("review validation: the honesty ledger is required; bad targets 4xx", async
       .status,
     400,
   );
-  // unknown session → 404
+  // unknown session → 404 (a fully-valid body, so it gets past validation)
   assert.equal(
-    (await app.request("/api/sessions/nope/review", json({ brief: "b", decisions: [ok] }))).status,
+    (
+      await app.request(
+        "/api/sessions/nope/review",
+        json({ brief: "b", decisions: [ok], manifest: okManifest }),
+      )
+    ).status,
     404,
   );
   // GET with no review yet → 404
   assert.equal((await app.request(`/api/sessions/${s.id}/review`)).status, 404);
+});
+
+test("review validation: the complete manifest is required and must agree with the decisions", async () => {
+  const app = makeApp();
+  const s = await newSession(app);
+  const dec = {
+    id: "d-x",
+    call: "ship",
+    kind: "fix",
+    scope: "changed-line",
+    assertion: "x",
+    confidence: "high",
+  };
+  const post = (review: unknown) => app.request(`/api/sessions/${s.id}/review`, json(review));
+
+  // No manifest at all → rejected (a review that hides which files changed).
+  assert.equal((await post({ brief: "b", decisions: [dec] })).status, 400);
+  // Empty manifest → rejected.
+  assert.equal((await post({ brief: "b", decisions: [dec], manifest: [] })).status, 400);
+  // A has-decision file pointing at an id no decision has → rejected.
+  assert.equal(
+    (
+      await post({
+        brief: "b",
+        decisions: [dec],
+        manifest: [{ path: "a.ts", disposition: "has-decision", decisionId: "nope" }],
+      })
+    ).status,
+    400,
+  );
+  // A has-decision file missing its decisionId → rejected.
+  assert.equal(
+    (
+      await post({
+        brief: "b",
+        decisions: [dec],
+        manifest: [{ path: "a.ts", disposition: "has-decision" }],
+      })
+    ).status,
+    400,
+  );
+  // A decision no manifest file claims → rejected (ungrounded decision).
+  assert.equal(
+    (
+      await post({
+        brief: "b",
+        decisions: [dec],
+        manifest: [{ path: "a.ts", disposition: "reviewed-no-comment" }],
+      })
+    ).status,
+    400,
+  );
+  // Duplicate decision ids → rejected (refs must be unambiguous).
+  assert.equal(
+    (
+      await post({
+        brief: "b",
+        decisions: [dec, { ...dec }],
+        manifest: [{ path: "a.ts", disposition: "has-decision", decisionId: "d-x" }],
+      })
+    ).status,
+    400,
+  );
+  // A consistent manifest → accepted, and an omitted id is minted server-side.
+  const okRes = await post({
+    brief: "b",
+    decisions: [{ ...dec, id: undefined }],
+    manifest: [{ path: "a.ts", disposition: "has-decision", decisionId: "d-x" }],
+  });
+  assert.equal(okRes.status, 400, "an omitted id can't be referenced by the manifest");
+  const good = await post({
+    brief: "b",
+    decisions: [dec],
+    manifest: [
+      { path: "a.ts", disposition: "has-decision", decisionId: "d-x" },
+      { path: "b.lock", disposition: "mechanical-skipped", note: "lockfile" },
+    ],
+  });
+  assert.equal(good.status, 201);
+  const stored = (await good.json()) as any;
+  assert.equal(stored.manifest.length, 2);
+  assert.equal(stored.decisions[0].id, "d-x");
 });
 
 async function readSseUntil(res: Response, needle: string, abort?: () => void): Promise<string> {

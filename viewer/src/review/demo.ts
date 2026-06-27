@@ -19,10 +19,6 @@ export const DEMO_REVIEW: Review = {
       impact:
         "A revoked token keeps working until the cache TTL expires — any caller on the cached path is let through.",
       confidence: "high",
-      coverage: "Reproduced it against a local board.",
-      gaps: [
-        { what: "no test covers the cache path", proveScope: "add a test for the cache-hit path" },
-      ],
       pivot: "flips to ✅ if a test exercises the cache-hit path and it re-validates expiry",
       evidence: [
         {
@@ -47,13 +43,6 @@ export const DEMO_REVIEW: Review = {
       impact:
         "Adds a nullable column with a default; old rows read fine and the old code path ignores it.",
       confidence: "medium",
-      coverage: "Read the up-migration and the read path.",
-      gaps: [
-        {
-          what: "did not run the down-migration",
-          proveScope: "run the down-migration on a copy and confirm no data loss",
-        },
-      ],
       pivot: "flips to ⛔ if the down-migration drops the column non-reversibly",
       evidence: [
         {
@@ -75,7 +64,6 @@ export const DEMO_REVIEW: Review = {
       assertion: "The new content-length guard rejects oversized uploads before buffering.",
       impact: "An oversized request gets a 413 before the body is read, so it can't exhaust heap.",
       confidence: "high",
-      coverage: "Read the guard + the new test exercising the over-limit path.",
       // No evidence → this row renders full-width.
     },
     {
@@ -86,7 +74,6 @@ export const DEMO_REVIEW: Review = {
       impact:
         "Three handlers shared a copy-pasted split; now the charset/casing rules live in one place.",
       confidence: "high",
-      coverage: "Compared all three call sites.",
       evidence: [
         {
           kind: "diff",

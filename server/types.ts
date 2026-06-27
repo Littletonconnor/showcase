@@ -248,21 +248,22 @@ export type DecisionCall = "block" | "ship" | "decide";
 export type DecisionScope = "changed-line" | "whole-file" | "codebase";
 export type DecisionConfidence = "high" | "medium" | "low";
 
-// A declared verification gap — the scoped target of a "Prove it".
-export interface DecisionGap {
-  what: string; // what the agent did NOT check, in plain terms
-  proveScope?: string; // the scoped task "Prove it" dispatches to close it
-}
-
 export interface Decision {
+  // Short, stable, copy-pasteable ref (e.g. "d-7Qa…"). Stable across
+  // re-publishes so local adjudication + the chat trail survive a revise, and so
+  // the human can paste it into normal agent chat to scope a revision. The server
+  // assigns one when the agent omits it (see coerceReview).
+  id?: string;
   call: DecisionCall; // block | ship | decide — the recommendation
   kind: string; // bug | fix | capability | refactor | migration | risk
   scope: DecisionScope; // how far the reviewer must look to judge it
   assertion: string; // one sentence — the conclusion
   impact?: string; // why it matters — who hits it, how bad
-  confidence: DecisionConfidence;
-  coverage: string; // what was / wasn't verified — the honesty ledger
-  gaps?: DecisionGap[]; // declared uncertainties → each a scoped [Verify]
+  // The fuller explanation (markdown): the reasoning behind the call, edge cases,
+  // how the code actually behaves. Rendered under the one-line assertion/impact
+  // for anyone who wants the depth; the assertion stays the scannable headline.
+  details?: string;
+  confidence: DecisionConfidence; // how sure the agent is — the surfaced honesty signal
   pivot?: string; // conditional — "flips to ✅ if …"; omit unless there's a real fork
   evidence?: SurfacePart[]; // right-pane artifacts; absent → that decision is full-width
   // A concrete suggested change, rendered under the evidence as a before→after
@@ -277,11 +278,32 @@ export interface DecisionProposal {
   note?: string; // one line on why the change is better
 }
 
+// How a changed file is accounted for in the complete manifest. Every file in
+// the diff carries one, so a file the agent triaged out can't silently vanish —
+// the human can see and account for the whole change, not just the decisions.
+//   - has-decision      → surfaced as a risk-ranked Decision (carries decisionId)
+//   - reviewed-no-comment → the agent read it and had nothing to flag
+//   - mechanical-skipped  → lockfile/generated/formatting churn it skimmed
+export type FileDisposition = "has-decision" | "reviewed-no-comment" | "mechanical-skipped";
+
+export interface ManifestFile {
+  path: string;
+  disposition: FileDisposition;
+  added: number; // lines added (churn; display only)
+  removed: number; // lines removed
+  decisionId?: string; // links to its Decision when disposition === "has-decision"
+  note?: string; // one-line "what it is / why it was skipped"
+}
+
 export interface Review {
   sessionId: string;
   brief: string; // ≤4 sentences, plain English, no identifiers
   verdict: "block" | "approve" | "comment"; // the bottom line (a consequence of the decisions)
   decisions: Decision[]; // risk-ranked; decisions[0] is the lede
+  // The complete changed-file manifest — EVERY file in the diff, each tagged with
+  // its disposition, so nothing the agent triaged away is hidden. Optional on the
+  // type for older stored reviews; required for new publishes (see coerceReview).
+  manifest?: ManifestFile[];
   createdAt: string;
   updatedAt: string;
 }
@@ -291,6 +313,7 @@ export interface CreateReviewInput {
   brief: string;
   verdict?: "block" | "approve" | "comment";
   decisions: Decision[];
+  manifest?: ManifestFile[];
 }
 
 // Where on a surface a comment points, so the agent knows the user means a

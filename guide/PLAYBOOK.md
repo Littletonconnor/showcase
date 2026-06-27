@@ -201,12 +201,19 @@ _The next-generation review, designed for the age of agents and large diffs (`do
 
 **Each decision is one fixed grammar** — triage the diff so there's ONE decision per thing that genuinely needs a human call (the cold/mechanical stuff gets none), hardest first (`decisions[0]` is the lede):
 
+- **`id`** — a short, **stable** ref (e.g. `"d-stale-token"`). Keep it identical across re-publishes: it's the human's copy-paste handle, the manifest's link target, and what preserves their adjudication when you revise. Omit and the server mints one — but then it churns each publish, so supply your own.
 - **`call`** — `block | ship | decide` (your recommendation) · **`kind`** — bug/fix/capability/refactor/migration/risk · **`scope`** — `changed-line | whole-file | codebase` (how far the reviewer must look).
 - **`assertion`** — one sentence, the conclusion · **`impact`** — who hits it, how bad (optional).
-- **`confidence`** + **`coverage`** are **REQUIRED** — the honesty ledger: what you DID and did NOT verify. The form factor mandates this so a confident-but-unchecked claim can't hide as prose.
-- **`gaps`** — declared uncertainties, each `{what, proveScope}`: what you didn't check + the scoped task the reviewer's **"Prove it"** would run. Be honest here; it's the interaction surface.
+- **`details`** — the fuller explanation (markdown): the reasoning, how the code actually behaves, edge cases, what you traced. The `assertion` is the headline; `details` is the depth under it. Write it for anything non-obvious — a one-sentence assertion alone leaves the reviewer guessing.
+- **`confidence`** is **REQUIRED** — `high | medium | low`, how sure you are of the call. This is the one honesty signal the board surfaces, so set it truthfully: if you couldn't fully verify, drop to medium/low and say why in `details` rather than claiming high.
 - **`pivot`** — `"flips to ✅/⛔ if …"`, ONLY when there's a real fork. Omit on a clean ship — never noise.
 - **`evidence`** — surface parts for the right pane (usually a `diff`, maybe a control-flow `mermaid`). Omit and the decision renders full-width.
+- **`proposal`** — a concrete fix `{before, after, filename?, note?}` (current code → your fix). Renders under the evidence as a **"Suggested fix"** diff, so a `block`/`decide` shows the change _and_ how to unblock it. **Populate it whenever a concrete fix exists** — a blocked decision without one leaves the reviewer guessing.
+
+**`manifest` is REQUIRED — the complete changed-file list (trust).** Risk-ranked decisions hide the files you triaged out; a reviewer who can't see _that's everything_ stops trusting the review. So list **every file in the diff**, each `{path, disposition, added, removed, decisionId?, note?}`:
+
+- **`disposition`** — `has-decision` (surfaced above — set `decisionId` to that decision's `id`) · `reviewed-no-comment` (you read it, nothing to flag) · `mechanical-skipped` (lockfile/generated/formatting — put the reason in `note`).
+- Every decision must be claimed by ≥1 `has-decision` file, and every `decisionId` must resolve — the server **rejects** the publish otherwise. Nothing omitted, nothing dangling.
 
 ```jsonc
 // publish_decisions — a Brief + a risk-ranked decision queue
@@ -215,19 +222,14 @@ _The next-generation review, designed for the age of agents and large diffs (`do
   "verdict": "block",
   "decisions": [
     {
+      "id": "d-buffer-before-check",
       "call": "block",
       "kind": "bug",
       "scope": "changed-line",
       "assertion": "Oversized uploads buffer the whole body before the size check.",
       "impact": "A 2 GB upload exhausts heap before the 413 is returned.",
+      "details": "The handler calls `req.arrayBuffer()` on the entry path, which fully reads the body into memory *before* `tooLarge()` runs — so the size guard only fires after the allocation it was meant to prevent. Under concurrent uploads the heap climbs to roughly N×body before any 413. A streaming read with a hard cap rejects mid-stream and also covers the chunked, no-content-length case the header check misses.",
       "confidence": "high",
-      "coverage": "Reproduced with a 2 GB upload; did not test chunked uploads with no content-length.",
-      "gaps": [
-        {
-          "what": "chunked uploads that omit content-length",
-          "proveScope": "test a chunked upload with no length header",
-        },
-      ],
       "pivot": "flips to ✅ once a streaming cap covers the no-length case",
       "evidence": [
         {
@@ -241,22 +243,58 @@ _The next-generation review, designed for the age of agents and large diffs (`do
           ],
         },
       ],
+      "proposal": {
+        "filename": "server/app.ts",
+        "before": "if (tooLarge(req)) return r413();\nconst buf = await req.arrayBuffer();\n",
+        "after": "if (tooLarge(req)) return r413();\nconst buf = await readCapped(req, MAX);\n",
+        "note": "Stream with a hard cap so a no-content-length body can't exhaust the heap either.",
+      },
     },
     {
+      "id": "d-413-message",
       "call": "ship",
       "kind": "fix",
       "scope": "changed-line",
       "assertion": "The 413 carries a clear message and the limit.",
       "confidence": "high",
-      "coverage": "Read the handler + a test asserting the body.",
+    },
+  ],
+  "manifest": [
+    {
+      "path": "server/app.ts",
+      "disposition": "has-decision",
+      "decisionId": "d-buffer-before-check",
+      "added": 6,
+      "removed": 1,
+    },
+    {
+      "path": "server/limits.ts",
+      "disposition": "has-decision",
+      "decisionId": "d-413-message",
+      "added": 12,
+      "removed": 0,
+    },
+    {
+      "path": "test/upload.test.ts",
+      "disposition": "reviewed-no-comment",
+      "added": 40,
+      "removed": 0,
+      "note": "covers the new 413 path",
+    },
+    {
+      "path": "package-lock.json",
+      "disposition": "mechanical-skipped",
+      "added": 220,
+      "removed": 18,
+      "note": "lockfile churn",
     },
   ],
 }
 ```
 
-**The human adjudicates** each decision: **Accept** (ratify), **Prove it** (tap a declared gap → you run the scoped check and revise in place), or **Challenge** (they push back → you defend with evidence or concede and revise). So fill the ledger honestly — the gaps you declare are exactly what they'll make you prove.
+**The human adjudicates** each decision: **Accept** (ratify, burns down) or **Disagree** (they push back → you defend with evidence or concede and revise). They can also just chat normally, pasting a decision's `id` to scope the ask ("re-check `d-stale-token` against the no-length case"). Either way you act, then re-publish.
 
-**The loop is live — stay parked after you publish.** Call `wait_for_feedback`; Prove-it and Challenge arrive as session comments the page sends for you, each tagged with the decision: `[Prove it · Decision N of M] …` (do _only_ the scoped check it names) or `[Challenge · Decision N of M] …` (defend with evidence, or concede — one or the other, no hedging). Either way, act, then **re-publish the whole review with `publish_decisions`** — the decision updates in place in front of the reviewer (the call may flip), and the burndown reflects it. Re-publishing is the resolution; keep the unchanged decisions as-is and revise only the one in question.
+**The loop is live — stay parked after you publish.** Call `wait_for_feedback`; a Disagree arrives as a session comment tagged with the decision: `[Disagree · Decision N of M] …` (defend with evidence, or concede — one or the other, no hedging). Free-form chat that names a decision `id` works the same way. Act, then **re-publish the whole review with `publish_decisions`** — the decision updates in place in front of the reviewer (the call may flip), and the burndown reflects it. Re-publishing is the resolution; keep the unchanged decisions as-is and revise only the one in question.
 
 ## Recipe: animated explainer
 
@@ -313,7 +351,7 @@ Feedback attaches to a surface (`surfaceId`); when it arrives, do substantial ch
 
 **Where the conversation happens.** The inline browser chat was removed. Each card shows a **copy-to-clipboard card id** in its header; the user copies it and talks to you about that surface in **your terminal** — so the back-and-forth lives where you're running, not in the tab. Refer to surfaces back to the user by id (`list_surfaces` fetches one's current content).
 
-**Review feedback from the browser.** While you are parked in a `wait_for_feedback` / `showcase wait`, the viewer shows a live green **"Listening"** badge in the session header, so the user can see you are reachable. On a review the user adjudicates in the tab — **Approve** / **Dismiss** on each finding card, and **Prove-it** / **Challenge** on a decision-queue review — and those land here as user comments. Act on them in your terminal and republish the review so the board burns down; when you stop waiting the badge goes idle, honestly telling the user their next signal will queue until you check back.
+**Review feedback from the browser.** While you are parked in a `wait_for_feedback` / `showcase wait`, the viewer shows a live green **"Listening"** badge in the session header, so the user can see you are reachable. On a review the user adjudicates in the tab — **Approve** / **Dismiss** on each finding card, and **Accept** / **Disagree** (or free-form chat scoped by a decision `id`) on a decision-queue review — and those land here as user comments. Act on them in your terminal and republish the review so the board burns down; when you stop waiting the badge goes idle, honestly telling the user their next signal will queue until you check back.
 
 ## Remote surfaces
 
