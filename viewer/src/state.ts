@@ -14,7 +14,6 @@ import {
   isReadonly,
   publicReadMode,
   type Comment,
-  type CommentAnchor,
   type SessionRow,
   type Surface,
   type VersionInfo,
@@ -461,7 +460,6 @@ export async function sendComment(
   body: Record<string, unknown>,
   surfaceId: string | null,
   text: string,
-  anchor?: CommentAnchor,
 ): Promise<string | null> {
   const local: ViewComment = {
     id: `local-${++localSeq}`,
@@ -473,7 +471,6 @@ export async function sendComment(
     text,
     createdAt: new Date().toISOString(),
     pending: true,
-    ...(anchor ? { anchor } : {}),
   };
   set((state) => ({ comments: [...state.comments, local] }));
   try {

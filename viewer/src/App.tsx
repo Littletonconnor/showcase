@@ -22,7 +22,6 @@ import { Input } from "@/components/ui/input";
 import {
   api,
   appPath,
-  exportBundle,
   isReadonly,
   layoutMode,
   relTime,
@@ -66,7 +65,6 @@ import { Toaster } from "@/components/ui/sonner";
 import { renderNotes } from "./notes.ts";
 import { ConnectModal, Onboard } from "./Onboarding.tsx";
 import { ReadingView } from "./ReadingView.tsx";
-import { ReviewSummary } from "./ReviewSummary.tsx";
 import { ReviewInline } from "./review/ReviewInline.tsx";
 import { initTheme } from "./theme.ts";
 import {
@@ -737,18 +735,6 @@ function SessionItem(props: { session: SessionRow }) {
             <span className="min-w-0 flex-1 truncate">
               {working ? "working…" : relTime(props.session.lastActiveAt)}
             </span>
-            {/* Open review findings — the resume signal. Hidden on hover so it
-                never collides with the ⋯ action, like the surface count. */}
-            {props.session.openFindings ? (
-              <span
-                className="flex-none rounded-full bg-amber-500/15 px-1.5 font-medium tabular-nums text-amber-700 group-hover/menu-item:opacity-0 dark:text-amber-300"
-                title={`${props.session.openFindings} open finding${
-                  props.session.openFindings === 1 ? "" : "s"
-                }`}
-              >
-                {props.session.openFindings} open
-              </span>
-            ) : null}
           </span>
         </span>
       </SidebarMenuButton>
@@ -874,17 +860,13 @@ function SessionView() {
               : ""}
           </span>
           <ActivityTicker sessionId={selected} />
-          <ReviewSummary surfaces={surfaces} />
         </div>
       </div>
-      {current?.kind === "review" && selected && !exportBundle() ? (
+      {current?.kind === "review" && selected ? (
         // A review takes over the main panel with its own bounded-height scroll
         // container (the decision queue's scroll-snap + sticky evidence need it),
-        // sitting under the sticky session header. A static export can't drive
-        // the decision queue — its data isn't in the bundle and the live
-        // adjudication is read-only anyway — so an exported review instead falls
-        // through to its card stream (the verdict + finding surfaces), which
-        // also flows and paginates cleanly when printed to PDF.
+        // sitting under the sticky session header. A static export inlines the
+        // review into the bundle, so it renders here too — read-only.
         <div className="h-[calc(100svh-4.5rem)]">
           <ReviewInline sessionId={selected} />
         </div>

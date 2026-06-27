@@ -13,9 +13,18 @@ immediately below.** Sections 1–8 are the stable guide/roadmap underneath it.
 ## ⭐ Active focus — decision-review form factor
 
 An agent decomposes a PR into a small, risk-ranked queue of **decisions** (a
-plain-English Brief + an honesty ledger + evidence per decision), published via
-`publish_decisions` / `POST /api/sessions/:id/review`, rendered inline in the
-board for a `kind === "review"` session. North-star design: `docs/review-form-factor.md`.
+plain-English Brief + per-decision confidence + evidence + a complete changed-file
+manifest), published via `publish_decisions` / `POST /api/sessions/:id/review`,
+rendered inline in the board for a `kind === "review"` session. North-star design:
+`docs/review-form-factor.md`.
+
+**✅ The two-API fork is resolved.** The old finding-card review model
+(`publish_review` / `review_finding` MCP tools, `showcase review` / `showcase
+finding` CLI, the verdict card + finding cards + risk treemap + confidence×coverage
+quadrant + `changeMap`) has been **removed**. `publish_decisions` is now the single
+review path, registered on **both** the HTTP and stdio MCP transports (manifest
+included), with `showcase decisions <session> <file>` as the CLI. The static export
+inlines the stored review so a shared review renders offline.
 
 This is a **dogfood-driven redesign** — built it, reviewed a real Java PR through
 it (`wealthfront-lembas` `cl/ALLM-126`), and the phases below are the feedback
@@ -31,17 +40,16 @@ that surfaced. Get the human's intent right; this is UX, not just plumbing.
 - Content-keyed local adjudication (survives an agent re-publish) + a per-decision
   comment trail.
 - The live loop: `publish_decisions` MCP tool, `review-updated` SSE event,
-  `ReviewView` / `ReviewInline` / `ReviewPage`. **⚠️ Gap:** `publish_decisions`
-  is only registered on the HTTP MCP (`server/mcpSpec.ts`), NOT on the stdio MCP
-  server (`mcp/server.ts`) — so editor agents (Claude Code / Cursor, which use
-  stdio) can't call it. `publish_review` is on both. Worth fixing.
+  `ReviewView` / `ReviewInline` / `ReviewPage`. `publish_decisions` is registered
+  on both the HTTP and stdio MCP transports (the earlier stdio gap is closed, and
+  the stdio schema now carries the manifest).
 - Sidebar: review sessions chip their verdict; the row opens the review inline.
 - (Also fixed the `code-review` skill to scope depth per-slice so reviews stop
   fanning out 5 specialists over the whole diff — `~/Sites/ai-config`.)
 
 ### Phase 1 — Trust & transparency: the complete changed-file manifest
 
-- **Problem:** the review only surfaces risk-ranked *decisions*, so files the
+- **Problem:** the review only surfaces risk-ranked _decisions_, so files the
   agent deemed unremarkable just vanish — the human distrusts they're seeing the
   whole change ("gives a false sense; I lost trust that I'm seeing everything").
 - **Approach:** add a **complete changed-file manifest** — every file in the diff,
@@ -125,10 +133,12 @@ editor (Cursor / Claude Code) and reaches _out_ to showcase over MCP.
 **The product is two flagship workflows** (section 6), not a pile of features:
 
 1. **Visual PR review** (flagship) — _"the future of code review is multimodal."_
-   An agent reviews a diff and publishes **finding cards** that combine prose, a
-   control-flow **mermaid** diagram of the bug, and the **fix diff** in one card;
-   you read, push back, and it revises the fix in place; the review carries a
-   severity-tagged verdict you can share. No GitHub thread renders like that.
+   An agent reviews a diff and publishes a **decision queue** (`publish_decisions`):
+   a plain-English Brief anyone can read, a risk-ranked list of **decisions** each
+   with its evidence (a diff, a control-flow **mermaid**, a suggested-fix diff), and
+   a complete changed-file manifest. You Accept or Disagree each decision; it
+   defends or revises in place; the review carries a shareable verdict. No GitHub
+   thread renders like that.
 2. **Learning & explainers** — share a screenshot/snippet with your agent and get
    back an **animated, interactive** explainer you can scrub and ask questions of.
 
@@ -291,29 +301,29 @@ workflows compose.
 - [x] **Math** — markdown renders `$inline$`/`$$display$$` via KaTeX → MathML,
       self-contained, crisp in Chromium + WebKit.
 - [~] **Drill-down loop** — _PARTIAL._ The `sendPrompt()` plumbing still exists
-      (`surfacePage.ts` → `bridge.ts` posts an `author:"surface"` comment), but
-      the **"Suggested by this surface"** chip + **Send to agent** button were
-      removed along with the surface comment UI (commit `03c2693`). The relay has
-      no entry point in the viewer today.
+  (`surfacePage.ts` → `bridge.ts` posts an `author:"surface"` comment), but
+  the **"Suggested by this surface"** chip + **Send to agent** button were
+  removed along with the surface comment UI (commit `03c2693`). The relay has
+  no entry point in the viewer today.
 - [x] **Kit gallery / guide pass** — copy-paste markup for the `issues` / `slides`
       kits + the drill-down pattern documented.
 - [~] **Editor-agent chat (was Pillar B) — _RETIRED / never shipped as described._**
-      There is no in-browser chat-to-editor UI, no `showcase chat` command, no
-      "arm" flow, and no presence dots. What survives is a single `listening`
-      flag (the agent is parked in `wait_for_feedback`), rendered as a green dot
-      in the sidebar. The real loop is the comment/`wait_for_feedback` pull in
-      §4 — there is no session-level editor chat.
+  There is no in-browser chat-to-editor UI, no `showcase chat` command, no
+  "arm" flow, and no presence dots. What survives is a single `listening`
+  flag (the agent is parked in `wait_for_feedback`), rendered as a green dot
+  in the sidebar. The real loop is the comment/`wait_for_feedback` pull in
+  §4 — there is no session-level editor chat.
 - [~] **Anchored annotations** — _**RETIRED** with the comment UI (commit `03c2693`)._
-      The point-pin (📍) and the line-click composer (R4) are both gone; the
-      `CommentAnchor` `{xPct,yPct}`/`{line,lineType}` types and the server-side
-      `parseAnchor` still exist but are **vestigial** (no viewer produces them,
-      and `onLineClick` pipes to nothing). Cleanup candidate.
+  The point-pin (📍) and the line-click composer (R4) are both gone; the
+  `CommentAnchor` `{xPct,yPct}`/`{line,lineType}` types and the server-side
+  `parseAnchor` still exist but are **vestigial** (no viewer produces them,
+  and `onLineClick` pipes to nothing). Cleanup candidate.
 - [x] **Structured feedback** — one-tap **Approve** (👍) and **Dismiss** (⊘) on
       finding cards post a recognizable `author:"user"` signal. _(Still shipped —
       these are the surviving surface-feedback affordances.)_
 - [~] **Pinned Library** — _cut_ (the daily-use razor: not used most sessions).
-      The pin/Library wiring was removed end-to-end; a "save for later" almost
-      nobody revisits.
+  The pin/Library wiring was removed end-to-end; a "save for later" almost
+  nobody revisits.
 - [x] **Hardened oracle** — `render-smoke.spec.ts` (every part kind renders at a
       real size) + an opt-in real-Chrome Playwright lane.
 
@@ -344,7 +354,7 @@ workflows compose.
       too:** a finding the user **Approves** (👍) or **Dismisses** (⊘, new action)
       resolves and its chip strikes through, so you watch the review burn down.
 - [x] **R3 — `showcase review` ingestion (shipped).** `showcase review <branch>
-      [--base]` reads the branch diff, computes per-file churn + a churn-seeded
+[--base]` reads the branch diff, computes per-file churn + a churn-seeded
       manifest + risk, creates a "Review: <branch>" session, and seeds an "In
       review" verdict placeholder that `publish_review` later revises in place — so
       the agent starts from a scaffold instead of hand-building. The printed prompt
@@ -352,12 +362,12 @@ workflows compose.
       to language-specific hygiene skills) and then renders its findings via
       `publish_review`; showcase owns the rendering, not the review methodology.
 - [~] **R4 — Line-anchored diff comments — _RETIRED (commit `03c2693`)._** The
-      "Comment on line N" composer and the "Line N" thread chip were removed with
-      the rest of the surface comment UI. The in-frame line-click bridge
-      (`composedPath` through the @pierre/diffs shadow roots), the `onLineClick`
-      prop chain (DiffPart→SandboxedPart→Card), and the server `CommentAnchor`
-      line variant + `parseAnchor` all still exist but are **dead** — Card passes
-      no `onLineClick`, so the posted line-click message is consumed by nobody.
+  "Comment on line N" composer and the "Line N" thread chip were removed with
+  the rest of the surface comment UI. The in-frame line-click bridge
+  (`composedPath` through the @pierre/diffs shadow roots), the `onLineClick`
+  prop chain (DiffPart→SandboxedPart→Card), and the server `CommentAnchor`
+  line variant + `parseAnchor` all still exist but are **dead** — Card passes
+  no `onLineClick`, so the posted line-click message is consumed by nobody.
 
 _(A GitHub round-trip — `gh pr review` with line comments — was considered and
 **dropped**: showcase is its own surface, not a GitHub front-end. Sharing a
@@ -386,8 +396,8 @@ surface for zero benefit, and treemap/scatter were already added this way.
   - **adjacency / co-change matrix** — custom-SVG rect grid.
   - **layered arc diagram** — custom-SVG `<path>` arcs.
   - **overview blast radius** — mermaid (already have).
-  Swap in per PR (a big refactor wants the matrix; a one-file fix wants the
-  minimap) — never all at once.
+    Swap in per PR (a big refactor wants the matrix; a one-file fix wants the
+    minimap) — never all at once.
 - **Chart-cell → navigate bridge** — make a chart cell/point clickable → jump to
   that file's hunks / finding → comment in place. The chart parts render in the
   trusted viewer, so this is a direct React click handler (no postMessage), not

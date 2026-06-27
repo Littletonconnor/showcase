@@ -61,6 +61,13 @@ npm run format:check # oxfmt
 
 ## Conventions
 
+- **Comments explain why, not what.** A comment earns its place only when the
+  code can't say it itself: a non-obvious constraint, a "why this and not the
+  obvious thing", a gotcha. Don't narrate what the next line plainly does, don't
+  write multi-line essays atop functions or sections, and delete a comment rather
+  than let it drift out of date. Prefer a clear name over a comment; prefer one
+  terse line over a paragraph. If you're tempted to explain the design at length,
+  that's docs (TODO.md / a `docs/` file), not a code comment.
 - Default Node (nvm) here is older than 22.18; use a pinned v24 binary to run.
 - Port is **8229** (sideshow's default 8228, shifted to avoid collision).
 - Env vars are prefixed `SHOWCASE_` (`SHOWCASE_URL`, `SHOWCASE_TOKEN`,

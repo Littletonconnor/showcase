@@ -20,8 +20,8 @@ works in your terminal can't show you anything richer than scrollback. Showcase
 gives it a browser tab you keep open: the agent **publishes surfaces** (cards
 made of typed parts — html, markdown, diff, mermaid, terminal, image, json,
 code, chart, trace), you **watch them render live**, you **comment back** (a
-remark on a card, an annotation pinned to a spot, an Approve/Dismiss on a review
-finding), and the agent **reads that feedback and revises**.
+remark on a card, an annotation pinned to a spot, an Accept/Disagree on a review
+decision), and the agent **reads that feedback and revises**.
 
 That two-way loop — **publish → live render → comment → revise/reply** — is the
 product. Everything below is in service of it. When a design question is
@@ -44,12 +44,12 @@ viewer. Eating our own dog food: §9.)_
 
 Three moving parts and one file:
 
-| Part | Lives in | Role |
-| --- | --- | --- |
-| **Server** | `server/app.ts` (+ `server/index.ts` Node wiring) | A Hono app: REST API, SSE feed, long-poll, the `/s/:id` renderer, asset I/O, and the **shared flow functions** both REST and MCP call. |
-| **Store** | `server/storage.ts` (`JsonFileStore`) | The whole board in memory, mirrored to one JSON file per mutation. |
-| **Viewer** | `viewer/` → `viewer/dist/index.html` | A React + zustand single-page app, Vite-built into one self-contained HTML file the server reads at boot. |
-| **Clients** | `bin/showcase.js` (CLI), `mcp/server.ts` (stdio MCP) | How agents reach the server. The HTTP MCP endpoint lives inside the server (`server/mcpHttp.ts`). |
+| Part        | Lives in                                             | Role                                                                                                                                   |
+| ----------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Server**  | `server/app.ts` (+ `server/index.ts` Node wiring)    | A Hono app: REST API, SSE feed, long-poll, the `/s/:id` renderer, asset I/O, and the **shared flow functions** both REST and MCP call. |
+| **Store**   | `server/storage.ts` (`JsonFileStore`)                | The whole board in memory, mirrored to one JSON file per mutation.                                                                     |
+| **Viewer**  | `viewer/` → `viewer/dist/index.html`                 | A React + zustand single-page app, Vite-built into one self-contained HTML file the server reads at boot.                              |
+| **Clients** | `bin/showcase.js` (CLI), `mcp/server.ts` (stdio MCP) | How agents reach the server. The HTTP MCP endpoint lives inside the server (`server/mcpHttp.ts`).                                      |
 
 The agent and the human meet at the server: the agent **writes** surfaces, the
 human **reads** them in the viewer and **writes** comments, and the agent reads
@@ -106,8 +106,7 @@ showcase serve [--port N] [--open]      # start API + viewer (foreground)
 showcase service install|status|...     # run it as a launchd/systemd background service
 showcase mermaid arch.mmd --title …      # publish a diagram surface
 showcase publish card.html --md notes.md # an html part + a markdown part, one card
-showcase review <branch> [--base b]      # scaffold a code-review session from a diff
-showcase finding --title … --problem …   # one structured review finding
+showcase decisions <session> review.json # publish a decision review for a session (JSON or -)
 showcase wait                            # block for the user's feedback (long-poll)
 showcase image pic.png / trace t.json …  # upload + publish an asset surface
 ```
@@ -155,18 +154,18 @@ A **surface** is a card: an ordered list of **parts**, each declaring its own
 `kind` (`types.ts:21`). The surface is kind-agnostic; a part is the unit of
 rendering. Ten kinds:
 
-| Kind | Rendered by | Sandboxed? | Notes |
-| --- | --- | --- | --- |
-| `html` | `/s/:id` in an iframe | **yes** | Arbitrary agent markup. Opt-in style/JS **kits** (`server/kits.ts`). |
-| `code` | viewer (shiki) → iframe | **yes** | Highlighted source; the HTML string is built by shiki then sandboxed. |
-| `markdown` | viewer (markdown-it) | no — escaped | Prose. Embedded raw HTML is escaped, not executed. |
-| `mermaid` | viewer (mermaid, `securityLevel:strict`) | no — sanitized | Diagram source → SVG. |
-| `diff` | viewer (`@pierre/diffs`) | no — data | Unified patch and/or before/after file pairs. |
-| `image` | viewer `<img>` | no — data | References an uploaded asset by id. |
-| `trace` | viewer | no — data | A step timeline; inline steps and/or an asset file. |
-| `terminal` | viewer (ansi_up) | no — data | Monospace output; ANSI SGR → styled spans, everything else escaped. |
-| `json` | viewer (text nodes) | no — data | Collapsible tree; escapes by construction. |
-| `chart` | viewer (Recharts) | no — data | bar/line/area/pie/treemap/scatter, themed from live tokens. |
+| Kind       | Rendered by                              | Sandboxed?     | Notes                                                                 |
+| ---------- | ---------------------------------------- | -------------- | --------------------------------------------------------------------- |
+| `html`     | `/s/:id` in an iframe                    | **yes**        | Arbitrary agent markup. Opt-in style/JS **kits** (`server/kits.ts`).  |
+| `code`     | viewer (shiki) → iframe                  | **yes**        | Highlighted source; the HTML string is built by shiki then sandboxed. |
+| `markdown` | viewer (markdown-it)                     | no — escaped   | Prose. Embedded raw HTML is escaped, not executed.                    |
+| `mermaid`  | viewer (mermaid, `securityLevel:strict`) | no — sanitized | Diagram source → SVG.                                                 |
+| `diff`     | viewer (`@pierre/diffs`)                 | no — data      | Unified patch and/or before/after file pairs.                         |
+| `image`    | viewer `<img>`                           | no — data      | References an uploaded asset by id.                                   |
+| `trace`    | viewer                                   | no — data      | A step timeline; inline steps and/or an asset file.                   |
+| `terminal` | viewer (ansi_up)                         | no — data      | Monospace output; ANSI SGR → styled spans, everything else escaped.   |
+| `json`     | viewer (text nodes)                      | no — data      | Collapsible tree; escapes by construction.                            |
+| `chart`    | viewer (Recharts)                        | no — data      | bar/line/area/pie/treemap/scatter, themed from live tokens.           |
 
 A surface is **versioned**: every revise pushes the prior version onto `history`
 (capped at `HISTORY_LIMIT = 20`, `storage.ts:300`) and bumps `version`. It can
@@ -186,14 +185,18 @@ on a diagram/image/chart) or a `line` in a diff/code part.
 ### 4.4 Review — the decision-queue form factor
 
 A **review** (`types.ts:280`) is the agent-era PR-review structure: a plain-English
-`brief`, a `verdict` (block/approve/comment), and a risk-ranked array of
-**decisions** the agent triaged out of the diff for the human to adjudicate. Each
-`Decision` carries a recommendation (`block`/`ship`/`decide`), a `scope` (how far
-you must look — changed-line / whole-file / codebase), a confidence, and a
-required **`coverage`** field — the honesty ledger of what the agent did and did
-**not** check. Stored **one per session**, distinct from the card stream, and
-rendered at `/?review=<sessionId>`. See `review-form-factor.md` for the full
-rationale and the Accept / Override / Prove-it / Challenge interaction loop.
+`brief` (≤4 sentences, no code identifiers), a `verdict` (block/approve/comment),
+a risk-ranked array of **decisions** the agent triaged out of the diff for the
+human to adjudicate, and a required **`manifest`** tagging every changed file
+(`has-decision` / `reviewed-no-comment` / `mechanical-skipped`) so nothing the
+agent touched is silently dropped. Each `Decision` carries an `assertion`, a `call`
+(`block`/`ship`/`decide`), a `kind`, a `scope` (how far you must look — changed-line
+/ whole-file / codebase), a required **`confidence`** (high/medium/low — the one
+surfaced honesty signal), and optional `impact`/`details`, `pivot`, `evidence`
+(surface parts, usually a diff), and `proposal` (a before/after fix). Stored **one
+per session**, distinct from the card stream, and rendered at
+`/?review=<sessionId>`. See `review-form-factor.md` for the full rationale and the
+Accept / Disagree interaction loop.
 
 ### 4.5 Asset
 
@@ -203,7 +206,7 @@ An **asset** (`types.ts:333`) is an uploaded blob (image, trace, file) stored
 
 - identical uploads dedupe to one stored blob;
 - an agent can **derive the `/a/:id` URL from the bytes alone** and reference it
-  in a surface *before* the upload lands (the `/a/:id` route briefly waits for a
+  in a surface _before_ the upload lands (the `/a/:id` route briefly waits for a
   referenced-but-not-yet-present asset, `app.ts:2264`).
 
 The board keeps assets under a budget (`MAX_BOARD_ASSET_BYTES = 2 GiB`) with a
@@ -219,10 +222,9 @@ This is the heart of the system. Trace one full round trip.
 
 ### 5.1 Publish (agent → board → viewer)
 
-The agent calls `publish_surface` / `publish_finding` / `publish_review` /
-`publish_decisions` (MCP), or `POST /api/surfaces` / `/api/findings` /
-`/api/reviews` (REST), or a `showcase` CLI verb. All land on a **shared flow**
-function in `app.ts` — `publishSurface`, `publishFinding`, `publishReview`,
+The agent calls `publish_surface` / `publish_decisions` (MCP), or
+`POST /api/surfaces` / `POST /api/sessions/:id/review` (REST), or a `showcase` CLI
+verb. All land on a **shared flow** function in `app.ts` — `publishSurface`,
 `publishDecisions` — so validation and side effects happen in exactly one place,
 regardless of transport.
 
@@ -263,7 +265,7 @@ comments), so a comment is delivered to the agent **exactly once** whether it
 arrives via long-poll or piggyback. The cursor lives server-side, so the CLI,
 both MCP transports, and piggyback all share one stream.
 
-**Feedback batching.** A naive wait wakes on the *first* comment, missing a second
+**Feedback batching.** A naive wait wakes on the _first_ comment, missing a second
 message the user is still typing. Instead, once the first comment lands the wait
 stays open through a short quiet window (`FEEDBACK_SETTLE_MS = 800ms`) — extended
 while the viewer sends "composing" heartbeats to `POST /api/composing`
@@ -277,7 +279,8 @@ The agent revises **in place** (`update_surface` / `PUT /api/surfaces/:id` →
 new parts replace it, `version` bumps, and a `surface-updated` event re-renders
 the open card. Republishing a review (`publishDecisions`) broadcasts
 `review-updated` so an open review page updates the decision in place — the live
-half of the Prove-it / Challenge loop.
+half of the Accept / Disagree loop, where a Disagree threads a comment the agent
+must defend-or-concede.
 
 ---
 
@@ -323,31 +326,30 @@ All three surfaces are the same core; pick by how the agent is wired.
 
 ### REST (`server/app.ts`)
 
-| Method · path | Purpose |
-| --- | --- |
-| `GET /` · `/session/:id` · `/session/:id/s/:sid` | The viewer SPA (config injected per request). |
-| `GET /s/:id?part=N&theme=&mode=` | Render one html part as a sandboxed document. |
-| `POST /api/surfaces` · `/api/snippets` | Publish a surface (snippets = single html part). |
-| `GET·PUT·DELETE /api/surfaces/:id` | Read / revise (versioned) / delete a surface. |
-| `POST /api/findings` | Publish one composed review finding card. |
-| `POST /api/reviews` | Publish a whole review: verdict card + one card per finding. |
-| `GET·POST /api/sessions/:id/review` | The decision-queue review for a session. |
-| `GET·POST /api/sessions` · `PATCH·DELETE /api/sessions/:id` | List / create / rename / delete sessions. |
-| `GET /api/sessions/:id/surfaces` · `/export` | Session cards; static self-contained HTML export. |
-| `POST /api/comments` · `GET /api/comments?…&wait=N` | Post a comment; long-poll for feedback. |
-| `POST /api/composing` | "User is composing" heartbeat (extends the batch window). |
-| `POST /api/assets` · `GET /a/:id` | Upload a blob (raw or base64 envelope); serve it. |
-| `GET /api/events?session=` | SSE live feed. |
-| `GET /guide` · `/playbook` · `/setup` · `/api/kits` · `/api/version` | Runtime docs & metadata. |
-| `POST /mcp` | Streamable-HTTP MCP (§3.2). |
+| Method · path                                                        | Purpose                                                   |
+| -------------------------------------------------------------------- | --------------------------------------------------------- |
+| `GET /` · `/session/:id` · `/session/:id/s/:sid`                     | The viewer SPA (config injected per request).             |
+| `GET /s/:id?part=N&theme=&mode=`                                     | Render one html part as a sandboxed document.             |
+| `POST /api/surfaces` · `/api/snippets`                               | Publish a surface (snippets = single html part).          |
+| `GET·PUT·DELETE /api/surfaces/:id`                                   | Read / revise (versioned) / delete a surface.             |
+| `GET·POST /api/sessions/:id/review`                                  | Read / publish the decision-queue review for a session.   |
+| `GET·POST /api/sessions` · `PATCH·DELETE /api/sessions/:id`          | List / create / rename / delete sessions.                 |
+| `GET /api/sessions/:id/surfaces` · `/export`                         | Session cards; static self-contained HTML export.         |
+| `POST /api/comments` · `GET /api/comments?…&wait=N`                  | Post a comment; long-poll for feedback.                   |
+| `POST /api/composing`                                                | "User is composing" heartbeat (extends the batch window). |
+| `POST /api/assets` · `GET /a/:id`                                    | Upload a blob (raw or base64 envelope); serve it.         |
+| `GET /api/events?session=`                                           | SSE live feed.                                            |
+| `GET /guide` · `/playbook` · `/setup` · `/api/kits` · `/api/version` | Runtime docs & metadata.                                  |
+| `POST /mcp`                                                          | Streamable-HTTP MCP (§3.2).                               |
 
 ### MCP tools (`mcp/server.ts` stdio + `server/mcpHttp.ts` http)
 
-`publish_surface`, `publish_snippet`, `publish_review`, `publish_decisions`,
-`review_finding`, `update_surface`, `update_snippet`, `delete_surface`,
-`wait_for_feedback`, `list_surfaces`, `upload_asset`, `comment` (http),
-`get_design_guide`. Descriptions and input schemas are centralized in
-`server/mcpSpec.ts` so both transports stay in sync.
+`publish_surface`, `publish_snippet`, `publish_decisions`, `update_surface`,
+`update_snippet`, `delete_surface`, `wait_for_feedback`, `list_surfaces`,
+`upload_asset`, `comment` (http), `get_design_guide`. `publish_decisions` is
+registered on **both** transports (stdio + streamable-HTTP). Descriptions and
+input schemas are centralized in `server/mcpSpec.ts` so both transports stay in
+sync.
 
 ---
 
@@ -366,7 +368,7 @@ Consequences worth knowing:
   mutation, the asset budget bounds resident size, not just disk.
 - **Reads return clones** (`structuredClone`) so callers can't mutate store state.
 - **Content-addressed assets** dedupe and survive across sessions; deleting a
-  session only drops its *own* assets that no surviving surface references
+  session only drops its _own_ assets that no surviving surface references
   (`storage.ts:220`).
 - **Legacy migration on load:** pre-0.5.0 boards stored `snippets` (a single
   `html` field) and `snippetId` comments; `loadFromDisk` lifts those into the
@@ -381,24 +383,26 @@ Consequences worth knowing:
 
 Showcase does **not** integrate with GitHub PRs or store PR objects. What it stores
 is the **review of a branch/diff** — its answer to "how do you review agent-written
-code." Two layers:
+code."
 
-- **The card stream** — `showcase review <branch>` scaffolds a session (seeded with
-  a churn manifest, a risk band, and a ready-to-paste prompt that delegates the
-  analysis to your `code-review` skill). The skill then publishes a **verdict card**
-  plus one **finding card** per issue (`publish_review` / `review_finding`). Each
-  finding is *composed* by the server from fields (severity badge, problem, inline
-  suggestion diff, optional mermaid, blast-radius graph) — the structure is the API,
-  so a review physically can't regress into one wall of prose (`buildFinding`,
-  `app.ts:386`).
-- **The decision queue** — the north-star form factor (`publish_decisions` →
-  `/?review=<session>`): a brief + a risk-ranked queue of decisions, each with a
-  required coverage ledger, that the human adjudicates with Accept / Override /
-  Prove-it / Challenge. See [`review-form-factor.md`](./review-form-factor.md).
+The **decision queue** is the single review path (`publish_decisions` →
+`POST /api/sessions/:id/review` → `/?review=<session>`): a plain-English `brief`,
+a `verdict` (block/approve/comment), a risk-ranked queue of **decisions** the agent
+triaged out of the diff, and a required **manifest** tagging every changed file
+(`has-decision` / `reviewed-no-comment` / `mechanical-skipped`). Each decision
+carries an `assertion`, a `call` (block/ship/decide), a `scope`, and a required
+`confidence` — the structure is the API, so a review physically can't regress into
+one wall of prose. The human adjudicates with **Accept / Disagree**: a Disagree
+threads a comment the agent must defend-or-concede, and re-publishing updates the
+decision in place. See [`review-form-factor.md`](./review-form-factor.md) for the
+full form factor.
 
-A finished review can be shared as a **static, self-contained HTML export**
-(`GET /api/sessions/:id/export`) that renders with no server — the share artifact,
-not a GitHub round-trip.
+A session that carries a stored review is `kind:"review"`: it chips its verdict in
+the sidebar and opens the queue inline (the viewer's `ReviewView` / `ReviewInline`
+/ `ReviewPage`). A finished review can be shared as a **static, self-contained HTML
+export** (`GET /api/sessions/:id/export`) — the export now **inlines the stored
+review** into the bundle, so a shared review renders offline, read-only, with no
+server.
 
 ---
 
@@ -427,14 +431,14 @@ node screenshot.mjs   # playwright: goto(url), wait for '.card' svg, card.screen
 Because `mermaid` parts render in the trusted viewer (not at `/s/:id`, which only
 serves html parts), the screenshot targets the `.card` element in the full viewer.
 The resulting PNG carries the real card chrome — title, the copyable card id, the
-board theme — because it *is* a real card.
+board theme — because it _is_ a real card.
 
 ---
 
 ## 11. Runtime & build constraints (don't trip on these)
 
 - **Type-stripping, no build step (server/CLI).** Server and CLI TypeScript run
-  directly on **Node ≥ 22.18** via type stripping, so only *erasable* syntax is
+  directly on **Node ≥ 22.18** via type stripping, so only _erasable_ syntax is
   allowed: no enums, no parameter properties, `.ts` extensions in relative imports.
   The **viewer is the exception** — it's Vite-built into one HTML file.
 - **Runtime-agnostic core.** `server/{app,events,mcpHttp,surfacePage,types}.ts`
@@ -457,18 +461,18 @@ board theme — because it *is* a real card.
 
 ## 12. Where to look next
 
-| You want to understand… | Start at |
-| --- | --- |
-| Every route and the shared flows | `server/app.ts` |
-| The data model & the `Store` interface | `server/types.ts` |
-| On-disk persistence, eviction, migration | `server/storage.ts` |
-| Sandboxed html rendering | `server/surfacePage.ts`, `server/themes.ts`, `server/kits.ts` |
-| MCP tool schemas (one source of truth) | `server/mcpSpec.ts` |
-| The stdio MCP client | `mcp/server.ts` |
-| The CLI | `bin/showcase.js` |
-| The viewer | `viewer/` (zustand store, parts components, shadcn/ui) |
-| The review UX north star | `docs/review-form-factor.md` |
-| Agent-facing runtime instructions | `guide/PLAYBOOK.md`, `guide/DESIGN_GUIDE.md` |
+| You want to understand…                  | Start at                                                      |
+| ---------------------------------------- | ------------------------------------------------------------- |
+| Every route and the shared flows         | `server/app.ts`                                               |
+| The data model & the `Store` interface   | `server/types.ts`                                             |
+| On-disk persistence, eviction, migration | `server/storage.ts`                                           |
+| Sandboxed html rendering                 | `server/surfacePage.ts`, `server/themes.ts`, `server/kits.ts` |
+| MCP tool schemas (one source of truth)   | `server/mcpSpec.ts`                                           |
+| The stdio MCP client                     | `mcp/server.ts`                                               |
+| The CLI                                  | `bin/showcase.js`                                             |
+| The viewer                               | `viewer/` (zustand store, parts components, shadcn/ui)        |
+| The review UX north star                 | `docs/review-form-factor.md`                                  |
+| Agent-facing runtime instructions        | `guide/PLAYBOOK.md`, `guide/DESIGN_GUIDE.md`                  |
 
 _Keep this current: if you add a part kind, a transport, a route, or change the
 feedback cursor, update the relevant section here in the same change._

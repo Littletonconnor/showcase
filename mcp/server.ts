@@ -78,108 +78,20 @@ server.registerTool(
 );
 
 server.registerTool(
-  "publish_review",
-  {
-    description: MCP_TOOL_DESCRIPTIONS.publishReview,
-    inputSchema: STDIO_MCP_INPUT_SCHEMAS.publishReview,
-  },
-  async ({
-    verdict,
-    branch,
-    base,
-    summary,
-    coverage,
-    architecture,
-    intent,
-    risk,
-    budget,
-    manifest,
-    changeMap,
-    churn,
-    findings,
-    sessionTitle,
-  }) => {
-    const session = await ensureSession(sessionTitle ?? (branch ? `Review: ${branch}` : undefined));
-    const result = JSON.parse(
-      await api("/api/reviews", {
-        method: "POST",
-        body: JSON.stringify({
-          verdict,
-          branch,
-          base,
-          summary,
-          coverage,
-          architecture,
-          intent,
-          risk,
-          budget,
-          manifest,
-          changeMap,
-          churn,
-          findings,
-          session,
-        }),
-      }),
-    );
-    return text({ ...result, url: `${API}/session/${result.session}` });
-  },
-);
-
-server.registerTool(
   "publish_decisions",
   {
     description: MCP_TOOL_DESCRIPTIONS.publishDecisions,
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.publishDecisions,
   },
-  async ({ brief, verdict, decisions, sessionTitle }) => {
+  async ({ brief, verdict, decisions, manifest, sessionTitle }) => {
     const session = await ensureSession(sessionTitle);
     const result = JSON.parse(
       await api(`/api/sessions/${session}/review`, {
         method: "POST",
-        body: JSON.stringify({ brief, verdict, decisions }),
+        body: JSON.stringify({ brief, verdict, decisions, manifest }),
       }),
     );
-    return text({ ...result, url: `${API}/session/${session}` });
-  },
-);
-
-server.registerTool(
-  "review_finding",
-  {
-    description: MCP_TOOL_DESCRIPTIONS.reviewFinding,
-    inputSchema: STDIO_MCP_INPUT_SCHEMAS.reviewFinding,
-  },
-  async ({
-    severity,
-    title,
-    file,
-    line,
-    problem,
-    fix,
-    suggestion,
-    patch,
-    diagram,
-    sessionTitle,
-  }) => {
-    const session = await ensureSession(sessionTitle);
-    const created = JSON.parse(
-      await api("/api/findings", {
-        method: "POST",
-        body: JSON.stringify({
-          severity,
-          title,
-          file,
-          line,
-          problem,
-          fix,
-          suggestion,
-          patch,
-          diagram,
-          session,
-        }),
-      }),
-    );
-    return text({ ...created, url: `${API}/session/${created.sessionId}/s/${created.id}` });
+    return text({ ...result, url: `${API}/?review=${session}` });
   },
 );
 

@@ -1,16 +1,5 @@
 import type { Hono } from "hono";
-import {
-  type ChangeMapInput,
-  coerceChangeMap,
-  coerceChurn,
-  type CommentWait,
-  coerceFinding,
-  coerceOverview,
-  type Feedback,
-  type FindingInput,
-  type ManifestRowInput,
-  type RiskInput,
-} from "./app.ts";
+import { type CommentWait, type Feedback } from "./app.ts";
 import { decodeBase64 } from "./base64.ts";
 import {
   type Asset,
@@ -50,29 +39,6 @@ export interface McpDeps {
     sessionTitle?: string;
     agent?: string;
   }): FlowResult<Surface>;
-  publishFinding(
-    input: FindingInput & { session?: string; sessionTitle?: string; agent?: string },
-  ): FlowResult<Surface>;
-  publishReview(input: {
-    verdict?: string;
-    branch?: string;
-    base?: string;
-    summary?: string;
-    coverage?: string;
-    architecture?: string;
-    intent?: string;
-    risk?: RiskInput;
-    budget?: string;
-    manifest?: ManifestRowInput[];
-    changeMap?: ChangeMapInput;
-    churn?: Array<{ file?: string; added?: number; removed?: number }>;
-    findings: FindingInput[];
-    session?: string;
-    sessionTitle?: string;
-    agent?: string;
-  }): Promise<
-    { session: string; verdict: string; findings: string[] } | { error: string; status: number }
-  >;
   publishDecisions(input: {
     brief?: string;
     verdict?: string;
@@ -138,40 +104,6 @@ export function registerMcp(app: Hono, deps: McpDeps) {
         if ("error" in result) throw new Error(result.error);
         return surfaceResult(result, origin);
       }
-      case "publish_review": {
-        const str = (v: unknown) => (typeof v === "string" ? v : undefined);
-        const findings = Array.isArray(args.findings) ? args.findings.map(coerceFinding) : [];
-        const overview = coerceOverview(args);
-        const result = await deps.publishReview({
-          verdict: str(args.verdict),
-          branch: str(args.branch),
-          base: str(args.base),
-          summary: str(args.summary),
-          coverage: str(args.coverage),
-          architecture: str(args.architecture),
-          intent: overview.intent,
-          risk: overview.risk,
-          budget: overview.budget,
-          manifest: overview.manifest,
-          changeMap: coerceChangeMap(args.changeMap),
-          churn: coerceChurn(args.churn),
-          findings,
-          session: str(args.session),
-          sessionTitle: str(args.sessionTitle),
-          agent: str(args.agent),
-        });
-        if ("error" in result) throw new Error(result.error);
-        return JSON.stringify(
-          {
-            sessionId: result.session,
-            url: `${origin}/session/${result.session}`,
-            verdict: result.verdict,
-            findings: result.findings,
-          },
-          null,
-          2,
-        );
-      }
       case "publish_decisions": {
         const str = (v: unknown) => (typeof v === "string" ? v : undefined);
         const result = await deps.publishDecisions({
@@ -193,17 +125,6 @@ export function registerMcp(app: Hono, deps: McpDeps) {
           null,
           2,
         );
-      }
-      case "review_finding": {
-        const str = (v: unknown) => (typeof v === "string" ? v : undefined);
-        const result = await deps.publishFinding({
-          ...coerceFinding(args),
-          session: str(args.session),
-          sessionTitle: str(args.sessionTitle),
-          agent: str(args.agent),
-        });
-        if ("error" in result) throw new Error(result.error);
-        return surfaceResult(result, origin);
       }
       case "update_surface":
       case "update_snippet": {

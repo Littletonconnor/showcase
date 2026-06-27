@@ -53,16 +53,12 @@ type SandboxedPartProps = {
   body: string;
   css: string;
   class?: string;
-  // Diff/code parts: the in-frame bridge reports a clicked line so the host can
-  // pin a comment to it (see server/surfacePage.ts and DiffPart).
-  onLineClick?: (anchor: { line: number; lineType?: "context" | "addition" | "deletion" }) => void;
 };
 
 // Dispatcher: the PDF export flattens rich parts into the document so they
-// paginate (line anchoring is interactive-only, so it's simply absent there);
-// the live board renders each part in an opaque-origin sandbox iframe. isFlatten
-// is a page-lifetime constant, so this branch is stable per mount — keeping the
-// hook-bearing work in two child components satisfies the rules of hooks.
+// paginate; the live board renders each part in an opaque-origin sandbox iframe.
+// isFlatten is a page-lifetime constant, so this branch is stable per mount —
+// keeping the hook-bearing work in two child components satisfies the rules of hooks.
 export function SandboxedPart(props: SandboxedPartProps) {
   if (isFlatten()) return <InlinePart body={props.body} css={props.css} class={props.class} />;
   return <FramePart {...props} />;
@@ -84,10 +80,6 @@ function FramePart(props: SandboxedPartProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const activeTheme = useActiveTheme();
   const mode = useResolvedMode();
-  // Keep the latest callback in a ref so the message effect (keyed on `doc`)
-  // always calls the current handler without re-subscribing.
-  const onLineClickRef = useRef(props.onLineClick);
-  onLineClickRef.current = props.onLineClick;
 
   const doc = useMemo(
     () =>
@@ -110,14 +102,10 @@ function FramePart(props: SandboxedPartProps) {
         __showcase?: boolean;
         type?: string;
         height?: number;
-        line?: number;
-        lineType?: "context" | "addition" | "deletion";
       } | null;
       if (!d || !d.__showcase) return;
       if (d.type === "resize") {
         applyFrameHeight(frame, d.height);
-      } else if (d.type === "line-click" && typeof d.line === "number") {
-        onLineClickRef.current?.({ line: d.line, lineType: d.lineType });
       }
     };
     window.addEventListener("message", onMessage);

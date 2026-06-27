@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile, execFileSync, spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -54,25 +54,6 @@ function serveApp() {
       });
     });
   });
-}
-
-// A throwaway git repo with a `feature` branch off `main`: a.txt modified +
-// b.txt added, so `showcase review feature --base main` has a real diff.
-function gitRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), "showcase-git-"));
-  const g = (...a: string[]) => execFileSync("git", a, { cwd: dir, stdio: "ignore" });
-  g("init", "-q", "-b", "main");
-  g("config", "user.email", "t@example.com");
-  g("config", "user.name", "Test");
-  writeFileSync(join(dir, "a.txt"), "one\n");
-  g("add", "-A");
-  g("commit", "-qm", "base");
-  g("checkout", "-q", "-b", "feature");
-  writeFileSync(join(dir, "a.txt"), "one\ntwo\n");
-  writeFileSync(join(dir, "b.txt"), "new file\n");
-  g("add", "-A");
-  g("commit", "-qm", "feature work");
-  return dir;
 }
 
 const post = (url: string, body: unknown) =>
@@ -275,145 +256,6 @@ test("kits lists the board's available kits", async () => {
     const kits = JSON.parse(stdout);
     assert.ok(kits.some((k: any) => k.id === "issues"));
     assert.ok(kits.some((k: any) => k.id === "slides"));
-  } finally {
-    await server.close();
-  }
-});
-
-test("finding composes a structured review card", async () => {
-  const server = await serveApp();
-  try {
-    const { code, stdout } = await runWith(
-      { env: { SHOWCASE_URL: server.url } },
-      "finding",
-      "--severity",
-      "bug",
-      "--title",
-      "Null check missing",
-      "--problem",
-      "args not checked",
-      "--confidence",
-      "high",
-      "--coverage",
-      "read the constructor",
-      "--file",
-      "Foo.java",
-      "--line",
-      "12",
-    );
-    assert.equal(code, 0);
-    const out = JSON.parse(stdout);
-    assert.deepEqual(out.badge, { tone: "critical", label: "Bug" });
-    const full = (await (await fetch(`${server.url}/api/surfaces/${out.id}`)).json()) as any;
-    assert.equal(full.title, "Null check missing — Foo.java:12");
-
-    // --before/--after read each side from a file → a computed before/after diff.
-    const dir = mkdtempSync(join(tmpdir(), "showcase-sugg-"));
-    const before = join(dir, "before.txt");
-    const after = join(dir, "after.txt");
-    writeFileSync(before, "timeout(5000)");
-    writeFileSync(after, "timeout(DEFAULT_MS)");
-    const { code: c2, stdout: s2 } = await runWith(
-      { env: { SHOWCASE_URL: server.url } },
-      "finding",
-      "--title",
-      "Use a constant",
-      "--problem",
-      "magic number",
-      "--confidence",
-      "medium",
-      "--coverage",
-      "grepped call sites",
-      "--before",
-      before,
-      "--after",
-      after,
-      "--fix",
-      "names the intent",
-      "--session",
-      out.sessionId,
-    );
-    assert.equal(c2, 0);
-    const sugg = (await (
-      await fetch(`${server.url}/api/surfaces/${JSON.parse(s2).id}`)
-    ).json()) as any;
-    assert.deepEqual(
-      sugg.parts.map((p: any) => p.kind),
-      ["markdown", "diff", "markdown"],
-    );
-    assert.deepEqual(sugg.parts[1].files, [
-      { filename: "suggestion", before: "timeout(5000)", after: "timeout(DEFAULT_MS)" },
-    ]);
-  } finally {
-    await server.close();
-  }
-});
-
-test("review scaffolds a session from a branch diff", async () => {
-  const server = await serveApp();
-  const repo = gitRepo();
-  try {
-    const { code, stdout } = await runWith(
-      { cwd: repo, env: { SHOWCASE_URL: server.url } },
-      "review",
-      "feature",
-      "--base",
-      "main",
-    );
-    assert.equal(code, 0);
-    const out = JSON.parse(stdout);
-    assert.ok(out.session, "prints a session id");
-    assert.equal(out.files, 2, "counts the two changed files");
-    assert.match(out.url, /\/session\//);
-    // The analysis is delegated to the code-review skill, not done by showcase.
-    assert.match(out.prompt, /code-review` skill on branch feature against main/);
-    assert.match(out.prompt, /showcase does NOT define how to review/);
-
-    // The churn-seeded overview heuristics: a manifest row per file (both plain
-    // logic here) + a composite risk the agent refines.
-    assert.equal(out.manifest.length, 2, "one manifest row per changed file");
-    assert.deepEqual(out.manifest.map((m: any) => m.priority).sort(), ["logic", "logic"]);
-    assert.ok(out.manifest.every((m: any) => typeof m.note === "string" && m.note));
-    assert.ok(["low", "elevated", "high"].includes(out.risk.band), "risk carries a band");
-    for (const k of ["size", "surfaceArea", "sensitivity", "testDelta"]) {
-      assert.ok(out.risk[k] >= 0 && out.risk[k] <= 3, `risk.${k} is a 0–3 weight`);
-    }
-    // Logic changed but no tests moved → the dangerous gap → testDelta pegged high.
-    assert.equal(out.risk.testDelta, 3);
-    // The prompt teaches the new overview + honesty-signal fields.
-    assert.match(out.prompt, /intent/);
-    assert.match(out.prompt, /confidence/);
-    assert.match(out.prompt, /coverage/);
-
-    // The scaffolded card carries the In-review badge + the diffstat + files.
-    const full = (await (await fetch(`${server.url}/api/surfaces/${out.surface}`)).json()) as any;
-    assert.deepEqual(full.badge, { tone: "neutral", label: "In review" });
-    assert.match(full.parts[0].markdown, /2 files changed/);
-    assert.match(full.parts[0].markdown, /b\.txt/);
-  } finally {
-    await server.close();
-  }
-});
-
-test("review folds in the review profile and demands publish_review", async () => {
-  const server = await serveApp();
-  const repo = gitRepo();
-  const profile = join(mkdtempSync(join(tmpdir(), "showcase-prof-")), "review.md");
-  writeFileSync(profile, "Load skills: code-reviewer.\nConventions: checkNotNull required args.");
-  try {
-    const { code, stdout } = await runWith(
-      { cwd: repo, env: { SHOWCASE_URL: server.url, SHOWCASE_REVIEW_PROFILE: profile } },
-      "review",
-      "feature",
-      "--base",
-      "main",
-    );
-    assert.equal(code, 0);
-    const out = JSON.parse(stdout);
-    assert.ok(out.profile, "reports the profile path");
-    assert.match(out.prompt, /code-reviewer/); // the profile is injected verbatim
-    assert.match(out.prompt, /publish_review/); // demands the structured tool
-    assert.match(out.prompt, /failure mode/); // forbids the markdown wall
   } finally {
     await server.close();
   }
