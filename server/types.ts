@@ -255,6 +255,11 @@ export interface DecisionGap {
 }
 
 export interface Decision {
+  // Short, stable, copy-pasteable ref (e.g. "d-7Qa…"). Stable across
+  // re-publishes so local adjudication + the chat trail survive a revise, and so
+  // the human can paste it into normal agent chat to scope a revision. The server
+  // assigns one when the agent omits it (see coerceReview).
+  id?: string;
   call: DecisionCall; // block | ship | decide — the recommendation
   kind: string; // bug | fix | capability | refactor | migration | risk
   scope: DecisionScope; // how far the reviewer must look to judge it
@@ -277,11 +282,32 @@ export interface DecisionProposal {
   note?: string; // one line on why the change is better
 }
 
+// How a changed file is accounted for in the complete manifest. Every file in
+// the diff carries one, so a file the agent triaged out can't silently vanish —
+// the human can see and account for the whole change, not just the decisions.
+//   - has-decision      → surfaced as a risk-ranked Decision (carries decisionId)
+//   - reviewed-no-comment → the agent read it and had nothing to flag
+//   - mechanical-skipped  → lockfile/generated/formatting churn it skimmed
+export type FileDisposition = "has-decision" | "reviewed-no-comment" | "mechanical-skipped";
+
+export interface ManifestFile {
+  path: string;
+  disposition: FileDisposition;
+  added: number; // lines added (churn; display only)
+  removed: number; // lines removed
+  decisionId?: string; // links to its Decision when disposition === "has-decision"
+  note?: string; // one-line "what it is / why it was skipped"
+}
+
 export interface Review {
   sessionId: string;
   brief: string; // ≤4 sentences, plain English, no identifiers
   verdict: "block" | "approve" | "comment"; // the bottom line (a consequence of the decisions)
   decisions: Decision[]; // risk-ranked; decisions[0] is the lede
+  // The complete changed-file manifest — EVERY file in the diff, each tagged with
+  // its disposition, so nothing the agent triaged away is hidden. Optional on the
+  // type for older stored reviews; required for new publishes (see coerceReview).
+  manifest?: ManifestFile[];
   createdAt: string;
   updatedAt: string;
 }
@@ -291,6 +317,7 @@ export interface CreateReviewInput {
   brief: string;
   verdict?: "block" | "approve" | "comment";
   decisions: Decision[];
+  manifest?: ManifestFile[];
 }
 
 // Where on a surface a comment points, so the agent knows the user means a

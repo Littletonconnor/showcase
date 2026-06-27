@@ -14,12 +14,14 @@
 // you've already made — only a decision whose wording actually changed resets.
 // Disabled in a static export (no agent) and inert in `?review-preview`.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Ban, CircleAlert, CircleCheck } from "lucide-react";
+import { Ban, ChevronRight, CircleAlert, CircleCheck } from "lucide-react";
 import type {
   Comment,
   Decision,
   DecisionCall,
   DecisionGap,
+  FileDisposition,
+  ManifestFile,
   Review,
 } from "../../../server/types.ts";
 import type {
@@ -48,6 +50,72 @@ const CONFIDENCE = {
   medium: { label: "Medium confidence", dot: "bg-amber-500" },
   low: { label: "Low confidence", dot: "bg-red-500" },
 } as const;
+
+// Every changed file's disposition in the manifest — the dot + the label the
+// human scans to account for a file that has no decision.
+const DISPOSITION = {
+  "has-decision": { label: "decision", dot: "bg-brand" },
+  "reviewed-no-comment": { label: "reviewed · no comment", dot: "bg-muted-foreground/40" },
+  "mechanical-skipped": { label: "mechanical · skipped", dot: "bg-border" },
+} satisfies Record<FileDisposition, { label: string; dot: string }>;
+
+// The complete changed-file manifest (Phase 1 — trust): every file in the diff,
+// each accounted for. Collapsed by default so it doesn't crowd the Brief; a file
+// with a decision links to it, the rest carry why they got none.
+function Manifest(props: {
+  files: ManifestFile[];
+  decisionIndex: Map<string, number>;
+  onJump: (index: number) => void;
+}) {
+  const files = props.files;
+  const withDecision = files.filter((f) => f.disposition === "has-decision").length;
+  return (
+    <details className="group mt-5 max-w-[820px] overflow-hidden rounded-lg border-[0.5px] border-border bg-card/40">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-[13px] font-medium text-foreground select-none">
+        <ChevronRight className="size-3.5 text-faint transition-transform group-open:rotate-90" />
+        All {files.length} file{files.length === 1 ? "" : "s"} changed
+        <span className="font-normal text-faint">
+          · {withDecision} with a decision · nothing omitted
+        </span>
+      </summary>
+      <ul className="border-t-[0.5px] border-border">
+        {files.map((f, i) => {
+          const disp = DISPOSITION[f.disposition];
+          const idx = f.decisionId != null ? props.decisionIndex.get(f.decisionId) : undefined;
+          return (
+            <li
+              key={i}
+              className="flex items-center gap-3 border-b-[0.5px] border-border/40 px-4 py-1.5 text-[12.5px] last:border-0"
+            >
+              <span className={cx("size-1.5 shrink-0 rounded-full", disp.dot)} />
+              <span className="truncate font-mono text-[12px] text-foreground" title={f.path}>
+                {f.path}
+              </span>
+              {f.note ? (
+                <span className="truncate text-[11.5px] text-faint">— {f.note}</span>
+              ) : null}
+              <span className="ml-auto shrink-0 tabular-nums text-[11px]">
+                <span className="text-emerald-600 dark:text-emerald-400">+{f.added}</span>{" "}
+                <span className="text-red-600 dark:text-red-400">−{f.removed}</span>
+              </span>
+              {idx !== undefined ? (
+                <button
+                  type="button"
+                  onClick={() => props.onJump(idx)}
+                  className="shrink-0 text-[11px] font-medium text-brand hover:underline"
+                >
+                  decision {idx + 1} →
+                </button>
+              ) : (
+                <span className="shrink-0 text-[11px] text-faint">{disp.label}</span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </details>
+  );
+}
 
 // What the verbs hand the agent — each names the decision (so the reply threads)
 // and forces a narrow, predictable action. The first line is the human gist; the
@@ -94,6 +162,26 @@ function EvidencePart(props: { part: SurfacePart }) {
     default:
       return null;
   }
+}
+
+// The decision's stable ref — click to copy, then paste into agent chat to scope
+// a revision ("revise d-… : …"). The durable handle that replaces the old verbs.
+function CopyRef(props: { id: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      title="Copy this decision's ref — paste it into chat to revise it"
+      onClick={() => {
+        void navigator.clipboard?.writeText(props.id);
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1200);
+      }}
+      className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10.5px] text-muted-foreground hover:bg-hover"
+    >
+      {copied ? "copied" : props.id}
+    </button>
+  );
 }
 
 function Chip(props: { children: ReactNode; className?: string }) {
@@ -153,6 +241,7 @@ function DecisionSection(props: {
           <span className="text-border">·</span>
           <Chip className="bg-muted text-muted-foreground">{d.kind}</Chip>
           <Chip className="bg-muted text-muted-foreground">{d.scope}</Chip>
+          {d.id ? <CopyRef id={d.id} /> : null}
           {accepted && (
             <Chip className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
               ✓ Accepted
@@ -432,6 +521,16 @@ export function ReviewView(props: {
   const [state, setState] = useState<Record<string, "accepted" | "disputed">>({});
   const [composerOpen, setComposerOpen] = useState<number | null>(null);
 
+  // decisionId → its position in the queue, so a manifest row can jump to its
+  // decision (and to render "decision N →" links).
+  const decisionIndex = useMemo(() => {
+    const m = new Map<string, number>();
+    r.decisions.forEach((d, i) => {
+      if (d.id) m.set(d.id, i);
+    });
+    return m;
+  }, [r.decisions]);
+
   // Comments grouped under the decision they reference.
   const threads = useMemo(() => {
     const by = new Map<number, Comment[]>();
@@ -459,6 +558,10 @@ export function ReviewView(props: {
       itemRefs.current[next]?.scrollIntoView({ behavior: "smooth", block: "start" });
       setActive(next);
     }
+  }
+  function jumpToDecision(idx: number) {
+    itemRefs.current[idx]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setActive(idx);
   }
   function undo(idx: number) {
     const key = r.decisions[idx].assertion;
@@ -590,6 +693,12 @@ export function ReviewView(props: {
               <Kbd>K</Kbd> move
             </span>
           </div>
+        )}
+
+        {/* The complete changed-file manifest — every file accounted for, so the
+            risk-ranked queue never gives a false sense of "that's everything". */}
+        {r.manifest && r.manifest.length > 0 && (
+          <Manifest files={r.manifest} decisionIndex={decisionIndex} onJump={jumpToDecision} />
         )}
 
         {/* The decision region: left scrolls, right is sticky and snaps to active. */}

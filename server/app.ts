@@ -17,9 +17,11 @@ import {
   type CreateReviewInput,
   type Decision,
   type DecisionProposal,
+  type ManifestFile,
   htmlPart,
   isAssetKind,
   MAX_ASSET_BYTES,
+  newId,
   partsByteLength,
   type Store,
   type Surface,
@@ -992,6 +994,8 @@ const endWithNewline = (s: string) => (s.length && !s.endsWith("\n") ? s + "\n" 
 const DECISION_CALLS = new Set(["block", "ship", "decide"]);
 const DECISION_SCOPES = new Set(["changed-line", "whole-file", "codebase"]);
 const DECISION_CONFIDENCE = new Set(["high", "medium", "low"]);
+const FILE_DISPOSITIONS = new Set(["has-decision", "reviewed-no-comment", "mechanical-skipped"]);
+const nonNegInt = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0);
 
 export function coerceReview(raw: any): { review: CreateReviewInput } | { error: string } {
   if (!raw || typeof raw !== "object") return { error: "body must be an object" };
@@ -1001,9 +1005,25 @@ export function coerceReview(raw: any): { review: CreateReviewInput } | { error:
   }
   const verdict = raw.verdict === "block" || raw.verdict === "approve" ? raw.verdict : "comment";
   const decisions: Decision[] = [];
+  // Stable ids double as the manifest's link target and the human's copy-paste
+  // ref, so they must be unique within a review. Honor an agent-supplied id (the
+  // skill keeps it stable across re-publishes); mint one when it's omitted.
+  const decisionIds = new Set<string>();
   for (let i = 0; i < raw.decisions.length; i++) {
     const d = raw.decisions[i];
     if (!d || typeof d !== "object") return { error: `decision ${i}: must be an object` };
+    let id: string;
+    if (d.id != null) {
+      if (typeof d.id !== "string" || !d.id.trim())
+        return { error: `decision ${i}: "id" must be a non-empty string when present` };
+      id = d.id.trim();
+      if (decisionIds.has(id)) return { error: `decision ${i}: duplicate id "${id}"` };
+    } else {
+      do {
+        id = `d-${newId()}`;
+      } while (decisionIds.has(id));
+    }
+    decisionIds.add(id);
     if (!DECISION_CALLS.has(d.call))
       return { error: `decision ${i}: "call" must be block|ship|decide` };
     if (!DECISION_SCOPES.has(d.scope)) {
@@ -1063,6 +1083,7 @@ export function coerceReview(raw: any): { review: CreateReviewInput } | { error:
           }))
       : undefined;
     decisions.push({
+      id,
       call: d.call,
       kind: d.kind,
       scope: d.scope,
@@ -1076,7 +1097,56 @@ export function coerceReview(raw: any): { review: CreateReviewInput } | { error:
       ...(proposal ? { proposal } : {}),
     });
   }
-  return { review: { brief: raw.brief, verdict, decisions } };
+
+  // The complete changed-file manifest is the Phase-1 trust backbone: every file
+  // in the diff must be accounted for, and the manifest must agree with the
+  // decisions both ways (no decision points at a file that isn't listed; no
+  // file claims a decision that doesn't exist). See docs/review-form-factor.md.
+  if (!Array.isArray(raw.manifest) || raw.manifest.length === 0) {
+    return { error: '"manifest" must be a non-empty array (every changed file, no omissions)' };
+  }
+  const manifest: ManifestFile[] = [];
+  const referencedDecisions = new Set<string>();
+  for (let i = 0; i < raw.manifest.length; i++) {
+    const f = raw.manifest[i];
+    if (!f || typeof f !== "object") return { error: `manifest ${i}: must be an object` };
+    if (typeof f.path !== "string" || !f.path.trim())
+      return { error: `manifest ${i}: "path" is required` };
+    if (!FILE_DISPOSITIONS.has(f.disposition)) {
+      return {
+        error: `manifest ${i}: "disposition" must be has-decision|reviewed-no-comment|mechanical-skipped`,
+      };
+    }
+    let decisionId: string | undefined;
+    if (f.disposition === "has-decision") {
+      if (typeof f.decisionId !== "string" || !f.decisionId.trim())
+        return { error: `manifest ${i} (${f.path}): "has-decision" requires a "decisionId"` };
+      const ref: string = f.decisionId.trim();
+      if (!decisionIds.has(ref)) {
+        return { error: `manifest ${i} (${f.path}): decisionId "${ref}" matches no decision` };
+      }
+      referencedDecisions.add(ref);
+      decisionId = ref;
+    }
+    manifest.push({
+      path: f.path,
+      disposition: f.disposition,
+      added: nonNegInt(f.added),
+      removed: nonNegInt(f.removed),
+      ...(decisionId ? { decisionId } : {}),
+      ...(typeof f.note === "string" && f.note.trim() ? { note: f.note } : {}),
+    });
+  }
+  // Inverse integrity: a decision no manifest file claims is an ungrounded
+  // decision — the manifest would no longer be the whole truth of the change.
+  for (const dec of decisions) {
+    if (dec.id && !referencedDecisions.has(dec.id)) {
+      return {
+        error: `decision "${dec.id}" (${dec.assertion}) is not linked from any manifest file; add a "has-decision" file for it`,
+      };
+    }
+  }
+  return { review: { brief: raw.brief, verdict, decisions, manifest } };
 }
 
 export function createApp({
@@ -1356,6 +1426,7 @@ export function createApp({
     brief?: string;
     verdict?: string;
     decisions?: unknown;
+    manifest?: unknown;
     session?: string;
     sessionTitle?: string;
     agent?: string;
@@ -1365,6 +1436,7 @@ export function createApp({
       brief: input.brief,
       verdict: input.verdict,
       decisions: input.decisions,
+      manifest: input.manifest,
     });
     if ("error" in parsed) return { error: parsed.error, status: 400 };
 
@@ -1907,6 +1979,7 @@ export function createApp({
       brief: body?.brief,
       verdict: body?.verdict,
       decisions: body?.decisions,
+      manifest: body?.manifest,
       session: id,
     });
     if ("error" in result) return c.json({ error: result.error }, result.status);

@@ -378,6 +378,7 @@ export class JsonFileStore implements Store {
       brief: input.brief,
       verdict: input.verdict ?? "comment",
       decisions: clone(input.decisions),
+      ...(input.manifest ? { manifest: clone(input.manifest) } : {}),
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };

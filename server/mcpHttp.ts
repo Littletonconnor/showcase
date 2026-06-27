@@ -77,6 +77,7 @@ export interface McpDeps {
     brief?: string;
     verdict?: string;
     decisions?: unknown;
+    manifest?: unknown;
     session?: string;
     sessionTitle?: string;
     agent?: string;
@@ -177,6 +178,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
           brief: str(args.brief),
           verdict: str(args.verdict),
           decisions: args.decisions,
+          manifest: args.manifest,
           session: str(args.session),
           sessionTitle: str(args.sessionTitle),
           agent: str(args.agent),

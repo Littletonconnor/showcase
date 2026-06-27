@@ -201,12 +201,18 @@ _The next-generation review, designed for the age of agents and large diffs (`do
 
 **Each decision is one fixed grammar** — triage the diff so there's ONE decision per thing that genuinely needs a human call (the cold/mechanical stuff gets none), hardest first (`decisions[0]` is the lede):
 
+- **`id`** — a short, **stable** ref (e.g. `"d-stale-token"`). Keep it identical across re-publishes: it's the human's copy-paste handle, the manifest's link target, and what preserves their adjudication when you revise. Omit and the server mints one — but then it churns each publish, so supply your own.
 - **`call`** — `block | ship | decide` (your recommendation) · **`kind`** — bug/fix/capability/refactor/migration/risk · **`scope`** — `changed-line | whole-file | codebase` (how far the reviewer must look).
 - **`assertion`** — one sentence, the conclusion · **`impact`** — who hits it, how bad (optional).
 - **`confidence`** + **`coverage`** are **REQUIRED** — the honesty ledger: what you DID and did NOT verify. The form factor mandates this so a confident-but-unchecked claim can't hide as prose.
 - **`gaps`** — declared uncertainties, each `{what, proveScope}`: what you didn't check + the scoped task the reviewer's **"Prove it"** would run. Be honest here; it's the interaction surface.
 - **`pivot`** — `"flips to ✅/⛔ if …"`, ONLY when there's a real fork. Omit on a clean ship — never noise.
 - **`evidence`** — surface parts for the right pane (usually a `diff`, maybe a control-flow `mermaid`). Omit and the decision renders full-width.
+
+**`manifest` is REQUIRED — the complete changed-file list (trust).** Risk-ranked decisions hide the files you triaged out; a reviewer who can't see _that's everything_ stops trusting the review. So list **every file in the diff**, each `{path, disposition, added, removed, decisionId?, note?}`:
+
+- **`disposition`** — `has-decision` (surfaced above — set `decisionId` to that decision's `id`) · `reviewed-no-comment` (you read it, nothing to flag) · `mechanical-skipped` (lockfile/generated/formatting — put the reason in `note`).
+- Every decision must be claimed by ≥1 `has-decision` file, and every `decisionId` must resolve — the server **rejects** the publish otherwise. Nothing omitted, nothing dangling.
 
 ```jsonc
 // publish_decisions — a Brief + a risk-ranked decision queue
@@ -215,6 +221,7 @@ _The next-generation review, designed for the age of agents and large diffs (`do
   "verdict": "block",
   "decisions": [
     {
+      "id": "d-buffer-before-check",
       "call": "block",
       "kind": "bug",
       "scope": "changed-line",
@@ -243,12 +250,43 @@ _The next-generation review, designed for the age of agents and large diffs (`do
       ],
     },
     {
+      "id": "d-413-message",
       "call": "ship",
       "kind": "fix",
       "scope": "changed-line",
       "assertion": "The 413 carries a clear message and the limit.",
       "confidence": "high",
       "coverage": "Read the handler + a test asserting the body.",
+    },
+  ],
+  "manifest": [
+    {
+      "path": "server/app.ts",
+      "disposition": "has-decision",
+      "decisionId": "d-buffer-before-check",
+      "added": 6,
+      "removed": 1,
+    },
+    {
+      "path": "server/limits.ts",
+      "disposition": "has-decision",
+      "decisionId": "d-413-message",
+      "added": 12,
+      "removed": 0,
+    },
+    {
+      "path": "test/upload.test.ts",
+      "disposition": "reviewed-no-comment",
+      "added": 40,
+      "removed": 0,
+      "note": "covers the new 413 path",
+    },
+    {
+      "path": "package-lock.json",
+      "disposition": "mechanical-skipped",
+      "added": 220,
+      "removed": 18,
+      "note": "lockfile churn",
     },
   ],
 }

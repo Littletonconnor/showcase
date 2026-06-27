@@ -139,6 +139,10 @@ const d = {
     "block | approve | comment — the bottom line (a consequence of the decisions; render it as a chip).",
   decisions:
     "The risk-ranked queue the human adjudicates — ONE decision per thing that needs a human call, hardest/riskiest first (decisions[0] is the lede). Triage the diff into a handful of decisions; the cold/mechanical stuff doesn't get one.",
+  decisionId:
+    "Optional short, stable ref for this decision (e.g. 'd-auth-refresh'). KEEP IT STABLE across re-publishes — it's the human's copy-paste handle for the decision in chat, the manifest's link target, and what preserves their adjudication when you revise. The server mints one when you omit it; supply your own so it survives revisions.",
+  decisionManifest:
+    "REQUIRED — the COMPLETE changed-file manifest: EVERY file in the diff, nothing omitted. Each {path, disposition, added, removed, decisionId?, note?}. disposition is has-decision (surfaced as a Decision — set decisionId to that decision's id) | reviewed-no-comment (you read it, nothing to flag) | mechanical-skipped (lockfile/generated/formatting — note why). This is the trust backbone: a file the human can't see they're not seeing destroys trust in the whole review. Every decision must be claimed by at least one has-decision file.",
   decisionCall: "block | ship | decide — your recommendation for this decision.",
   decisionKind:
     "bug | fix | capability | refactor | migration | risk — what kind of decision this is.",
@@ -458,6 +462,7 @@ export const HTTP_MCP_TOOLS = [
           items: {
             type: "object",
             properties: {
+              id: { type: "string", description: d.decisionId },
               call: {
                 type: "string",
                 enum: ["block", "ship", "decide"],
@@ -492,11 +497,30 @@ export const HTTP_MCP_TOOLS = [
             required: ["call", "kind", "scope", "assertion", "confidence", "coverage"],
           },
         },
+        manifest: {
+          type: "array",
+          description: d.decisionManifest,
+          items: {
+            type: "object",
+            properties: {
+              path: { type: "string" },
+              disposition: {
+                type: "string",
+                enum: ["has-decision", "reviewed-no-comment", "mechanical-skipped"],
+              },
+              added: { type: "number" },
+              removed: { type: "number" },
+              decisionId: { type: "string" },
+              note: { type: "string" },
+            },
+            required: ["path", "disposition"],
+          },
+        },
         session: { type: "string", description: d.session },
         sessionTitle: { type: "string", description: d.sessionTitle },
         agent: { type: "string", description: d.agent },
       },
-      required: ["brief", "decisions"],
+      required: ["brief", "decisions", "manifest"],
     },
   },
   {
