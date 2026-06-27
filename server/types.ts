@@ -304,16 +304,23 @@ export interface Review {
   // its disposition, so nothing the agent triaged away is hidden. Optional on the
   // type for older stored reviews; required for new publishes (see coerceReview).
   manifest?: ManifestFile[];
+  // A non-blocking, server-computed FORMAT warning about the Brief (e.g. it reads
+  // like code, not plain English). Surfaced as a chip in the viewer and cleared on
+  // the next clean re-publish; never rejects the publish. See coerceReview.
+  briefWarning?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 // What a publisher hands in (the server stamps sessionId + timestamps).
+// `briefWarning` is the one field the publisher does NOT supply — coerceReview
+// derives it from the brief's shape and it rides through to the stored Review.
 export interface CreateReviewInput {
   brief: string;
   verdict?: "block" | "approve" | "comment";
   decisions: Decision[];
   manifest?: ManifestFile[];
+  briefWarning?: string;
 }
 
 export interface Comment {

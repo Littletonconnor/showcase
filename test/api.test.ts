@@ -391,6 +391,68 @@ test("publish_decisions MCP tool stores a decision review and returns the /?revi
   assert.ok(bad.error || bad.result?.isError, "missing confidence should error");
 });
 
+test("publish_decisions flags a code-like Brief (warn, not reject) and clears it on a clean re-publish", async () => {
+  const app = makeApp();
+  const decisions = [
+    {
+      id: "d-1",
+      call: "ship",
+      kind: "fix",
+      scope: "changed-line",
+      assertion: "ok",
+      confidence: "high",
+    },
+  ];
+  const manifest = [{ path: "a.ts", disposition: "has-decision", decisionId: "d-1" }];
+
+  // A Brief that reads like code (a fn() call + file:line) still publishes, but
+  // carries a non-blocking briefWarning on the result.
+  const jargon = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(1, "tools/call", {
+        name: "publish_decisions",
+        arguments: {
+          brief: "The handler calls coerceReview() and 400s at app.ts:363.",
+          decisions,
+          manifest,
+        },
+      }),
+    )
+  ).json()) as any;
+  const flagged = JSON.parse(jargon.result.content[0].text);
+  assert.ok(flagged.sessionId, "a jargon Brief must still publish");
+  assert.ok(flagged.briefWarning, "a code-like Brief surfaces a warning");
+
+  // It rides through to the stored review so the viewer can chip it.
+  const storedFlagged = (await (
+    await app.request(`/api/sessions/${flagged.sessionId}/review`)
+  ).json()) as any;
+  assert.ok(storedFlagged.briefWarning, "the warning persists on the stored review");
+
+  // Re-publishing the same session with a clean, plain-English Brief clears it.
+  const clean = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(2, "tools/call", {
+        name: "publish_decisions",
+        arguments: {
+          brief: "The change adds a guard so one client can't overwhelm the server.",
+          decisions,
+          manifest,
+          session: flagged.sessionId,
+        },
+      }),
+    )
+  ).json()) as any;
+  const cleared = JSON.parse(clean.result.content[0].text);
+  assert.ok(!cleared.briefWarning, "a clean Brief carries no warning");
+  const storedClean = (await (
+    await app.request(`/api/sessions/${flagged.sessionId}/review`)
+  ).json()) as any;
+  assert.ok(!storedClean.briefWarning, "the cleared warning is gone from the stored review");
+});
+
 test("re-publishing a decision review broadcasts review-updated so the open page refetches", async () => {
   const app = makeApp();
   const body = {

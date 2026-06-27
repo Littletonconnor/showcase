@@ -47,7 +47,10 @@ export interface McpDeps {
     session?: string;
     sessionTitle?: string;
     agent?: string;
-  }): Promise<{ sessionId: string; decisions: number } | { error: string; status: number }>;
+  }): Promise<
+    | { sessionId: string; decisions: number; briefWarning?: string }
+    | { error: string; status: number }
+  >;
   reviseSurface(
     id: string,
     patch: { parts?: SurfacePart[]; title?: string; badge?: SurfaceBadge | null },
@@ -121,6 +124,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
             sessionId: result.sessionId,
             decisions: result.decisions,
             url: `${origin}/?review=${result.sessionId}`,
+            ...(result.briefWarning ? { briefWarning: result.briefWarning } : {}),
           },
           null,
           2,

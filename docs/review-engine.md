@@ -567,7 +567,49 @@ directly editable in this repo; `[skill/aic]` = lands in the `code-review` skill
 which is generated — see the wrinkle below. `file:line` was accurate at writing;
 re-check before editing.
 
+### ▶ Status for the next agent (updated 2026-06-27)
+
+**Done and merged into this repo** — the entire `[showcase]` bucket:
+
+- **T0 ✅** done this pass — `docs/review-form-factor.md` sketch now matches the
+  shipped `Decision` type; `coverage`/`gaps`/`proveScope` struck.
+- **T1 ✅** _already shipped_ before this pass (verified) — stdio schema has
+  `id`/`details`/`proposal`/`manifest`, no dead `coverage`/`gaps`.
+- **T2 ✅** done this pass — adjudication re-keyed on `decision.id` via `keyOf`
+  (`ReviewView.tsx`), fallback to assertion text.
+- **T3 ✅** done this pass — burndown counts a settled (agent-answered) Disagree;
+  an unanswered Disagree shows "waiting"; "Review complete" is reachable.
+- **T4 ✅** done this pass — `checkBriefFormat` in `coerceReview` emits a
+  non-blocking `briefWarning` (on `Review` + publish result + MCP result), chipped
+  in the viewer; round-trip test added.
+- **T5 ✅** _already shipped_ before this pass (verified) — `App.tsx` renders
+  `ReviewInline` for every review session; `ReviewInline` sets `readonly` from
+  `exportBundle()`.
+
+**Specced, not built** — the keystone of the skill-side bucket:
+
+- **T6 📄 spec written** — see [`docs/evidence-pack-spec.md`](./evidence-pack-spec.md).
+  The pack is fully specified (output schema, conflict rule, time-to-first-card
+  budget, honesty rules, acceptance). The **tool itself is not built** — it lands
+  in the skill, not showcase (see the seam note below).
+
+**Not started — needs the skill/aic environment** (absent in the repo where this
+pass ran; see the decision below): **T7, T8, T9, T10**. **Deferred by YAGNI** (do
+not build until a real review demands it): **T11, T12, T13**.
+
+> **Why the skill-side tasks didn't land here.** This pass ran against the
+> `showcase` repo only. The `code-review` skill (`~/.claude/skills/code-review/`)
+> and its `aic` source were **not present**, and the engine doc's seam is explicit
+> that T6–T10 "land in the skill. None touch showcase" (see "How this maps onto the
+> existing code"). So nothing analysis-side was added to showcase. The next agent
+> with the skill/aic checkout picks up from T6's spec.
+
 ### The decision to make first (it gates everything skill-side)
+
+**Resolved (2026-06-27):** route **(b)** for the pack + audit (T6/T7), route **(a)**
+for the rule/prose edits (T8–T10) — the doc's own recommendation, confirmed. T6's
+spec is written ([`evidence-pack-spec.md`](./evidence-pack-spec.md)); the build is
+blocked only on having the skill/aic checkout, not on a remaining decision.
 
 The deterministic engine (evidence pack, cold-set audit, escalation, lenses,
 never-flag) lives in `~/.claude/skills/code-review/` — every file there is
@@ -581,19 +623,22 @@ You cannot edit the generated skill. Pick one route before starting T6–T10:
   script/binary the skill _invokes_, keeping the generated skill thin. Right for the
   evidence pack (it's a program, not prose) and the cold-set audit.
 
-Recommendation: **(b) for the pack + audit, (a) for the rule/prose edits.** Until
-this is chosen, the skill-side tasks are not actionable — only the `[showcase]`
-ones are.
+Recommendation: **(b) for the pack + audit, (a) for the rule/prose edits.** This
+choice is now made (see _Resolved_ above); the skill-side tasks are blocked only on
+having the skill/aic checkout, which was absent for this pass — so only the
+`[showcase]` ones landed.
 
 ### Do now — verified, small, render-side (`[showcase]`, low effort)
 
-- [ ] **T0 · Retire the dead honesty-ledger fields from the docs.** _Target:_
+- [x] **T0 · Retire the dead honesty-ledger fields from the docs.** _Target:_
       `docs/review-form-factor.md` (the `Decision` data-model sketch still lists
       `coverage`/`gaps`/`proveScope`). _Change:_ strike them; add one line — "confidence
       is the only surfaced honesty signal." _Done when:_ the form-factor sketch matches
       the shipped `Decision` type (`server/types.ts:251`) and the viewer
       (`ReviewView.tsx:273`).
-- [ ] **T1 · Sync the stale stdio `publish_decisions` schema.** _Target:_
+- [x] **T1 · Sync the stale stdio `publish_decisions` schema.** _(Already shipped:
+      the stdio schema at `mcpSpec.ts` declares `id`/`details`/`proposal`/`manifest`
+      and carries no `coverage`/`gaps` fields.)_ _Target:_
       `server/mcpSpec.ts:817` (`STDIO_MCP_INPUT_SCHEMAS.publishDecisions`). _Change:_ add
       `id`, `details`, `proposal` to the per-decision object and `manifest` at top
       level, matching the HTTP tool (`mcpSpec.ts:476`) and `CreateReviewInput`
@@ -606,7 +651,7 @@ ones are.
       round-trips and renders at `/?review=<id>`; stdio and HTTP decision schemas have
       field parity; no `d.decisionCoverage`/`d.decisionGaps` refs remain;
       `npm run typecheck` + `npm test` green.
-- [ ] **T2 · Re-key adjudication on `decision.id`.** _Target:_
+- [x] **T2 · Re-key adjudication on `decision.id`.** _Target:_
       `viewer/src/review/ReviewView.tsx` — state keyed on `assertion` at `:489`, `:522`,
       `:535`, `:544`, `:592`, `:679`. _Change:_ key on `decision.id` (already minted +
       rendered, `:163`, `:494`), with a fallback to `assertion` when `id` is absent.
@@ -615,12 +660,12 @@ ones are.
 
 ### Do now — small but with a judgment call (`[showcase]`, low–medium effort)
 
-- [ ] **T3 · Reachable terminal state.** _Target:_ `ReviewView.tsx:592` (`decided`
+- [x] **T3 · Reachable terminal state.** _Target:_ `ReviewView.tsx:592` (`decided`
       counts only `accepted`), `:633` (the complete/accepted copy). _Change:_ count an
       adjudicated-and-resolved Disagree toward completion so "Review complete" is
       reachable; an open Disagree shows "waiting," not a stuck burndown. _Done when:_
       accept-all + one-resolved-disagree reaches "Review complete."
-- [ ] **T4 · Brief format-check (warn-and-flag).** _Target:_ `coerceReview`
+- [x] **T4 · Brief format-check (warn-and-flag).** _Target:_ `coerceReview`
       (`server/app.ts:270`, brief passthrough at `:407`); surface a non-blocking
       `briefWarning` on the publish result; chip it in the viewer. _Change:_ pure
       **format** validation only — ≤4 sentences; reject backtick-fenced code and obvious
@@ -628,7 +673,10 @@ ones are.
       vars. Warn, never reject (a hard reject breaks the publish→render→revise loop).
       \_Done when:* a Brief with `someFn()` or a code fence still publishes but shows a
       warning chip; a clean Brief shows none; tests cover both.
-- [ ] **T5 · Read-only decision queue in the static export.** _Target:_
+- [x] **T5 · Read-only decision queue in the static export.** _(Already shipped:
+      `App.tsx` renders `ReviewInline` for every review session and `ReviewInline`
+      sets `readonly` from `exportBundle()`, so an exported decision queue renders
+      the Brief + queue read-only.)_ _Target:_
       `viewer/src/App.tsx:868` (gate `… && !exportBundle()`). _Change:_ render
       `ReviewInline`/`ReviewView` in `readonly` mode for an exported decision-queue
       review instead of falling through to the card stream. The bundle already carries
@@ -639,7 +687,14 @@ ones are.
 
 ### Then — the determinism + depth core (`[skill/aic]`, medium effort)
 
-- [ ] **T6 · The deterministic evidence pack.** _Route (b) tool._ Emit, for a
+> **Bucket status:** none of T6–T10 are built — they land in the skill, which was
+> not present in the environment for this pass. T6 has a written spec
+> ([`evidence-pack-spec.md`](./evidence-pack-spec.md)); the rest await the
+> skill/aic checkout. Start at T6, then T7/T9 (consume the pack), then T8/T10.
+
+- [ ] **T6 · The deterministic evidence pack.** 📄 _Spec written —
+      [`docs/evidence-pack-spec.md`](./evidence-pack-spec.md); tool not built (skill-side)._
+      _Route (b) tool._ Emit, for a
       frozen diff: hunk `file:line` ranges, per-file churn, hop-1 callers + their tests,
       change-coupling (pinned window), shell-out lint/test results — as JSON the skill
       cites and may not re-derive. Add the **conflict rule** (a Layer-1 fact beats a
@@ -679,6 +734,8 @@ ones are.
 - [ ] **T13 ·** agent-owned, human-editable adjudication-memory ledger — only if it
       proves out `[skill/aic]`.
 
-**Sequencing:** T0–T5 are independent and shippable now (T1 + T2 + T5 make one
-tidy "fix the decision-review path" PR). T6 is the keystone of the "then" bucket —
-T7/T9 consume its pack — so spec and build it first there. YAGNI gates T11–T13.
+**Sequencing:** T0–T5 are **done** (in this repo). T6's **spec is written**
+(`evidence-pack-spec.md`); it is the keystone of the "then" bucket — T7/T9 consume
+its pack — so build it first when the skill/aic checkout is available, then T8/T10.
+YAGNI gates T11–T13. See **▶ Status for the next agent** at the top of this appendix
+for the authoritative per-task state.

@@ -262,21 +262,28 @@ Review = {
   brief: string,         // ≤4 sentences, plain English, no identifiers (enforced)
   verdict: derived,      // block | approve | comment — computed from the decisions
   decisions: Decision[], // risk-ranked; decisions[0] is the lede
+  manifest: ManifestFile[], // every changed file + its disposition (trust backbone)
 }
 
 Decision = {
+  id?: string,           // stable, copy-pasteable ref; survives a re-publish
   call: "block" | "ship" | "decide",
   kind: "bug" | "fix" | "capability" | "refactor" | "migration" | "risk",
   scope: "changed-line" | "whole-file" | "codebase",
   assertion: string,     // one sentence — the conclusion
-  impact: string,        // who hits it, how bad, under what input
-  confidence: "high" | "medium" | "low",
-  coverage: string,      // what was / wasn't verified
-  gaps: [{ what: string, proveScope: string }], // each → a scoped [Prove it]
+  impact?: string,       // who hits it, how bad, under what input
+  details?: string,      // the fuller markdown rationale, rendered below the assertion
+  confidence: "high" | "medium" | "low", // the ONE surfaced honesty signal
   pivot?: string,        // conditional — "flips to ✅ if …"
-  evidence: Part[],      // right-pane artifacts (diff / mermaid / code / chart)
+  evidence?: Part[],     // right-pane artifacts (diff / mermaid / code / chart)
+  proposal?: { before, after, filename?, note? }, // a concrete suggested change
 }
 ```
+
+`confidence` is the **only surfaced honesty signal**: the self-reported
+`coverage`/`gaps` ledger was deliberately cut (nothing backs a "what I verified"
+claim), so it is absent from the shipped `Decision` type (`server/types.ts`) and
+the viewer (`ReviewView.tsx`) — see the **Shipped reality** note at the top.
 
 This is additive over the shipped review primitives (`publish_review`, the typed
 parts, the `review` kit) — a reorganization of them into the decision grammar, not
