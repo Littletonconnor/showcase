@@ -309,9 +309,10 @@ noted.
    deterministic re-check (`evidence-pack cold-set`) re-flags any skipped file
    with churn over a threshold, a sensitive path, or change-coupling to a touched
    file, forcing a decision or an explicit justification. The form factor no
-   longer _helps_ a buried change. _Viewer follow-up (not yet built):_ a
-   disposition-aware manifest summary that surfaces the audit result in the UI
-   ("K skipped — N audited / justified") would close the loop visually.
+   longer _helps_ a buried change. _Viewer (built):_ a disposition-aware manifest
+   summary in `ReviewView` closes the loop visually — counts by disposition
+   ("N decisions · M reviewed-clean · K skipped (J explained)") plus an amber flag
+   on any high-churn skip with no justification note.
 3. **Brief enforcement** — _resolved: warn, not reject._ "No identifiers" is a
    non-blocking `briefWarning` chip, never a hard reject — a mid-loop rejection
    would break the publish → render → revise loop. (Shipped.)

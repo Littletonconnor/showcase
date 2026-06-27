@@ -61,6 +61,14 @@ const DISPOSITION = {
   "mechanical-skipped": { label: "mechanical · skipped", dot: "bg-border" },
 } satisfies Record<FileDisposition, { label: string; dot: string }>;
 
+// A mechanical-skipped file with real churn and no justification note is exactly
+// what the skill's cold-set audit guards against — a real change buried in the
+// skip set. Surface it from the manifest the review already carries (Layer 3 just
+// renders the data; it forms no opinion about what the file *means*).
+const SKIP_CHURN_FLAG = 50;
+const isUnexplainedBigSkip = (f: ManifestFile) =>
+  f.disposition === "mechanical-skipped" && !f.note && f.added + f.removed >= SKIP_CHURN_FLAG;
+
 // Adjudication key: the decision's stable id when present (so a reworded-but-same
 // decision carries the human's prior call across a re-publish), falling back to
 // the assertion text for older reviews minted before ids existed.
@@ -76,25 +84,44 @@ function Manifest(props: {
 }) {
   const files = props.files;
   const withDecision = files.filter((f) => f.disposition === "has-decision").length;
+  const reviewedClean = files.filter((f) => f.disposition === "reviewed-no-comment").length;
+  const skipped = files.filter((f) => f.disposition === "mechanical-skipped").length;
+  const explainedSkips = files.filter(
+    (f) => f.disposition === "mechanical-skipped" && f.note,
+  ).length;
+  const flagged = files.filter(isUnexplainedBigSkip).length;
   return (
     <details className="group mt-5 max-w-[820px] overflow-hidden rounded-lg border-[0.5px] border-border bg-card/40">
       <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-[13px] font-medium text-foreground select-none">
         <ChevronRight className="size-3.5 text-faint transition-transform group-open:rotate-90" />
         All {files.length} file{files.length === 1 ? "" : "s"} changed
         <span className="font-normal text-faint">
-          · {withDecision} with a decision · nothing omitted
+          · {withDecision} decision{withDecision === 1 ? "" : "s"} · {reviewedClean} reviewed-clean
+          {skipped > 0
+            ? ` · ${skipped} skipped${explainedSkips > 0 ? ` (${explainedSkips} explained)` : ""}`
+            : ""}
         </span>
+        {flagged > 0 ? (
+          <span className="ml-auto shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+            ⚠ {flagged} high-churn skip{flagged === 1 ? "" : "s"} unexplained
+          </span>
+        ) : (
+          <span className="ml-auto shrink-0 font-normal text-faint">nothing omitted</span>
+        )}
       </summary>
       <ul className="border-t-[0.5px] border-border">
         {files.map((f, i) => {
           const disp = DISPOSITION[f.disposition];
+          const flag = isUnexplainedBigSkip(f);
           const idx = f.decisionId != null ? props.decisionIndex.get(f.decisionId) : undefined;
           return (
             <li
               key={i}
               className="flex items-center gap-3 border-b-[0.5px] border-border/40 px-4 py-1.5 text-[12.5px] last:border-0"
             >
-              <span className={cx("size-1.5 shrink-0 rounded-full", disp.dot)} />
+              <span
+                className={cx("size-1.5 shrink-0 rounded-full", flag ? "bg-amber-500" : disp.dot)}
+              />
               <span className="truncate font-mono text-[12px] text-foreground" title={f.path}>
                 {f.path}
               </span>
@@ -114,7 +141,14 @@ function Manifest(props: {
                   decision {idx + 1} →
                 </button>
               ) : (
-                <span className="shrink-0 text-[11px] text-faint">{disp.label}</span>
+                <span
+                  className={cx(
+                    "shrink-0 text-[11px]",
+                    flag ? "text-amber-700 dark:text-amber-400" : "text-faint",
+                  )}
+                >
+                  {flag ? "skipped · high churn, no note" : disp.label}
+                </span>
               )}
             </li>
           );

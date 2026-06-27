@@ -600,6 +600,7 @@ re-check before editing.
   showcase — the seam held.
 
 **Built (2026-06-27, in `aic`) — the whole "then" bucket:** **T7, T8, T9, T10**.
+
 - **T7 ✅** cold-set audit — `evidence-pack cold-set` re-flags a skipped file with
   churn/sensitive/coupling risk; wired into `code-review/reference/execution.md`.
 - **T8 ✅** reach-gated escalation + lens dispatch — `code-review/reference/lenses.md`
