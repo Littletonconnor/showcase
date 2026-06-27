@@ -177,10 +177,10 @@ sugar for a surface with a single `html` part (`htmlPart`, `types.ts:466`).
 
 A comment (`types.ts:311`) is the human's half of the loop. It attaches to a
 **surface** (a remark on a card) or to the **session** (`surfaceId: null`, a
-chat-level message). Each has a monotonic `seq` (the cursor unit), an `author`
-(`"user"` is the reserved signal the agent listens for), and an optional
-**anchor** (`CommentAnchor`) pinning it to a spot — either a point (`xPct`/`yPct`
-on a diagram/image/chart) or a `line` in a diff/code part.
+chat-level message). Each has a monotonic `seq` (the cursor unit) and an `author`:
+`"user"` is the reserved signal the agent listens for, while a sandboxed surface
+that calls `sendPrompt()` posts as `"surface"` — which the feedback channel never
+delivers to the agent on its own (a human relays it deliberately if they choose).
 
 ### 4.4 Review — the decision-queue form factor
 

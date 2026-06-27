@@ -5,8 +5,9 @@ session. Sections 1–5 are "how it works / how to work here" (stable reference)
 section 6 is the roadmap (what to build); sections 7–8 are open decisions and
 how to pick up work autonomously. Architecture detail lives in `AGENTS.md`.
 
-**👉 Active focus is the decision-review form factor — see the phased plan
-immediately below.** Sections 1–8 are the stable guide/roadmap underneath it.
+**👉 Active focus is the decision-review form factor — it's built and dogfooded;
+one open item (drop the Disagree button) remains, see immediately below.** Sections
+1–8 are the stable guide/roadmap underneath it.
 
 ---
 
@@ -27,55 +28,43 @@ included), with `showcase decisions <session> <file>` as the CLI. The static exp
 inlines the stored review so a shared review renders offline.
 
 This is a **dogfood-driven redesign** — built it, reviewed a real Java PR through
-it (`wealthfront-lembas` `cl/ALLM-126`), and the phases below are the feedback
+it (`wealthfront-lembas` `cl/ALLM-126`), and the shipped list below is the feedback
 that surfaced. Get the human's intent right; this is UX, not just plumbing.
 
-### Phase 0 — Shipped (do NOT redo — build on it)
+### Shipped — do NOT redo, build on it
 
-- Inline board rendering: a review session takes over the main panel via
-  `ReviewInline` → `ReviewView` (keyed off the server's `kind === "review"`).
-- `Decision.proposal` field renders a "Suggested change" diff under the evidence.
-- Server-side newline normalization in `coerceReview` (kills the "No newline at
-  end of file" noise for new publishes).
-- Content-keyed local adjudication (survives an agent re-publish) + a per-decision
-  comment trail.
-- The live loop: `publish_decisions` MCP tool, `review-updated` SSE event,
-  `ReviewView` / `ReviewInline` / `ReviewPage`. `publish_decisions` is registered
-  on both the HTTP and stdio MCP transports (the earlier stdio gap is closed, and
-  the stdio schema now carries the manifest).
-- Sidebar: review sessions chip their verdict; the row opens the review inline.
+The form factor is built and was dogfooded against a real Java PR
+(`wealthfront-lembas` `cl/ALLM-126`):
+
+- **Inline board rendering** — a `kind === "review"` session takes over the main
+  panel via `ReviewInline` → `ReviewView`; sidebar rows chip their verdict and open
+  the review inline.
+- **The live loop** — `publish_decisions` MCP tool (HTTP + stdio, manifest on
+  both), `review-updated` SSE event, `ReviewView` / `ReviewInline` / `ReviewPage`.
+  `coerceReview` does server-side newline normalization + the brief-format warning.
+- **Complete changed-file manifest** (Phase 1) — `ReviewView`'s collapsible "All N
+  files changed" panel (`Manifest`, fed by `Review.manifest` / `ManifestFile`) tags
+  every file `has-decision` / `reviewed · no comment` / `mechanical · skipped` with
+  line counts, linking to its decision. Addresses the "trusting the skip set" distrust.
+- **Decision IDs + adjudication** (Phase 2) — "Verify" verb dropped; each decision
+  carries a stable copy-ref (`CopyRef`) you paste into normal agent chat to scope a
+  revision; a lightweight local **Accept** drives the burndown; content-keyed so it
+  survives an agent re-publish; per-decision comment trail.
+- **Honest ledger** (Phase 3) — the "High confidence / Checked / Not yet" labels are
+  gone; one signal, "How sure", in plain words (Confident / Fairly sure / Not sure).
+  Unbacked self-reported "what I verified" claims were dropped.
+- **Suggested fixes** (Phase 4) — `EvidencePane` renders `Decision.proposal` as a
+  labeled before→after "Suggested fix" diff beneath the evidence.
 - (Also fixed the `code-review` skill to scope depth per-slice so reviews stop
   fanning out 5 specialists over the whole diff — `~/Sites/ai-config`.)
 
-### Phase 1 — Shipped: the complete changed-file manifest
+### The one open item — drop the Disagree button
 
-Every changed file is accounted for: `ReviewView`'s collapsible "All N files
-changed" panel (`Manifest`, fed by `Review.manifest` / `ManifestFile`) tags each
-file `has-decision` / `reviewed · no comment` / `mechanical · skipped` with line
-counts, linking to its decision when it has one. Addresses the "trusting the skip
-set" distrust.
-
-### Phase 2 — Mostly shipped: decision IDs + normal chat (Disagree button still open)
-
-- ✅ Dropped the "Verify" verb. ✅ Each decision carries a stable, copy-pasteable
-  ref (`CopyRef`) the human pastes into normal agent chat to scope a revision.
-- ✅ Kept a lightweight local **Accept** (drives the burndown).
-- ⏳ **Still open:** **Disagree** is still a bespoke button that posts a structured
-  comment (`disagreeText`). The north star is to drop it too in favor of the
-  copy-ref + normal-chat flow — but it's the one verb that auto-threads a
-  defend-or-revise instruction, so it's kept until chat covers that ergonomically.
-
-### Phase 3 — Shipped: ledger clarity
-
-The confusing "High confidence / Checked / Not yet" labels are gone. `ReviewView`
-now surfaces one honest signal — "How sure" with plain words (Confident / Fairly
-sure / Not sure); self-reported "what I verified" claims were dropped (nothing
-backed them).
-
-### Phase 4 — Shipped: suggested fixes in the diffs
-
-`EvidencePane` renders `Decision.proposal` (before→after) as a clearly-labeled
-"Suggested fix" diff beneath the evidence whenever the agent populates it.
+**Disagree** is still a bespoke button that posts a structured comment
+(`disagreeText`, live in `ReviewView.tsx` / `ReviewPage.tsx`). The north star is to
+drop it in favor of the copy-ref + normal-chat flow — but it's the one verb that
+auto-threads a defend-or-revise instruction, so it stays until chat covers that
+ergonomically. More design than plumbing.
 
 ### Key files
 
@@ -301,11 +290,10 @@ workflows compose.
   flag (the agent is parked in `wait_for_feedback`), rendered as a green dot
   in the sidebar. The real loop is the comment/`wait_for_feedback` pull in
   §4 — there is no session-level editor chat.
-- [~] **Anchored annotations** — _**RETIRED** with the comment UI (commit `03c2693`)._
-  The point-pin (📍) and the line-click composer (R4) are both gone; the
-  `CommentAnchor` `{xPct,yPct}`/`{line,lineType}` types and the server-side
-  `parseAnchor` still exist but are **vestigial** (no viewer produces them,
-  and `onLineClick` pipes to nothing). Cleanup candidate.
+- [x] **Anchored annotations** — _**RETIRED** with the comment UI (commit `03c2693`)._
+  The point-pin (📍) and the line-click composer (R4) are gone, and the
+  `CommentAnchor` / `parseAnchor` / `onLineClick` machinery has since been removed
+  from the code too (the lone stale `ARCHITECTURE.md` data-model note is now fixed).
 - [x] **Structured feedback** — one-tap **Approve** (👍) and **Dismiss** (⊘) on
       finding cards post a recognizable `author:"user"` signal. _(Still shipped —
       these are the surviving surface-feedback affordances.)_
@@ -349,13 +337,11 @@ workflows compose.
       **delegates the analysis to the agent's `code-review` skill** (which dispatches
       to language-specific hygiene skills) and then renders its findings via
       `publish_review`; showcase owns the rendering, not the review methodology.
-- [~] **R4 — Line-anchored diff comments — _RETIRED (commit `03c2693`)._** The
-  "Comment on line N" composer and the "Line N" thread chip were removed with
-  the rest of the surface comment UI. The in-frame line-click bridge
-  (`composedPath` through the @pierre/diffs shadow roots), the `onLineClick`
-  prop chain (DiffPart→SandboxedPart→Card), and the server `CommentAnchor`
-  line variant + `parseAnchor` all still exist but are **dead** — Card passes
-  no `onLineClick`, so the posted line-click message is consumed by nobody.
+- [x] **R4 — Line-anchored diff comments — _RETIRED (commit `03c2693`)._** The
+  "Comment on line N" composer, the "Line N" thread chip, the in-frame line-click
+  bridge, the `onLineClick` prop chain (DiffPart→SandboxedPart→Card), and the
+  server `CommentAnchor` line variant + `parseAnchor` have all been removed — no
+  longer dead code in the tree.
 
 _(A GitHub round-trip — `gh pr review` with line comments — was considered and
 **dropped**: showcase is its own surface, not a GitHub front-end. Sharing a
@@ -463,10 +449,11 @@ for their own sake.
 1. Read sections 1–5 of this file and `AGENTS.md`.
 2. `git branch --show-current` — if not on a task branch, branch from `main`.
 3. Both flagship workflows are shipped — Workflow 1 (visual PR review, R1–R4) and
-   Workflow 2 (learning & explainers, L1–L3). Remaining work is two **Supporting
-   capabilities** (static export, visual version diff) plus the **review-depth /
-   fancier-visualizations** track (start with the charting kit). If an item is an
-   "open decision" in §7, confirm it first.
+   Workflow 2 (learning & explainers, L1–L3); the supporting **static export** is
+   shipped too. Remaining work is the active-focus open item (**drop the Disagree
+   button**, top of file) plus the **review-depth / fancier-visualizations** track —
+   start with the **chart-cell → navigate bridge** (the depth charts render but are
+   inert without it). If an item is an "open decision" in §7, confirm it first.
 4. Build in small commits; after each, run the §5 verify suite. For UI, screenshot
    and look.
 5. Keep the oracle green; if you change behavior it covers, update the oracle in
