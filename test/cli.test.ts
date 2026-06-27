@@ -171,6 +171,7 @@ test("publish --kit puts the (deduped) kit ids on the html part", async () => {
       { env: { SHOWCASE_URL: server.url } },
       "publish",
       file,
+      "--json",
       "--kit",
       "issues",
       "--kit",
@@ -202,6 +203,7 @@ test("chart command wraps the spec file as a chart part", async () => {
       { env: { SHOWCASE_URL: server.url } },
       "chart",
       file,
+      "--json",
       "--title",
       "Latency",
     );
@@ -251,7 +253,7 @@ test("publish --kit with an unknown id fails with a clear error", async () => {
 test("kits lists the board's available kits", async () => {
   const server = await serveApp();
   try {
-    const { code, stdout } = await runWith({ env: { SHOWCASE_URL: server.url } }, "kits");
+    const { code, stdout } = await runWith({ env: { SHOWCASE_URL: server.url } }, "kits", "--json");
     assert.equal(code, 0);
     const kits = JSON.parse(stdout);
     assert.ok(kits.some((k: any) => k.id === "issues"));
@@ -259,4 +261,55 @@ test("kits lists the board's available kits", async () => {
   } finally {
     await server.close();
   }
+});
+
+test("publish prints a human summary by default, raw JSON only under --json", async () => {
+  const server = await serveApp();
+  try {
+    const dir = mkdtempSync(join(tmpdir(), "showcase-out-"));
+    const file = join(dir, "x.html");
+    writeFileSync(file, "<p>hi</p>");
+
+    // default: a human line carrying the deep link + surface id, not JSON
+    const human = await runWith({ env: { SHOWCASE_URL: server.url } }, "publish", file);
+    assert.equal(human.code, 0);
+    assert.match(human.stdout, /published/);
+    assert.match(human.stdout, /\/session\/.+\/s\//);
+    assert.throws(() => JSON.parse(human.stdout));
+
+    // --json: a parseable surface object with a url
+    const json = await runWith({ env: { SHOWCASE_URL: server.url } }, "publish", file, "--json");
+    assert.equal(json.code, 0);
+    const surface = JSON.parse(json.stdout);
+    assert.ok(surface.id && surface.url);
+  } finally {
+    await server.close();
+  }
+});
+
+test("an unknown command suggests the closest match", async () => {
+  const { code, stderr } = await run("pubish");
+  assert.equal(code, 1);
+  assert.match(stderr, /unknown command "pubish" — did you mean "publish"\?/);
+});
+
+test("a mistyped flag suggests the closest known flag", async () => {
+  const { code, stderr } = await run("publish", "--titel", "x");
+  assert.equal(code, 1);
+  assert.match(stderr, /Unknown option '--titel'\. Did you mean --title\?/);
+});
+
+test("completions bash prints a sourceable script with the command names", async () => {
+  const { code, stdout } = await run("completions", "bash");
+  assert.equal(code, 0);
+  assert.match(stdout, /complete -F _showcase showcase/);
+  assert.match(stdout, /publish/);
+});
+
+test("top-level help groups the commands", async () => {
+  const { code, stdout } = await run("help");
+  assert.equal(code, 0);
+  assert.match(stdout, /publish:/);
+  assert.match(stdout, /feedback:/);
+  assert.match(stdout, /usage: showcase <command>/);
 });

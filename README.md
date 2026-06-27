@@ -373,14 +373,15 @@ channels.
 
 ## Project layout
 
-| Path               | What                                                                                                                                      |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `server/`          | Runtime-agnostic Hono app: routes, SSE, the surface/comment model, sandboxed rendering. `server/storage.ts` is the local JSON-file store. |
-| `viewer/`          | React 19 + zustand + Tailwind viewer, Vite-built to a single `viewer/dist/index.html`.                                                    |
-| `mcp/`             | stdio MCP server — a thin client over the HTTP API.                                                                                       |
-| `bin/showcase.js`  | Zero-dependency CLI (Node built-ins only).                                                                                                |
-| `guide/`           | The instructions agents fetch at runtime (`/setup`, `/guide`, `/playbook`).                                                               |
-| `skills/showcase/` | The Claude Code skill.                                                                                                                    |
+| Path               | What                                                                                                                                                      |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `server/`          | Runtime-agnostic Hono app: routes, SSE, the surface/comment model, sandboxed rendering. `server/storage.ts` is the local JSON-file store.                 |
+| `viewer/`          | React 19 + zustand + Tailwind viewer, Vite-built to a single `viewer/dist/index.html`.                                                                    |
+| `mcp/`             | stdio MCP server — a thin client over the HTTP API.                                                                                                       |
+| `bin/showcase.js`  | Thin launcher into `cli/`.                                                                                                                                |
+| `cli/`             | The CLI: a command registry (`cli/commands/*`) over shared http/error/output helpers. Zero runtime deps; human output by default, `--json` for scripting. |
+| `guide/`           | The instructions agents fetch at runtime (`/setup`, `/guide`, `/playbook`).                                                                               |
+| `skills/showcase/` | The Claude Code skill.                                                                                                                                    |
 
 ---
 

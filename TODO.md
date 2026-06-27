@@ -403,16 +403,26 @@ validate` command so theme/kit/blueprint authors (`docs/themable-explainers.md`)
 
 **Developer experience & architecture**
 
-- **Build out a more robust CLI** — `bin/showcase.js` is a single ~1400-line
-  zero-dependency file: hand-rolled `parseArgs` flag handling, ad-hoc `fetch`
-  calls, and inconsistent error/exit-code behavior per subcommand. It works but is
-  hard to extend and easy to break. Rework it into a real CLI: a proper
-  command/subcommand router with per-command help, validated/typed options, shared
-  HTTP-client + error-formatting helpers (one place that maps API failures to exit
-  codes and human messages), `--json` output for scripting, shell-completion, and
-  command-level tests. Keep the publish→render→comment loop the priority and the
-  install story zero-friction — if a dependency is added (e.g. a small arg parser),
-  weigh it against the current zero-dep stance in CLAUDE.md. _Effort: medium._
+- **✅ Shipped — robust CLI.** `bin/showcase.js` is now a thin launcher; the CLI
+  proper lives in `cli/` as type-stripped TypeScript modules (zero runtime deps,
+  no build step — matches the server). The single ~1400-line file became a
+  **command registry** (`cli/registry.ts`, one `Command` per subcommand under
+  `cli/commands/`, grouped for the help index) over **shared helpers**:
+  `cli/http.ts` (the API client + the one place that maps an API failure or an
+  unreachable server to a `showcase: …` message + non-zero exit, with local
+  auto-start preserved), `cli/errors.ts` (`fail` + Levenshtein "did you mean" for
+  both mistyped flags and commands + friendly network-error hints),
+  `cli/session.ts`, `cli/output.ts`, and `cli/command.ts` (per-command parse +
+  **per-command `--help` generated from each command's option spec**, so help and
+  parsing never drift). Each command declares **validated/typed options** (type,
+  short, placeholder, description) in one spec. New: **`--json`** flips output
+  from a human summary to the raw machine object for scripting (default is human;
+  the publish-family `--json` _part_ flag was renamed `--json-part` to free the
+  global); a **`showcase completions <bash|zsh|install>`** command generates
+  completion scripts from the live registry; and **command-level tests**
+  (`test/cli.test.ts`) cover help grouping, the human↔`--json` split, completions,
+  and the did-you-mean hints. The publish→render→comment loop and the zero-friction
+  install story are unchanged.
 - **Modernize into a pnpm-workspace monorepo** — today everything (CLI, HTTP
   server, stdio MCP, the Vite viewer, guide/skills) lives in one root `package.json`
   with one dependency tree and the viewer build coupled to the server (`npm run dev`

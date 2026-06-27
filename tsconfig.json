@@ -18,5 +18,5 @@
     // generated components under viewer/src instead of a literal `@/` dir.
     "paths": { "@/*": ["./viewer/src/*"] }
   },
-  "include": ["server", "mcp", "test"]
+  "include": ["server", "mcp", "test", "cli"]
 }

@@ -31,7 +31,13 @@ product. When in doubt, optimize for the loop.
   `docs/themable-explainers.md`.
 - `viewer/` — React + TypeScript (zustand store, Tailwind, vendored shadcn/ui),
   Vite-built into a single self-contained `viewer/dist/index.html`.
-- `bin/showcase.js` — zero-dependency CLI. `guide/` — runtime agent instructions.
+- `bin/showcase.js` — thin launcher into `cli/`. The CLI proper lives in `cli/`:
+  a command registry (`cli/registry.ts`, one `Command` per subcommand under
+  `cli/commands/`) over shared helpers — `cli/http.ts` (the API client +
+  error→exit mapping), `cli/errors.ts`, `cli/session.ts`, `cli/output.ts`
+  (human by default, raw JSON under `--json`), `cli/command.ts` (per-command
+  parse + help). Zero runtime deps; type-stripped like the server.
+  `guide/` — runtime agent instructions.
 
 ## Invariants worth keeping
 
