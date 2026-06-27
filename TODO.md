@@ -345,29 +345,23 @@ shipped-foundation list above.)_
 A set of directions surfaced in a codebase review that harden the engine and
 deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
 
-**Workflow 2 depth**
+**Editor-side conversation ergonomics**
 
-- **Interactive, conversational explainers** — the scrub half of the §1 vision
-  ("scrub _and ask questions of_") shipped as the `animate` kit; the "ask questions
-  of" half is only implicit in the generic comment loop. Make it first-class: a
-  question posted under an explainer routes back to the agent _scoped to that
-  surface/step_, and the agent revises in place (the content-keyed pattern
-  decision-review already uses). Turns a static animation into the interactive
-  artifact the north star promises. _Effort: medium._
+- **Tighten the editor↔surface reference loop** — the conversation deliberately
+  lives in Cursor / Claude Code, not in showcase (the in-app comment UI was
+  stripped on purpose); the copy-surface-id affordance is the bridge. The "ask
+  questions of an explainer" vision is _not_ a new viewer widget — it's making that
+  bridge frictionless so iterating on a surface from your editor is easy: (a)
+  **scoped copy-refs** — clicking a step/part copies a ready-to-paste phrase like
+  `showcase surface 7Kq2 "Auth flow" · step 3` instead of a bare id, so the agent
+  gets exact scope; (b) lean on **agent read-back via MCP** (the resources/prompts
+  item below) so the agent finds a surface by title and reads its current parts
+  with _no copy at all_ — "slow down the backfill step" just works. The explainer
+  stays a plain document; the conversation stays in the editor; only the
+  _reference_ gets easy. Largely folds into the MCP item. _Effort: low–medium._
 
-**Durability & scale**
+**Housekeeping**
 
-- **SQLite store behind the `Store` interface** — `JsonFileStore` holds the whole
-  board in memory and rewrites the entire file on every mutation (O(n), no
-  mid-write transaction). The `Store` interface is already complete and
-  runtime-isolated — the seam was built for this swap (the Cloudflare SqlStore was
-  removed but the contract remains). SQLite gives durability, incremental writes,
-  and indexed queries; it's the unlock for the two items below. _Effort: medium._
-- **Full-text search across content** — live search only matches session title +
-  agent name; there's no way to find a past decision, diagram, or snippet by its
-  content. SQLite FTS5 (riding on the store swap) over surface parts, comments, and
-  decision briefs makes the board an actual searchable record. _Effort: low (once
-  the store lands)._
 - **Asset lifecycle / GC** — eviction only runs eagerly on upload; orphaned assets
   (referenced by no live or historical surface) accumulate until the board budget
   forces LRU. Add a lazy GC pass (`isAssetReferenced` already exists), a
@@ -404,10 +398,15 @@ deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
   protocol-native, and it keeps the agent's model of the board accurate.
   _Effort: medium._
 
-_Considered and cut from this track:_ a surface version-diff view (history exists,
-but the iterate loop doesn't need it) and cross-browser/mobile e2e expansion. The
-agent wake/notify path (notifications when feedback lands — _not_ a return of the
-in-app comment UI) is parked pending a call on whether to pursue it.
+_Deferred / punted (revisit later):_ a **durable searchable store** (SQLite +
+FTS5) for referencing old mockups/reviews — `JsonFileStore` is fine at personal
+scale and `showcase export` → HTML → Notion already covers the "keep it for later"
+need; revisit only if the in-memory board hits a real ceiling (the whole board,
+asset bytes included, is resident and rewritten per mutation). _Cut:_ a surface
+version-diff view (history exists, but the iterate loop doesn't need it) and
+cross-browser/mobile e2e expansion. _Parked:_ the agent wake/notify path
+(notifications when feedback lands — _not_ a return of the in-app comment UI),
+pending a call on whether to pursue it.
 
 ---
 
