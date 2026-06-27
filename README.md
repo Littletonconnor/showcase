@@ -15,9 +15,8 @@ revise** — is the whole point. No GitHub thread or terminal scrollback does th
 
 ![A PR-review verdict card on the showcase surface: a risk band over size/surface/sensitivity/tests, a risk-weighted file manifest, and a findings summary table](docs/images/pr-review.png)
 
-Forked from [sideshow](https://github.com/modem-dev/sideshow) (MIT) and stripped
-to the local-only engine: a Hono server, a React viewer, an MCP server, and a
-zero-dependency CLI. It runs entirely on your machine.
+A self-contained local-only engine: a Hono server, a React viewer, an MCP
+server, and a zero-dependency CLI. It runs entirely on your machine.
 
 > **See it in 30 seconds:** `npm install && npm run build:viewer && npm run serve`,
 > then `node bin/showcase.js demo` and open <http://localhost:8229>. Every
@@ -87,6 +86,10 @@ push back, or **Approve** to lock the direction — and the agent revises in pla
 **Plus the everyday uses:** visualize data (native charts), render math (KaTeX),
 sketch UI ideas (sandboxed HTML), or compose a walk-through deck with the
 `slides` kit.
+
+![A profiling session on the showcase surface: a native before/after bar chart of queue-wait percentiles over a green-and-red 24h histogram, with a KaTeX-rendered Little's Law derivation in the card below](docs/images/data-viz.png)
+
+![An interactive sandboxed-HTML card explaining exponential backoff: a live base-delay slider and a full-jitter toggle drive a stack of doubling delay bars from 200 ms to 3.2 s](docs/images/interactive-html.png)
 
 ---
 
@@ -259,4 +262,4 @@ The full developer guide and roadmap live in `CLAUDE.md` and `TODO.md`.
 
 ## License
 
-[MIT](LICENSE) — inherits sideshow's license.
+[MIT](LICENSE)
