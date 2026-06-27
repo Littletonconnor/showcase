@@ -787,6 +787,30 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
     findings: z.array(findingStdioSchema).describe(d.reviewFindings),
     sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
   },
+  publishDecisions: {
+    brief: z.string().describe(d.brief),
+    verdict: z.enum(["block", "approve", "comment"]).optional().describe(d.decisionVerdict),
+    decisions: z
+      .array(
+        z.object({
+          call: z.enum(["block", "ship", "decide"]).describe(d.decisionCall),
+          kind: z.string().describe(d.decisionKind),
+          scope: z.enum(["changed-line", "whole-file", "codebase"]).describe(d.decisionScope),
+          assertion: z.string().describe(d.decisionAssertion),
+          impact: z.string().optional().describe(d.decisionImpact),
+          confidence: z.enum(["high", "medium", "low"]).describe(d.decisionConfidence),
+          coverage: z.string().describe(d.decisionCoverage),
+          gaps: z
+            .array(z.object({ what: z.string(), proveScope: z.string().optional() }))
+            .optional()
+            .describe(d.decisionGaps),
+          pivot: z.string().optional().describe(d.decisionPivot),
+          evidence: z.array(mcpPartSchema).optional().describe(d.decisionEvidence),
+        }),
+      )
+      .describe(d.decisions),
+    sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
+  },
   reviewFinding: {
     severity: z
       .enum(["bug", "nit", "question", "praise", "note"])

@@ -126,6 +126,24 @@ server.registerTool(
 );
 
 server.registerTool(
+  "publish_decisions",
+  {
+    description: MCP_TOOL_DESCRIPTIONS.publishDecisions,
+    inputSchema: STDIO_MCP_INPUT_SCHEMAS.publishDecisions,
+  },
+  async ({ brief, verdict, decisions, sessionTitle }) => {
+    const session = await ensureSession(sessionTitle);
+    const result = JSON.parse(
+      await api(`/api/sessions/${session}/review`, {
+        method: "POST",
+        body: JSON.stringify({ brief, verdict, decisions }),
+      }),
+    );
+    return text({ ...result, url: `${API}/session/${session}` });
+  },
+);
+
+server.registerTool(
   "review_finding",
   {
     description: MCP_TOOL_DESCRIPTIONS.reviewFinding,
