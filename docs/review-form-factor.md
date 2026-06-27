@@ -9,11 +9,13 @@ back here._
 > **Shipped reality (read this before treating the rest as gospec).** This doc is
 > the design north star and runs ahead of the code in two places:
 >
-> - **The interaction loop is Accept / Disagree, not Accept / Override / Prove-it /
->   Challenge.** The human Accepts a decision or Disagrees (a scoped comment the
->   agent must defend-or-concede); a re-publish updates the decision in place.
->   **Prove-it** and the multi-verb spectrum below describe the intended design,
->   not what ships today.
+> - **The interaction loop is Accept + copy-ref chat, not Accept / Override /
+>   Prove-it / Challenge.** The human Accepts a decision (local; drives the
+>   burndown) or pushes back by copying its stable ref and pasting it into normal
+>   agent chat to scope a revision; a re-publish updates the decision in place.
+>   There is no in-browser pushback verb — the earlier bespoke **Disagree** button
+>   was dropped in favor of this. **Prove-it** and the multi-verb spectrum below
+>   describe the intended design, not what ships today.
 > - **The honesty ledger is `confidence` only.** The per-decision
 >   coverage/gaps "ledger" described below was deliberately _not_ surfaced —
 >   nothing backs a self-reported "what I verified" claim — so the renderer shows

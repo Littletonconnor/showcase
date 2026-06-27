@@ -215,9 +215,9 @@ The user can type comments under any surface. Comments attach to a surface
   keep working; when it exits with comments, handle them and re-arm. Always arm
   it on the session you actually published to.
 
-Feedback arrives as the user adjudicates in the browser (Accept / Disagree on
-each decision in a review) and references surfaces by their card id
-in your terminal — act on it and do substantial revisions as surface updates.
+Feedback arrives as the user adjudicates in the browser (Accept on each decision
+in a review) and references decisions or surfaces by their copy-ref / card id in
+your terminal — act on it and do substantial revisions as surface updates.
 
 ## HTML contract
 

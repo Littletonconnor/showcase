@@ -38,10 +38,10 @@ comment), and a **risk-ranked queue of decisions** the agent triaged out of the
 diff for you to adjudicate. Backing the queue is a **manifest** of every changed
 file, each tagged as carrying a decision, reviewed-no-comment, or
 mechanical-skipped — so nothing the agent touched is silently dropped. You read
-top-down and **Accept** (A) or **Disagree** (D) each decision; a Disagree threads
-a comment the agent must defend-or-concede, and re-publishing updates the decision
-in place. Far faster than scrolling a wall of inline comments to decide whether
-the change is safe.
+top-down and **Accept** (A) each decision; to push back you copy a decision's ref
+and paste it into normal agent chat to scope a revision, and re-publishing updates
+the decision in place. Far faster than scrolling a wall of inline comments to
+decide whether the change is safe.
 
 Each decision reads the same way no matter the PR — an **assertion** at a `scope`
 (changed-line / whole-file / codebase), a `call` (block / ship / decide), a
@@ -293,8 +293,8 @@ Run your code-review skill to do the analysis, then render it:
 call get_design_guide first, then ONE publish_decisions call — a plain-English
 brief, a verdict, a risk-ranked decisions[] array (each with an assertion, scope,
 call, and confidence; a before→after proposal where there's a fix), and a manifest
-tagging every changed file. Then wait_for_feedback and update decisions in place
-as I Accept or Disagree.
+tagging every changed file. I'll Accept the clear ones and paste a decision's ref
+back to you for any I want revised; update those in place with publish_decisions.
 ```
 
 Shell-only agents can skip MCP entirely and drive showcase with the CLI or curl —

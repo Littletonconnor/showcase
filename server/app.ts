@@ -317,7 +317,7 @@ const nonNegInt = (v: unknown) => (typeof v === "number" && Number.isFinite(v) &
 // quality: too many sentences, or code where plain English belongs (fenced/inline
 // backticks, file:line refs, fn() calls, snake_case / CamelCase identifiers).
 // Ordinary domain nouns and SHOUTY_ENV vars are allowed. Returns a short reason
-// for the viewer's chip, or undefined when the Brief is clean. See review-engine.md.
+// for the viewer's chip, or undefined when the Brief is clean.
 export function checkBriefFormat(brief: string): string | undefined {
   const reasons: string[] = [];
   const sentences = brief
