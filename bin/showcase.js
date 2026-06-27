@@ -112,21 +112,15 @@ usage:
       --timeout <sec>   max seconds to wait (default 120)
       --after <seq>     re-read comments after this cursor (default: where the
                         agent left off, tracked server-side across CLI/MCP)
-  showcase watch [options]                stream user comments forever, one per
-                                          line (re-arms the long-poll; for a
+  showcase watch [options]                stream the user's review feedback forever,
+                                          one per line (re-arms the long-poll; for a
                                           background monitor)
       --session <id>    session to watch (default: auto, waits for the first
                         publish to create one)
       --after <seq>     re-read comments after this cursor on the first poll
                         (default: resume where the agent left off, server-side)
-  showcase comment <text> [options]       reply to the user (surface or session-level)
-      --surface <id>    reply under a surface's thread
-      --session <id>    reply in the session-level "Chat with your agent" (default: active session)
-      --author <name>   defaults to agent name
   showcase list [--session <id>|--all]    list surfaces
   showcase sessions                       list sessions
-  showcase chat [--print]                 launch Claude Code already armed to chat in the browser
-      --print           print the arming prompt instead of launching (paste into any agent)
   showcase demo                           seed two example sessions to explore the viewer
   showcase guide                          print the design contract for surfaces
   showcase setup                          print the AGENTS.md integration block
@@ -948,40 +942,6 @@ const commands = {
     fail("usage: showcase service <install|uninstall|status> [--port N]");
   },
 
-  // Spin up Claude Code already armed for a browser chat: it's launched with a
-  // first prompt that enters the wait_for_feedback → reply → wait loop, so you
-  // can go straight to the showcase browser tab and start talking. No SDK — this
-  // just launches your own Claude Code with an opening instruction.
-  async chat() {
-    const { values: flags } = parse({ options: { print: { type: "boolean" } } });
-    const ARM =
-      "You're connected to showcase, a live visual surface I'm watching in my browser. " +
-      "Let's chat there: call wait_for_feedback to receive my messages, reply with reply_to_user " +
-      "(omit surfaceId to answer in the session-level chat, or pass it to answer under a surface), " +
-      "and keep looping — wait → reply → wait — so we have a real back-and-forth until I say we're " +
-      "done. Call wait_for_feedback now to start.";
-    if (flags.print) {
-      console.log(ARM);
-      return;
-    }
-    // stdio inherit → you land in the live Claude Code session. If `claude` isn't
-    // on PATH (e.g. you use Cursor), print the prompt to paste instead.
-    const child = spawn("claude", [ARM], { stdio: "inherit" });
-    child.on("error", (err) => {
-      if (err && err.code === "ENOENT") {
-        console.error(
-          "`claude` is not on your PATH. Start your agent (Claude Code or Cursor) and paste this " +
-            "to begin chatting, or run `showcase chat --print` to copy it:\n\n" +
-            ARM +
-            "\n",
-        );
-        process.exit(1);
-      }
-      throw err;
-    });
-    child.on("exit", (code) => process.exit(code ?? 0));
-  },
-
   async publish() {
     const { values: flags, positionals } = parse({
       allowPositionals: true,
@@ -1325,38 +1285,6 @@ const commands = {
         console.log(watchLine(c));
       }
     }
-  },
-
-  async comment() {
-    const { values: flags, positionals } = parse({
-      allowPositionals: true,
-      options: {
-        surface: { type: "string" },
-        snippet: { type: "string" }, // legacy alias
-        session: { type: "string" },
-        author: { type: "string" },
-        agent: { type: "string" },
-      },
-    });
-    const text = positionals.join(" ").trim();
-    if (!text) fail("usage: showcase comment <text> --surface <id> | --session <id>");
-    // Reply under a surface, or session-level (the "Chat with your agent" panel)
-    // when only --session is given. Falls back to the active session.
-    const surface = flags.surface ?? flags.snippet;
-    const session = surface ? undefined : (flags.session ?? (await resolveSession(flags)));
-    if (!surface && !session) {
-      fail("a comment must target a surface (--surface) or a session (--session)");
-    }
-    out(
-      await api("/api/comments", {
-        method: "POST",
-        body: JSON.stringify({
-          text,
-          ...(surface ? { surface } : { session }),
-          author: flags.author ?? agentName(flags),
-        }),
-      }),
-    );
   },
 
   async list() {

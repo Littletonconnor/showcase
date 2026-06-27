@@ -60,10 +60,6 @@ interface BoardState {
   // Both drive iframe keys and string re-renders, so they live in the store.
   activeTheme: string;
   prefersDark: boolean;
-  // Surfaces with an outstanding "agent is responding…" indicator: set when the
-  // user sends to a card whose session is listening, cleared when the agent
-  // replies (or on a timeout, so it never hangs).
-  responding: Record<string, boolean>;
   // Reading mode: the surface id being read in the focused, one-at-a-time
   // overlay (null = off). Prev/next page through the current `surfaces` list.
   readingId: string | null;
@@ -91,7 +87,6 @@ export const useBoard = create<BoardState>(() => ({
   dismissedUpdate: localStorage.getItem(DISMISSED_UPDATE_KEY),
   activeTheme: "",
   prefersDark: false,
-  responding: {},
   readingId: null,
   activity: {},
 }));
@@ -249,53 +244,6 @@ function setListening(sessionId: string, listening: boolean) {
 export const useSessionListening = () =>
   useBoard((s) => !!s.sessions.find((r) => r.id === s.selected)?.listening);
 
-export const useResponding = (surfaceId: string | null) =>
-  useBoard((s) => (surfaceId ? !!s.responding[surfaceId] : false));
-
-// A responding indicator auto-clears after this long, so a missed reply (agent
-// stopped listening mid-turn) never leaves a permanent "responding…" bubble.
-const RESPONDING_TIMEOUT_MS = 90_000;
-const respondingTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
-function clearResponding(surfaceId: string) {
-  const t = respondingTimers.get(surfaceId);
-  if (t) {
-    clearTimeout(t);
-    respondingTimers.delete(surfaceId);
-  }
-  set((s) => {
-    if (!s.responding[surfaceId]) return s;
-    const next = { ...s.responding };
-    delete next[surfaceId];
-    return { responding: next };
-  });
-}
-
-function markResponding(surfaceId: string) {
-  const prev = respondingTimers.get(surfaceId);
-  if (prev) clearTimeout(prev);
-  respondingTimers.set(
-    surfaceId,
-    setTimeout(() => clearResponding(surfaceId), RESPONDING_TIMEOUT_MS),
-  );
-  set((s) =>
-    s.responding[surfaceId] ? s : { responding: { ...s.responding, [surfaceId]: true } },
-  );
-}
-
-// A responding indicator is keyed by surfaceId for a card thread, or
-// `session:<id>` for the session-level chat.
-export const sessionRespondKey = (sessionId: string) => `session:${sessionId}`;
-
-// Clear the responding indicator once the newest comment in the matching thread
-// is an agent reply (author != user) — the reply we were waiting for has landed.
-function clearRespondingIfAnswered(respondKey: string, match: (c: ViewComment) => boolean) {
-  const newest = get()
-    .comments.filter((c) => match(c) && !c.pending)
-    .reduce<ViewComment | undefined>((a, b) => (b.seq >= (a?.seq ?? -1) ? b : a), undefined);
-  if (newest && newest.author !== "user") clearResponding(respondKey);
-}
-
 export async function checkVersion() {
   set({ versionInfo: await api<VersionInfo>("/api/version").catch(() => null) });
 }
@@ -389,25 +337,6 @@ export const APPROVAL_MARK = "✓ Approved — this looks good.";
 export const DISMISS_MARK = "⊘ Dismissed — not changing this.";
 export const isResolutionComment = (c: { author: string; text: string }) =>
   c.author === "user" && (c.text.startsWith("✓ Approved") || c.text.startsWith("⊘ Dismissed"));
-
-// "I'm still composing" heartbeat. While the user is typing or has a composer
-// focused, ping the server so a parked agent wait holds its batch open until
-// they finish queueing messages (see FEEDBACK_COMPOSING_TTL_MS server-side).
-// Throttled and fire-and-forget — the endpoint returns 204, so we don't use
-// `api` (which parses JSON); a dropped ping just means the wait settles sooner.
-let lastComposingPingAt = 0;
-export function notifyComposing(target: { session?: string; surface?: string | null }) {
-  if (exportBundle()) return; // no server in an export — nothing to ping
-  if (!target.session && !target.surface) return;
-  const now = Date.now();
-  if (now - lastComposingPingAt < 1500) return;
-  lastComposingPingAt = now;
-  void fetch(appPath("/api/composing"), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ session: target.session, surface: target.surface ?? undefined }),
-  }).catch(() => {});
-}
 
 export async function select(
   id: string,
@@ -547,14 +476,6 @@ export async function sendComment(
     ...(anchor ? { anchor } : {}),
   };
   set((state) => ({ comments: [...state.comments, local] }));
-  // If the agent is parked listening on this session, a reply is expected — show
-  // the responding indicator on this thread until it lands (or times out). The
-  // key is the surface, or `session:<id>` for a session-level message.
-  const respondKey =
-    surfaceId ?? (typeof body.session === "string" ? sessionRespondKey(body.session) : null);
-  if (respondKey && !!get().sessions.find((r) => r.id === selectedNow())?.listening) {
-    markResponding(respondKey);
-  }
   try {
     const created = await api<Comment>("/api/comments", {
       method: "POST",
@@ -642,15 +563,6 @@ export function connect() {
         const query = e.surfaceId ? `surface=${e.surfaceId}` : `session=${e.sessionId}`;
         const res = await api<{ comments: Comment[] }>(`/api/comments?${query}`);
         mergeComments(res.comments);
-        if (e.surfaceId) {
-          clearRespondingIfAnswered(e.surfaceId, (c) => c.surfaceId === e.surfaceId);
-        } else if (e.sessionId) {
-          const sid = e.sessionId;
-          clearRespondingIfAnswered(
-            sessionRespondKey(sid),
-            (c) => c.surfaceId == null && c.sessionId === sid,
-          );
-        }
       }
     } else if (e.type === "agent-presence") {
       if (e.sessionId) setListening(e.sessionId, !!e.listening);

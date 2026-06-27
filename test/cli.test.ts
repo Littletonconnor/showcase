@@ -85,17 +85,7 @@ const post = (url: string, body: unknown) =>
 // None of these reach the network: --help and option errors resolve in
 // parsing, before any request (no server needs to be running).
 
-for (const cmd of [
-  "serve",
-  "publish",
-  "diff",
-  "update",
-  "wait",
-  "watch",
-  "comment",
-  "list",
-  "kits",
-]) {
+for (const cmd of ["serve", "publish", "diff", "update", "wait", "watch", "list", "kits"]) {
   test(`${cmd} --help prints usage and exits 0`, async () => {
     const { code, stdout, stderr } = await run(cmd, "--help");
     assert.equal(code, 0);
@@ -290,14 +280,6 @@ test("kits lists the board's available kits", async () => {
   }
 });
 
-test("chat --print emits the arming prompt without launching", async () => {
-  const { code, stdout, stderr } = await run("chat", "--print");
-  assert.equal(code, 0);
-  assert.equal(stderr, "");
-  assert.match(stdout, /wait_for_feedback/);
-  assert.match(stdout, /reply_to_user/);
-});
-
 test("finding composes a structured review card", async () => {
   const server = await serveApp();
   try {
@@ -432,29 +414,6 @@ test("review folds in the review profile and demands publish_review", async () =
     assert.match(out.prompt, /code-reviewer/); // the profile is injected verbatim
     assert.match(out.prompt, /publish_review/); // demands the structured tool
     assert.match(out.prompt, /failure mode/); // forbids the markdown wall
-  } finally {
-    await server.close();
-  }
-});
-
-test("comment --session posts a session-level (surfaceless) reply", async () => {
-  const server = await serveApp();
-  try {
-    const session = await post(`${server.url}/api/sessions`, { agent: "claude-code" });
-    const { code, stdout } = await runWith(
-      { env: { SHOWCASE_URL: server.url } },
-      "comment",
-      "Here's the session-level plan",
-      "--session",
-      session.id,
-      "--author",
-      "claude-code",
-    );
-    assert.equal(code, 0);
-    const out = JSON.parse(stdout);
-    assert.equal(out.surfaceId, null);
-    assert.equal(out.sessionId, session.id);
-    assert.equal(out.author, "claude-code");
   } finally {
     await server.close();
   }

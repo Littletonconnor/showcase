@@ -257,26 +257,6 @@ export function registerMcp(app: Hono, deps: McpDeps) {
           2,
         );
       }
-      case "reply_to_user": {
-        // "user" is the reserved trust label, minted only by the viewer's
-        // composer (genuine human keystrokes). The agent may name itself
-        // anything else, but never the user — that would forge feedback.
-        const named = typeof args.author === "string" ? args.author.trim() : "";
-        const author = named && named !== "user" ? named : "agent";
-        // surfaceId → reply under that surface; otherwise sessionId → session-level.
-        const result = await deps.createComment({
-          text: String(args.message ?? ""),
-          surface: typeof args.surfaceId === "string" ? args.surfaceId : undefined,
-          session: typeof args.sessionId === "string" ? args.sessionId : undefined,
-          author,
-        });
-        if ("error" in result) throw new Error(result.error);
-        return JSON.stringify(
-          { ...result.comment, ...(result.userFeedback && { userFeedback: result.userFeedback }) },
-          null,
-          2,
-        );
-      }
       case "list_surfaces": {
         const surfaces = await deps.store.listSurfaces(
           typeof args.session === "string" ? args.session : undefined,

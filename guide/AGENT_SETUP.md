@@ -23,10 +23,11 @@ Then fetch the design contract once per session when you are ready to publish:
 
     SHOWCASE_URL=http://localhost:8229 showcase guide
 
-To chat back and forth with the user in the browser (not just publish), run
-`showcase chat` — it launches Claude Code already armed to loop `wait_for_feedback`
-→ `reply_to_user`, so you just talk in the showcase tab. (Connecting the MCP server
-also primes this behavior automatically; `showcase chat` just kicks off the loop.)
+To receive the user's feedback, run `showcase wait` (or `showcase watch` for a
+background monitor). The user adjudicates a review in the browser — Approve /
+Dismiss findings, Prove-it / Challenge decisions — and references any surface by
+the **card id** shown in its header, which they paste to you here in the terminal.
+Act on the feedback and republish; the conversation lives in your terminal, not the tab.
 
 If this surface is a deployed instance that requires a token, also set
 `SHOWCASE_TOKEN` in your environment before using the CLI. For raw curl, add

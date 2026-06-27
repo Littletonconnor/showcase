@@ -33,7 +33,7 @@ If `SHOWCASE_URL` is unset, the surface is at `http://localhost:8229`. If it is 
 
 ## Publishing
 
-Prefer MCP tools if the showcase MCP server is connected: `publish_surface` `{title, parts, badge?, sessionTitle?}`, `update_surface` `{id, title?, parts?, badge?}`, `delete_surface` `{id}`, `wait_for_feedback`, `reply_to_user` `{message, surfaceId?}` (omit `surfaceId` to reply in the session-level chat), `list_surfaces`. (`publish_snippet` / `update_snippet` remain as html-only sugar aliases.) Otherwise use the CLI — session grouping is automatic:
+Prefer MCP tools if the showcase MCP server is connected: `publish_surface` `{title, parts, badge?, sessionTitle?}`, `update_surface` `{id, title?, parts?, badge?}`, `delete_surface` `{id}`, `wait_for_feedback`, `list_surfaces`. (`publish_snippet` / `update_snippet` remain as html-only sugar aliases.) Otherwise use the CLI — session grouping is automatic:
 
 ```sh
 showcase publish sketch.html --title "Cache layout" --agent your-name --session-title "Cache redesign"
@@ -256,6 +256,8 @@ _The next-generation review, designed for the age of agents and large diffs (`do
 
 **The human adjudicates** each decision: **Accept** (ratify), **Prove it** (tap a declared gap → you run the scoped check and revise in place), or **Challenge** (they push back → you defend with evidence or concede and revise). So fill the ledger honestly — the gaps you declare are exactly what they'll make you prove.
 
+**The loop is live — stay parked after you publish.** Call `wait_for_feedback`; Prove-it and Challenge arrive as session comments the page sends for you, each tagged with the decision: `[Prove it · Decision N of M] …` (do _only_ the scoped check it names) or `[Challenge · Decision N of M] …` (defend with evidence, or concede — one or the other, no hedging). Either way, act, then **re-publish the whole review with `publish_decisions`** — the decision updates in place in front of the reviewer (the call may flip), and the burndown reflects it. Re-publishing is the resolution; keep the unchanged decisions as-is and revise only the one in question.
+
 ## Recipe: animated explainer
 
 showcase's second flagship workflow — **learning & explainers.** When the user shares a screenshot or snippet and says _"explain this on showcase"_ (or asks you to teach a concept), don't dump a wall of prose — build an **animated explainer** they can play through and scrub.
@@ -307,15 +309,11 @@ Feedback reaches you four ways — prefer them in this order:
 
 4. **Blocking wait.** Only when you explicitly need a reaction before continuing: `showcase wait --session <sessionId> --timeout 120` in the foreground.
 
-Comments attach to a surface (`surfaceId`); behavior is otherwise unchanged. When comments arrive, acknowledge briefly with `showcase comment "..." --surface <id>` when useful; do substantial changes as surface updates, then re-arm the watcher or continue checkpoint-draining.
+Feedback attaches to a surface (`surfaceId`); when it arrives, do substantial changes as surface updates — or, for a review, republish the review — then re-arm the watcher or continue checkpoint-draining.
 
-**Chatting with the user.** While you are parked in a `wait_for_feedback` / `showcase wait`, the viewer shows a live green **"Listening"** badge in the session header, and a "responding…" indicator appears the moment the user sends — so the user can see you are actually reachable. To hold a real back-and-forth, **loop**: wait → on a comment, reply with `reply_to_user` (or `showcase comment --surface <id>`) → wait again. When you stop looping the badge goes idle, which honestly tells the user their next message will queue until you check back, not reach you live.
+**Where the conversation happens.** The inline browser chat was removed. Each card shows a **copy-to-clipboard card id** in its header; the user copies it and talks to you about that surface in **your terminal** — so the back-and-forth lives where you're running, not in the tab. Refer to surfaces back to the user by id (`list_surfaces` fetches one's current content).
 
-**Keep the conversation in the tab — don't ask in the terminal.** When the user is talking to you in showcase, that's where they're looking. If you need to ask a clarifying question before continuing, **ask it with `reply_to_user`** and then `wait_for_feedback` for the answer — do not pause to ask the question in your terminal/editor, which they are not watching. A question stuck in the terminal stalls the whole loop: the user sees "Listening" go idle with no reply and has no idea you're blocked. Mirror the channel the user chose — they wrote to you in showcase, so answer (and ask) in showcase.
-
-Comments arrive two ways: **on a surface** (`surfaceId` set — a remark about that card) or **session-level** (`surfaceId` null — the "Chat with your agent" panel, general conversation). Reply in kind: pass `surfaceId` to `reply_to_user` to answer under a card, or **omit `surfaceId`** to reply in the session-level chat. A session-level reply lands in that panel, not on a card.
-
-**Anchored comments.** A comment may carry an `anchor` pointing at a specific spot, in one of two forms. A **point** — `{ xPct, yPct }`, 0..1 fractions of the card — when the user pinned it to a place on a diagram/image. A **line** — `{ line, lineType? }` — when the user clicked an exact **diff line** (`lineType` is `addition` / `deletion` / `context`). Either way, treat it as _"the user is pointing at **here**"_: a line anchor on a review finding means fix **that line**; scope your revision to it rather than the whole card.
+**Review feedback from the browser.** While you are parked in a `wait_for_feedback` / `showcase wait`, the viewer shows a live green **"Listening"** badge in the session header, so the user can see you are reachable. On a review the user adjudicates in the tab — **Approve** / **Dismiss** on each finding card, and **Prove-it** / **Challenge** on a decision-queue review — and those land here as user comments. Act on them in your terminal and republish the review so the board burns down; when you stop waiting the badge goes idle, honestly telling the user their next signal will queue until you check back.
 
 ## Remote surfaces
 

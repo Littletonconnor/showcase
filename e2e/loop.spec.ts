@@ -1,13 +1,15 @@
 import { expect, test } from "@playwright/test";
 
 // The core product loop, captured as the parity oracle for the React port:
-//   publish a multi-part surface → it renders in the viewer → a user comment
-//   appears live in the thread.
+//   publish a multi-part surface → it renders in the viewer → the user adjudicates
+//   it (a review verdict action posts a user-feedback signal the agent reads).
+// The inline comment thread was retired: to talk about a surface you copy its
+// card id from the header and mention it to your agent in the terminal.
 //
-// Agent-authored content (markdown parts, html parts, comment text) renders
-// inside sandboxed opaque-origin iframes, so its text is NOT reachable from the
-// trusted page DOM by design. The oracle therefore asserts only on light-DOM
-// signals — the card chrome, the per-part iframes, and the comment row — which
+// Agent-authored content (markdown parts, html parts) renders inside sandboxed
+// opaque-origin iframes, so its text is NOT reachable from the trusted page DOM
+// by design. The oracle therefore asserts only on light-DOM signals — the card
+// chrome, the per-part iframes, and the trusted-origin verdict actions — which
 // is exactly the boundary the port must preserve.
 
 async function seedSurface(request: import("@playwright/test").APIRequestContext) {
@@ -78,21 +80,16 @@ test("a markdown part renders LaTeX math as MathML, not KaTeX errors", async ({
   await expect(frame.locator("[mathcolor='#cc0000']")).toHaveCount(0);
 });
 
-test("a user comment appears live in the surface thread", async ({ page, request }) => {
+test("every card header shows a click-to-copy card id handle", async ({ page, request }) => {
+  // The card id is the surface's handle: with the inline thread gone, the user
+  // copies it from the header and mentions it to the agent in the terminal. It's
+  // trusted-origin chrome, so its label is a plain light-DOM node we can assert on.
   const { surfaceId } = await seedSurface(request);
   await page.goto(`/?surface=${surfaceId}`);
   const card = page.locator(`.card[data-id="${surfaceId}"]`);
   await expect(card).toBeVisible();
 
-  // The user types a comment in the viewer (posted as author=user).
-  await request.post("/api/comments", {
-    data: { surface: surfaceId, text: "why two axes here?", author: "user" },
-  });
-
-  // It streams into the card's thread via SSE without a reload: a user comment
-  // bubble (`.cmt.user`, its text a plain light-DOM node) appears with the text.
-  await expect(card.locator(".thread .cmt.user")).toBeVisible({ timeout: 10_000 });
-  await expect(card.locator(".thread .cmt.user")).toContainText("why two axes here?");
+  await expect(card.getByRole("button", { name: `Copy card ID ${surfaceId}` })).toBeVisible();
 });
 
 test("the Approve quick-action posts a user feedback signal", async ({ page, request }) => {
@@ -118,7 +115,17 @@ test("the Approve quick-action posts a user feedback signal", async ({ page, req
 
   // One tap on the card's Approve action posts a recognizable author=user signal.
   await card.getByRole("button", { name: "Approve" }).click();
-  await expect(card.locator(".thread .cmt.user")).toContainText("Approved");
+
+  // It lands server-side as a user comment carrying the approval marker, so the
+  // agent reads it as "yes, this is right" (the verdict bar also strikes it).
+  await expect
+    .poll(async () => {
+      const all = await (await request.get(`/api/comments?surface=${surface.id}`)).json();
+      return all.comments.some(
+        (c: { author: string; text: string }) => c.author === "user" && c.text.includes("Approved"),
+      );
+    })
+    .toBe(true);
 });
 
 test("a review finding card renders its severity badge in the trusted header", async ({
@@ -218,66 +225,6 @@ test("the animate kit plays a stepped explainer", async ({ page, request }) => {
   // Press play — it builds up to the last step.
   await frame.locator(".anim-play").click();
   await expect(frame.locator("#s2")).toBeVisible({ timeout: 10_000 });
-});
-
-test("clicking a diff line opens a line-anchored comment", async ({ page, request }) => {
-  // R4: a click on a diff line (inside the sandboxed iframe + its shadow root)
-  // rides the bridge out to the trusted card, which opens a line composer; the
-  // comment carries the exact line so the agent knows what to fix.
-  const session = await (
-    await request.post("/api/sessions", { data: { agent: "e2e", title: "line review" } })
-  ).json();
-  const surface = await (
-    await request.post("/api/surfaces", {
-      data: {
-        session: session.id,
-        title: "Diff",
-        parts: [
-          {
-            kind: "diff",
-            patch:
-              "diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,8 +1,9 @@\n line one\n line two\n line three\n-old four\n+new four a\n+new four b\n line six\n line seven\n line eight",
-          },
-        ],
-      },
-    })
-  ).json();
-  await page.goto(`/?surface=${surface.id}`);
-  const card = page.locator(`.card[data-id="${surface.id}"]`);
-  await expect(card).toBeVisible();
-
-  // Dispatch a real composed click on an actual diff line inside the iframe's
-  // shadow root — this exercises the production bridge (the in-frame listener
-  // resolves the line via composedPath), without guessing a pixel.
-  const iframe = card.locator("iframe").first();
-  await expect(iframe).toBeVisible();
-  const frame = await (await iframe.elementHandle())!.contentFrame();
-  const col = await frame!.evaluate(async () => {
-    for (let i = 0; i < 40; i++) {
-      for (const c of document.querySelectorAll("diffs-container")) {
-        const row = c.shadowRoot?.querySelector("[data-line-type][data-column-number]");
-        if (row) {
-          row.dispatchEvent(new MouseEvent("click", { bubbles: true, composed: true }));
-          return row.getAttribute("data-column-number");
-        }
-      }
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    return null;
-  });
-  expect(Number(col), "found a diff line to click").toBeGreaterThan(0);
-
-  // The trusted card opens a line composer; type a note and send.
-  await expect(card.getByText(/Comment on line/)).toBeVisible({ timeout: 10_000 });
-  const note = card.getByRole("textbox", { name: "Line comment" });
-  await note.fill("off-by-one here");
-  await note.press("Enter");
-
-  await expect(card.locator(".thread .cmt.user")).toContainText("off-by-one here");
-  // The comment carries a diff line server-side (so it reaches the agent).
-  const all = await (await request.get(`/api/comments?surface=${surface.id}`)).json();
-  const c = all.comments.find((x: { text: string }) => x.text.includes("off-by-one"));
-  expect(c?.anchor?.line, "the comment carries the diff line").toBeGreaterThan(0);
 });
 
 test("a multi-file diff shows a manifest header and collapses generated files", async ({
@@ -604,10 +551,9 @@ test("a surface landing live on the open session shows the 'Working…' indicato
   request,
 }) => {
   // The agent-activity signal: while output lands on the open session, the header
-  // shows a pulsing "Working…" pill and a one-line ticker of the latest action —
-  // distinct from the connection ("Auto-replies") pill, and driven by the live
-  // surface-created SSE event. After a few seconds of silence the pill decays but
-  // the ticker keeps the last action visible.
+  // shows a pulsing "Working…" pill and a one-line ticker of the latest action,
+  // driven by the live surface-created SSE event. After a few seconds of silence
+  // the pill decays but the ticker keeps the last action visible.
   const session = await (
     await request.post("/api/sessions", { data: { agent: "e2e", title: "activity" } })
   ).json();

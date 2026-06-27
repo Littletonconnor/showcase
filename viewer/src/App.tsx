@@ -4,8 +4,8 @@ import {
   BookOpen,
   Copy,
   Download,
+  GitPullRequest,
   Link2,
-  MessageSquare,
   MoreHorizontal,
   Pencil,
   Plug,
@@ -15,18 +15,20 @@ import {
   Sparkles,
   Terminal,
   Trash2,
+  Workflow,
   X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { AgentMark } from "./agentMarks.tsx";
 import {
   api,
   appPath,
   isReadonly,
   layoutMode,
   relTime,
+  sessionKindLabel,
   sessionLabel,
   sessionLink,
+  type SessionKind,
   type SessionRow,
   type Surface,
 } from "./api.ts";
@@ -40,7 +42,6 @@ import {
 import { onBridgeMessage } from "./bridge.ts";
 import { routeGet, routeSubscribe, root } from "./host.ts";
 import { BADGE_DOT_CLASS, Card, cardEls } from "./Card.tsx";
-import { Thread } from "./Thread.tsx";
 import { cx } from "./cx.ts";
 import {
   Sidebar,
@@ -65,6 +66,7 @@ import { renderNotes } from "./notes.ts";
 import { ConnectModal, Onboard } from "./Onboarding.tsx";
 import { ReadingView } from "./ReadingView.tsx";
 import { ReviewSummary } from "./ReviewSummary.tsx";
+import { ReviewInline } from "./review/ReviewInline.tsx";
 import { initTheme } from "./theme.ts";
 import {
   applyRoute,
@@ -81,13 +83,11 @@ import {
   selectAdjacent,
   selectedNow,
   sessionsNow,
-  sendComment,
   setPillTarget,
   toast,
   updateNoticeFrom,
   useBoard,
   useSessionActivity,
-  useSessionListening,
   useSessionWorking,
 } from "./state.ts";
 
@@ -160,8 +160,8 @@ function SessionSearch(props: { query: string; onQuery: (q: string) => void }) {
         ref={inputRef}
         type="text"
         role="searchbox"
-        aria-label="Search chats"
-        placeholder="Search chats…"
+        aria-label="Search sessions"
+        placeholder="Search sessions…"
         value={props.query}
         onChange={(e) => props.onQuery(e.target.value)}
         className="h-9 rounded-lg border-transparent bg-surface pr-7 pl-8 text-[13px] shadow-sm ring-1 ring-brand/25 focus-visible:border-transparent focus-visible:ring-2 focus-visible:ring-brand/40"
@@ -227,7 +227,7 @@ function FooterMenu(props: { onConnect: () => void }) {
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={props.onConnect}>
               <Plug />
-              Connect Claude Code
+              Connect your agent
             </DropdownMenuItem>
           </>
         ) : null}
@@ -342,17 +342,34 @@ export default function App() {
 
   return (
     <>
-      <SidebarProvider defaultOpen={readSidebarCookie()}>
+      {/* h-svh + overflow-hidden pins the shell to the viewport so the content
+          column (the inner <main> below) is the scroll container — not the
+          window. That's what the app's sticky session header and the TOC rail
+          depend on; without it the whole page scrolls and nothing pins. Print
+          overrides in index.css release this so PDF export still flows. */}
+      <SidebarProvider defaultOpen={readSidebarCookie()} className="h-svh overflow-hidden">
         <Sidebar collapsible="icon">
           <SidebarHeader className="gap-2">
             <div className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">
               <Brand className="min-w-0 flex-1" />
-              <SidebarTrigger className="size-7 flex-none rounded-md text-faint transition-colors hover:bg-hover hover:text-foreground focus-visible:ring-1 focus-visible:ring-brand/40" />
+              <SidebarTrigger
+                // A mouse click otherwise leaves the toggle focused, and its
+                // brand focus ring then reads like a selected tab in the rail.
+                // Preventing the default mousedown stops the button from taking
+                // focus on a pointer press (the click still fires, so it still
+                // toggles) — while keyboard Tab focus is untouched, so the focus
+                // ring still shows for keyboard users who need it.
+                onMouseDown={(e) => e.preventDefault()}
+                className="size-7 flex-none rounded-md text-faint transition-colors hover:bg-hover hover:text-foreground focus-visible:ring-1 focus-visible:ring-brand/40"
+              />
             </div>
             <SessionSearch query={query} onQuery={setQuery} />
             <UpdateBanner />
           </SidebarHeader>
-          <SidebarContent id="sessionList" className="gap-0 px-1.5">
+          <SidebarContent
+            id="sessionList"
+            className="gap-0 px-1.5 group-data-[collapsible=icon]:px-0"
+          >
             {sessionsLoading ? (
               <SidebarGroup className="pt-2">
                 <SidebarMenu className="gap-0.5">
@@ -419,13 +436,14 @@ export default function App() {
             <Brand />
           </header>
           <main
+            id="appScroll"
             className="min-h-0 min-w-0 flex-1 overflow-y-auto"
             onScroll={() => {
               if (nearBottom()) setPillTarget(null);
             }}
           >
             <Onboard onConnect={() => setConnectOpen(true)} />
-            <SessionView onConnect={() => setConnectOpen(true)} />
+            <SessionView />
           </main>
         </SidebarInset>
       </SidebarProvider>
@@ -533,6 +551,21 @@ function WhatsNewCard() {
   );
 }
 
+// A decision-queue review session chips its verdict and opens the review page.
+const REVIEW_CHIP = {
+  block: { label: "Block", cls: "bg-red-500/15 text-red-700 dark:text-red-300" },
+  approve: { label: "Approve", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" },
+  comment: { label: "Review", cls: "bg-brand-subtle text-brand" },
+} as const;
+
+// The per-session glyph: a pull-request mark for a PR review, a workflow/diagram
+// mark for a visualization or explainer. Replaces the old per-agent brand mark —
+// a session reads as what it contains, not who authored it.
+function SessionKindIcon(props: { kind?: SessionKind }) {
+  const Icon = props.kind === "review" ? GitPullRequest : Workflow;
+  return <Icon className="size-3.5" />;
+}
+
 function SessionItem(props: { session: SessionRow }) {
   const selected = useBoard((s) => s.selected);
   const unread = useBoard((s) => s.unread);
@@ -543,8 +576,12 @@ function SessionItem(props: { session: SessionRow }) {
   const label = sessionLabel(props.session);
   const isSel = props.session.id === selected;
   const isUnread = unread.has(props.session.id);
-  const isVacant = props.session.surfaceCount === 0;
-  // On phones the offcanvas should close once you pick a session.
+  const reviewVerdict = props.session.reviewVerdict;
+  const isReview = !!reviewVerdict;
+  const isVacant = props.session.surfaceCount === 0 && !isReview;
+  // On phones the offcanvas should close once you pick a session. A review
+  // session selects like any other — its decision queue renders inline in the
+  // main panel (see ReviewInline), not a separate page.
   const open = () => {
     select(props.session.id);
     setOpenMobile(false);
@@ -591,7 +628,7 @@ function SessionItem(props: { session: SessionRow }) {
       <SidebarMenuItem data-id={props.session.id}>
         <div className="flex h-auto items-center gap-2.5 rounded-lg px-2 py-1.5">
           <span className="flex size-6 flex-none items-center justify-center rounded-md bg-surface text-muted-foreground ring-1 ring-border/70">
-            <AgentMark agent={props.session.agent} />
+            <SessionKindIcon kind={props.session.kind} />
           </span>
           <input
             autoFocus
@@ -621,7 +658,7 @@ function SessionItem(props: { session: SessionRow }) {
         aria-current={isSel ? "true" : undefined}
         onClick={open}
         className={cx(
-          "h-auto items-start gap-2.5 rounded-lg py-1.5 pr-7 transition-colors duration-150 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:py-2",
+          "h-auto items-start gap-2.5 rounded-lg py-1.5 pr-7 transition-colors duration-150 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:py-2",
           // The selected row lifts off the panel as a soft accent card —
           // brand-subtle tint, a faint brand ring, and a low shadow — so it
           // reads with the same depth as the surfaces on the right. Hover is a
@@ -642,7 +679,7 @@ function SessionItem(props: { session: SessionRow }) {
               : "bg-surface text-muted-foreground ring-border/70",
           )}
         >
-          <AgentMark agent={props.session.agent} />
+          <SessionKindIcon kind={props.session.kind} />
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-px group-data-[collapsible=icon]:hidden">
           {/* Title line: name truncates, surface count rides quietly at the far
@@ -660,7 +697,16 @@ function SessionItem(props: { session: SessionRow }) {
             >
               {label}
             </span>
-            {props.session.surfaceCount > 0 ? (
+            {isReview ? (
+              <span
+                className={cx(
+                  "flex-none rounded-full px-1.5 text-[10px] font-medium group-hover/menu-item:opacity-0",
+                  REVIEW_CHIP[reviewVerdict].cls,
+                )}
+              >
+                {REVIEW_CHIP[reviewVerdict].label}
+              </span>
+            ) : props.session.surfaceCount > 0 ? (
               <span
                 className={cx(
                   "flex-none text-[11px] leading-snug tabular-nums group-hover/menu-item:opacity-0",
@@ -684,13 +730,11 @@ function SessionItem(props: { session: SessionRow }) {
             {working || props.session.listening ? (
               <span
                 className="inline-block size-1.5 flex-none animate-pulse rounded-full bg-[#4caf78] motion-reduce:animate-none"
-                title={working ? "Agent is working" : "Agent is listening"}
+                title={working ? "Working" : "Listening for your feedback"}
               />
             ) : null}
             <span className="min-w-0 flex-1 truncate">
-              {working
-                ? `${props.session.agent} · working…`
-                : `${props.session.agent} · ${relTime(props.session.lastActiveAt)}`}
+              {working ? "working…" : relTime(props.session.lastActiveAt)}
             </span>
             {/* Open review findings — the resume signal. Hidden on hover so it
                 never collides with the ⋯ action, like the surface count. */}
@@ -761,7 +805,7 @@ function SessionItem(props: { session: SessionRow }) {
   );
 }
 
-function SessionView(props: { onConnect?: () => void }) {
+function SessionView() {
   const sessions = useBoard((s) => s.sessions);
   const selected = useBoard((s) => s.selected);
   const surfaces = useBoard((s) => s.surfaces);
@@ -812,19 +856,16 @@ function SessionView(props: { onConnect?: () => void }) {
           <div className="flex min-w-0 items-center gap-2">
             {current ? (
               <span className="flex-none text-muted-foreground">
-                <AgentMark agent={current.agent} />
+                <SessionKindIcon kind={current.kind} />
               </span>
             ) : null}
             <SessionTitle current={current} />
             <span className="flex-1" />
             <WorkingPill sessionId={selected} />
-            {current && !isReadonly() ? (
-              <AgentPresence agent={current.agent} onConnect={props.onConnect} />
-            ) : null}
           </div>
           <span className="pl-0.5 text-[12px] text-faint" id="sessMeta">
             {current
-              ? `${current.agent} · started ${relTime(current.createdAt)}${
+              ? `${sessionKindLabel(current.kind)} · started ${relTime(current.createdAt)}${
                   surfaceCount > 0
                     ? ` · ${surfaceCount} surface${surfaceCount === 1 ? "" : "s"}`
                     : ""
@@ -835,29 +876,33 @@ function SessionView(props: { onConnect?: () => void }) {
           <ReviewSummary surfaces={surfaces} />
         </div>
       </div>
-      <div ref={rowRef} className="flex w-full justify-center gap-6">
-        {showToc ? <SurfaceOutline surfaces={surfaces} top={tocTop} /> : null}
-        <div
-          id="stream"
-          className="w-full min-w-0 max-w-[860px] px-7 pt-[22px] pb-[120px] max-[700px]:px-3.5 max-[700px]:pt-4 max-[700px]:pb-[120px]"
-        >
-          <WhatsNewCard />
-          {streamLoading ? (
-            <CardSkeletons />
-          ) : surfaces.length === 0 ? (
-            <EmptySession />
-          ) : reading ? null : (
-            surfaces.map((s) => <Card surface={s} key={s.id} />)
-          )}
-          {selected && !streamLoading && !isReadonly() ? (
-            <div data-print-hide>
-              <SessionChat sessionId={selected} onConnect={props.onConnect} />
-            </div>
-          ) : null}
+      {current?.kind === "review" && selected ? (
+        // A review takes over the main panel with its own bounded-height scroll
+        // container (the decision queue's scroll-snap + sticky evidence need it),
+        // sitting under the sticky session header.
+        <div className="h-[calc(100svh-4.5rem)]">
+          <ReviewInline sessionId={selected} />
         </div>
-        {/* Mirror the rail's width on the right so the stream stays centered. */}
-        {showToc ? <div aria-hidden className="w-[224px] shrink-0" /> : null}
-      </div>
+      ) : (
+        <div ref={rowRef} className="flex w-full justify-center gap-6">
+          {showToc ? <SurfaceOutline surfaces={surfaces} top={tocTop} /> : null}
+          <div
+            id="stream"
+            className="w-full min-w-0 max-w-[860px] px-7 pt-[22px] pb-[120px] max-[700px]:px-3.5 max-[700px]:pt-4 max-[700px]:pb-[120px]"
+          >
+            <WhatsNewCard />
+            {streamLoading ? (
+              <CardSkeletons />
+            ) : surfaces.length === 0 ? (
+              <EmptySession />
+            ) : reading ? null : (
+              surfaces.map((s) => <Card surface={s} key={s.id} />)
+            )}
+          </div>
+          {/* Mirror the rail's width on the right so the stream stays centered. */}
+          {showToc ? <div aria-hidden className="w-[224px] shrink-0" /> : null}
+        </div>
+      )}
     </div>
   );
 }
@@ -867,12 +912,40 @@ function SessionView(props: { onConnect?: () => void }) {
 // in-flow sticky flex item (self-start so it can pin) bound to the same scroll
 // container as the session header, so it stays put as the stream scrolls. The
 // SessionView gates whether it renders and passes the sticky offset that clears
-// the variable-height header. The active entry mirrors the focused surface the
-// app already tracks in the URL (Card's 50%-threshold scroll spy), so the rail
-// and the deep link agree.
+// the variable-height header.
 function SurfaceOutline(props: { surfaces: Surface[]; top: number }) {
   const [activeId, setActiveId] = useState<string | null>(() => routeGet().surfaceId ?? null);
-  useEffect(() => routeSubscribe((r) => setActiveId(r.surfaceId ?? null)), []);
+
+  // Scroll-spy: the active entry is the lowest card whose top has scrolled up to
+  // the line just below the sticky header — i.e. the one you're reading. We scan
+  // the registered card elements on each (rAF-throttled) scroll of the content
+  // container; a coarse 50%-threshold route signal wasn't precise enough and
+  // never moved on a click. The button's onClick also sets it optimistically so
+  // the highlight follows the click instantly.
+  useEffect(() => {
+    const scroller = document.getElementById("appScroll");
+    if (!scroller) return;
+    const ids = props.surfaces.map((s) => s.id);
+    let raf = 0;
+    const pick = () => {
+      raf = 0;
+      let best = ids[0] ?? null;
+      for (const id of ids) {
+        const el = cardEls.get(id)?.card;
+        if (el && el.getBoundingClientRect().top - props.top <= 8) best = id;
+      }
+      if (best) setActiveId(best);
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(pick);
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    pick();
+    return () => {
+      scroller.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, [props.surfaces, props.top]);
 
   return (
     <nav
@@ -890,9 +963,10 @@ function SurfaceOutline(props: { surfaces: Surface[]; top: number }) {
             <li key={s.id}>
               <button
                 type="button"
-                onClick={() =>
-                  cardEls.get(s.id)?.card.scrollIntoView({ behavior: "smooth", block: "start" })
-                }
+                onClick={() => {
+                  setActiveId(s.id);
+                  cardEls.get(s.id)?.card.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
                 title={s.title}
                 aria-current={active ? "true" : undefined}
                 className={cx(
@@ -917,45 +991,6 @@ function SurfaceOutline(props: { surfaces: Surface[]; top: number }) {
         })}
       </ul>
     </nav>
-  );
-}
-
-// The session-level chat: talk to your agent about the whole session, not a
-// specific card. Posts surfaceless comments; the agent replies session-level
-// (reply_to_user with no surfaceId). Reuses the card Thread with surfaceId=null.
-function SessionChat(props: { sessionId: string; onConnect?: () => void }) {
-  const listening = useSessionListening();
-  return (
-    <div className="mt-4 overflow-hidden rounded-xl border-[0.5px] border-border bg-card">
-      <div className="flex items-center gap-2 px-4 py-3">
-        <MessageSquare className="size-4 text-muted-foreground" />
-        <span className="text-[13px] font-semibold text-foreground">Chat with your agent</span>
-        <span className="flex-1" />
-        {listening ? (
-          <span className="text-[11px] font-medium text-[#2e7d54] dark:text-[#5fd699]">
-            agent will see this
-          </span>
-        ) : (
-          // Carry the fix at the moment of friction: messages queue, and the way
-          // to make them land automatically is one click away.
-          <button
-            type="button"
-            onClick={() => props.onConnect?.()}
-            className="text-[11px] text-faint underline-offset-2 transition-colors hover:text-foreground hover:underline"
-            title="Comments queue until your agent checks. Click to turn on auto-replies so they land automatically."
-          >
-            queued — turn on auto-replies
-          </button>
-        )}
-      </div>
-      <Thread
-        surfaceId={null}
-        sessionId={props.sessionId}
-        placeholder="Message your agent…"
-        readonly={isReadonly()}
-        send={(text) => sendComment({ session: props.sessionId, text, author: "user" }, null, text)}
-      />
-    </div>
   );
 }
 
@@ -997,39 +1032,6 @@ function EmptySession() {
   );
 }
 
-// The single most important status in the app: will my next comment actually
-// reach the agent? Framed as a setting the user owns — "Auto-replies on" (green)
-// while the agent is connected (parked in a feedback wait, or kept there by the
-// `showcase watch` plugin), or a clickable "Auto-replies off" that opens Connect
-// — the durable fix — instead of leaving the user to hand-nudge their terminal.
-function AgentPresence(props: { agent: string; onConnect?: () => void }) {
-  const listening = useSessionListening();
-  const label = props.agent || "your agent";
-  if (listening) {
-    return (
-      <span
-        className="flex-none inline-flex items-center gap-1.5 rounded-full bg-[#4caf78]/12 px-2 py-0.5 text-[11px] font-medium text-[#2e7d54] dark:text-[#5fd699]"
-        title={`Auto-replies are on — ${label} is connected, so your comments reach it right away.`}
-      >
-        <span className="size-1.5 animate-pulse rounded-full bg-[#4caf78] motion-reduce:animate-none" />
-        Auto-replies on
-      </span>
-    );
-  }
-  return (
-    <button
-      type="button"
-      onClick={() => props.onConnect?.()}
-      className="flex-none inline-flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-faint transition-colors hover:bg-hover hover:text-foreground"
-      title={`Auto-replies are off — ${label} isn't connected, so comments queue until it checks. Click to turn them on.`}
-    >
-      <span className="size-1.5 rounded-full bg-faint" />
-      Auto-replies off
-      <Plug className="size-3 opacity-70" />
-    </button>
-  );
-}
-
 // Live "agent is working" pill for the session header — the signal that the
 // agent is actively producing output (surfaces, replies), as opposed to
 // AgentPresence which says whether it's connected/parked waiting on you. Driven
@@ -1041,7 +1043,7 @@ function WorkingPill(props: { sessionId: string | null }) {
   return (
     <span
       className="flex-none inline-flex items-center gap-1.5 rounded-full bg-[#4caf78]/12 px-2 py-0.5 text-[11px] font-medium text-[#2e7d54] dark:text-[#5fd699]"
-      title="Your agent is actively publishing to this session right now."
+      title="Actively publishing to this session right now."
     >
       <span className="size-1.5 animate-pulse rounded-full bg-[#4caf78] motion-reduce:animate-none" />
       Working…

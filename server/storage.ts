@@ -363,6 +363,11 @@ export class JsonFileStore implements Store {
     return cloneOrNull(this.reviews.get(sessionId));
   }
 
+  async listReviews() {
+    await this.load();
+    return [...this.reviews.values()].map(clone);
+  }
+
   async putReview(sessionId: string, input: CreateReviewInput) {
     await this.load();
     if (!this.sessions.has(sessionId)) return null;

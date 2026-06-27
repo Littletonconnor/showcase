@@ -122,6 +122,18 @@
     margin: 0 !important;
     padding: 12mm 10mm !important;
   }
+  /* On screen the shell is pinned to the viewport (h-svh + overflow-hidden) so
+   * the content column scrolls internally. For print that would crop everything
+   * to one page — release the height/overflow so the document flows naturally
+   * across pages. */
+  [data-slot="sidebar-wrapper"] {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+  #appScroll {
+    overflow: visible !important;
+  }
   /* The session header is sticky on screen; in print that reserves a blank band
    * and shoves content down a page — make it flow inline instead. */
   [data-print-static] {
