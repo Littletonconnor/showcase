@@ -39,21 +39,21 @@ export const MCP_INSTRUCTIONS =
   "REFERENCING A SURFACE: every card shows a copy-to-clipboard card id in its header. The user copies " +
   "that id and mentions it to you in YOUR TERMINAL — that's where the conversation happens. Refer to " +
   "surfaces back to the user by id; list_surfaces fetches one if you need its current content. " +
-  "FEEDBACK FROM THE BROWSER: on a review the user adjudicates in the tab — Accept or Disagree on each " +
-  "decision (a Disagree threads under it as a comment the agent must defend or concede) — and those " +
-  "arrive as user comments. Call wait_for_feedback after publishing a review (or anything you want a " +
-  "reaction to) to receive them; any publish/update result may also carry a userFeedback array — " +
-  "comments the user left since your last call, delivered once. Act on that feedback in your normal " +
-  "terminal loop: make the change, then republish the review with publish_decisions so the board updates.";
+  "FEEDBACK FROM THE BROWSER: on a review the user adjudicates in the tab — Accept burns a decision down " +
+  "(local). To push back they copy a decision's ref (shown in its header) and paste it to you in YOUR " +
+  "TERMINAL to scope a revision — there's no browser pushback verb. On other surfaces the user leaves " +
+  "comments: call wait_for_feedback after publishing (or anything you want a reaction to) to receive them, " +
+  "and any publish/update result may also carry a userFeedback array — comments left since your last call, " +
+  "delivered once. Act on feedback in your normal terminal loop: make the change, then republish the review " +
+  "with publish_decisions so the board updates.";
 
 // Rides on every wait_for_feedback delivery (both transports) as an in-context
 // reminder, right when the agent is deciding how to respond.
 export const FEEDBACK_REPLY_NOTE =
-  "These are the user's responses from the showcase browser — review adjudications (Accept/Disagree on " +
-  "decisions) and comments on the surfaces they're watching. A Disagree threads under a decision and " +
-  "must be answered: defend it with evidence or concede and revise. Act on them in your terminal: make " +
-  "the change and republish the review with publish_decisions so the board updates, then call " +
-  "wait_for_feedback again if you expect more.";
+  "These are the user's comments on the surfaces they're watching. (On a review the user Accepts decisions " +
+  "locally and pushes back by pasting a decision's ref into your terminal, so that arrives as an ordinary " +
+  "terminal message, not here.) Act on them in your terminal: make the change and republish the review with " +
+  "publish_decisions so the board updates, then call wait_for_feedback again if you expect more.";
 
 const d = {
   title: "Short human-readable title shown above the card",
@@ -245,14 +245,14 @@ export const MCP_TOOL_DESCRIPTIONS = {
   updateSurface:
     "Revise a surface in place (same card, new version). Prefer this over publishing a near-duplicate. Pass the full replacement parts array. If the result includes userFeedback, read it.",
   publishDecisions:
-    "Publish a WHOLE code review in one call — THE way to review a PR on showcase (docs/review-form-factor.md). Review scales with risk, not diff size: do the ANALYSIS with your `code-review` skill first, then this renders it. Pass: a plain-English `brief` (≤4 sentences, NO code identifiers — for a PM/designer/anyone), a `verdict` (block|approve|comment), a risk-ranked `decisions[]` array (ONE decision per thing that needs a human call — a 5,000-line diff is usually a handful, hardest first; decisions[0] is the lede), and the REQUIRED `manifest` (EVERY changed file tagged has-decision|reviewed-no-comment|mechanical-skipped — the trust backbone, so the reviewer can see nothing was hidden). Each decision is fixed structure: call (block|ship|decide), kind, scope, a one-sentence assertion, optional impact/details, REQUIRED confidence (the surfaced honesty signal), an optional pivot ('flips to ✅ if…'), optional evidence (surface parts — usually a diff — in the synced right pane), and an optional `proposal:{before,after}` suggested fix. Keep each decision's `id` STABLE across re-publishes — it's the human's chat handle and what preserves their adjudication when you revise. showcase renders a Brief + a scroll-snapped decision queue the human Accepts/Disagrees. Returns sessionId + the /?review=<session> URL.",
+    "Publish a WHOLE code review in one call — THE way to review a PR on showcase (docs/review-form-factor.md). Review scales with risk, not diff size: do the ANALYSIS with your `code-review` skill first, then this renders it. Pass: a plain-English `brief` (≤4 sentences, NO code identifiers — for a PM/designer/anyone), a `verdict` (block|approve|comment), a risk-ranked `decisions[]` array (ONE decision per thing that needs a human call — a 5,000-line diff is usually a handful, hardest first; decisions[0] is the lede), and the REQUIRED `manifest` (EVERY changed file tagged has-decision|reviewed-no-comment|mechanical-skipped — the trust backbone, so the reviewer can see nothing was hidden). Each decision is fixed structure: call (block|ship|decide), kind, scope, a one-sentence assertion, optional impact/details, REQUIRED confidence (the surfaced honesty signal), an optional pivot ('flips to ✅ if…'), optional evidence (surface parts — usually a diff — in the synced right pane), and an optional `proposal:{before,after}` suggested fix. Keep each decision's `id` STABLE across re-publishes — it's the human's chat handle and what preserves their adjudication when you revise. showcase renders a Brief + a scroll-snapped decision queue the human Accepts (pushback comes by pasting a decision's id into your terminal). Returns sessionId + the /?review=<session> URL.",
   publishSnippet:
     "Publish an HTML snippet — sugar for a surface with one html part. Send a body fragment only. Returns the id, view URL, and sessionId. Pass sessionTitle on first publish. Prefer publish_surface when you want a diff or multiple parts.",
   updateSnippet: "Revise an html snippet in place — sugar for update_surface with one html part.",
   deleteSurface:
     "Delete a surface you published — removes the card and ALL its versions from the board permanently. Use it to clean up while iterating: a stale, duplicate, or superseded card. Prefer update_surface to revise a card in place; reach for this only when the card should disappear entirely. Irreversible. Returns the deleted id and its sessionId.",
   waitForFeedback:
-    "Block until the user adjudicates or comments on this session in their browser (or the timeout passes). On a review the user Accepts/Disagrees decisions; those arrive here as user comments, coalesced into one batch (delivered once, resuming from where the agent last left off). Use timeoutSeconds 0 for a non-blocking check. Act on what comes back in your terminal and republish the review with publish_decisions so the board reflects it.",
+    "Block until the user comments on a surface in this session in their browser (or the timeout passes), coalesced into one batch (delivered once, resuming from where the agent last left off). (Review Accepts are local and pushback comes via a decision's copy-ref pasted into your terminal, so review adjudications do NOT arrive here.) Use timeoutSeconds 0 for a non-blocking check. Act on what comes back in your terminal and republish the review with publish_decisions so the board reflects it.",
   listSurfacesHttp: "List surfaces — pass a session id to scope, or omit for all sessions.",
   listSurfacesStdio: "List surfaces in this conversation's session.",
   uploadAsset:

@@ -4,21 +4,17 @@
 // scroll (gently snapping) and ONE sticky RIGHT pane crossfades to the *active*
 // decision's evidence as you move down.
 //
-// Two live actions, each a single key (the human directs the agent):
-//   • Accept (A)   — agree, move on. Local; drives the burndown.
-//   • Disagree (D) — tell it it's wrong; it defends with evidence or revises.
-// To make the agent verify a declared gap, copy the decision's ref (the chip in
-// its header) and ask in normal chat — no bespoke button for it. Disagree goes
-// over the existing comment channel and threads under the decision; when the
-// agent re-publishes, the decision updates in place. Local state is keyed by the
-// decision's stable id (falling back to its text for older reviews), so a
-// re-publish that merely rewords an assertion keeps the Accepts you've already
-// made — only a substantively new decision (a new id) resets. Disabled in a
-// static export (no agent) and inert in `?review-preview`.
+// One live action: Accept (A) — agree, move on. Local; drives the burndown. To
+// push back, copy the decision's ref (the chip in its header) and ask in normal
+// agent chat ("revise d-… : …"); when the agent re-publishes, the decision
+// updates in place. There is no in-browser pushback verb — chat is the channel.
+// Local Accepts are keyed by the decision's stable id (falling back to its text
+// for older reviews), so a re-publish that merely rewords an assertion keeps the
+// Accepts you've already made — only a substantively new decision (a new id)
+// resets. Disabled in a static export (no agent) and inert in `?review-preview`.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Ban, ChevronRight, CircleAlert, CircleCheck } from "lucide-react";
 import type {
-  Comment,
   Decision,
   DecisionCall,
   FileDisposition,
@@ -32,7 +28,6 @@ import type {
   MermaidPart as MermaidPartData,
   SurfacePart,
 } from "../api.ts";
-import { api } from "../api.ts";
 import { cx } from "../cx.ts";
 import { CodePart } from "../CodePart.tsx";
 import { DiffPart } from "../DiffPart.tsx";
@@ -158,22 +153,6 @@ function Manifest(props: {
   );
 }
 
-// What Disagree hands the agent — it names the decision (so the reply threads)
-// and forces a narrow, defend-or-concede action. The first line is the human
-// gist; the rest is the instruction.
-function disagreeText(idx: number, assertion: string, objection: string): string {
-  return (
-    `Disagree · decision ${idx + 1}: ${objection}\n` +
-    `(the decision claims: "${assertion}")\n` +
-    `Defend this with evidence, or concede and revise decision ${idx + 1} via publish_decisions — no hedging.`
-  );
-}
-// Which decision a comment belongs to (1-based in the text → 0-based index).
-function decisionRefOf(text: string): number | null {
-  const m = /decision\s+(\d+)/i.exec(text);
-  return m ? Number(m[1]) - 1 : null;
-}
-
 function Kbd(props: { children: ReactNode }) {
   return (
     <kbd className="ml-1 rounded border-[0.5px] border-border bg-muted px-1 py-px font-mono text-[10px] leading-none text-muted-foreground">
@@ -238,26 +217,17 @@ function DecisionSection(props: {
   index: number;
   total: number;
   active: boolean;
-  state?: "accepted" | "disputed";
-  thread: Comment[];
+  accepted: boolean;
   showVerbs: boolean;
   interactive: boolean;
-  composerOpen: boolean;
   refCb: (el: HTMLLIElement | null) => void;
   onAccept: () => void;
   onUndo: () => void;
-  onOpenDisagree: () => void;
-  onCloseDisagree: () => void;
-  onSubmitDisagree: (objection: string) => void;
 }) {
   const d = props.decision;
   const call = CALL[d.call];
   const conf = CONFIDENCE[d.confidence];
-  const accepted = props.state === "accepted";
-  const disputed = props.state === "disputed";
-  // A Disagree is settled once the agent has answered (a non-user reply threads
-  // under it); until then it's still waiting on a defend-or-revise.
-  const answered = props.thread.some((c) => c.author !== "user");
+  const accepted = props.accepted;
   return (
     <li
       ref={props.refCb}
@@ -269,7 +239,7 @@ function DecisionSection(props: {
       )}
     >
       <div className="flex flex-col gap-2.5">
-        {/* rank + scope (+ adjudication, once decided) */}
+        {/* rank + scope (+ adjudication, once accepted) */}
         <div className="flex items-center gap-2 text-[11px] text-faint">
           <span className="tabular-nums">
             Decision {props.index + 1} / {props.total}
@@ -281,11 +251,6 @@ function DecisionSection(props: {
           {accepted && (
             <Chip className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
               ✓ Accepted
-            </Chip>
-          )}
-          {disputed && (
-            <Chip className="bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
-              Disagreed
             </Chip>
           )}
         </div>
@@ -329,31 +294,9 @@ function DecisionSection(props: {
         {/* the pivot (conditional) */}
         {d.pivot ? <p className="text-[12.5px] text-faint italic">⤳ {d.pivot}</p> : null}
 
-        {/* the conversation trail — your Disagree and the agent's replies */}
-        {props.thread.length > 0 && (
-          <div className="mt-1 flex flex-col gap-1.5 border-l-2 border-border/70 pl-3">
-            {props.thread.map((c) => {
-              const mine = c.author === "user";
-              return (
-                <div key={c.id} className="flex flex-col gap-0.5 text-[12px]">
-                  <span
-                    className={cx(
-                      "text-[10px] font-medium tracking-wide uppercase",
-                      mine ? "text-brand" : "text-faint",
-                    )}
-                  >
-                    {mine ? "You" : c.author}
-                  </span>
-                  <span className="whitespace-pre-wrap text-muted-foreground">
-                    {c.text.split("\n")[0]}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* the verbs — one key each */}
+        {/* the verb — Accept (one key). To push back, copy the decision's ref
+            (its header chip) and ask in normal agent chat; the agent revises and
+            re-publishes, and the decision updates in place. */}
         {props.showVerbs &&
           (accepted ? (
             <div className="mt-1 flex items-center gap-2 text-[12px] text-faint">
@@ -369,85 +312,22 @@ function DecisionSection(props: {
               )}
             </div>
           ) : (
-            <div className="mt-1 flex flex-col gap-2">
-              {disputed &&
-                (answered ? (
-                  <div className="text-[12px] text-muted-foreground">
-                    The agent responded — read the reply, then Accept or Disagree again.
-                  </div>
-                ) : (
-                  <div className="text-[12px] text-amber-700 dark:text-amber-400">
-                    Waiting on the agent to defend or revise…
-                  </div>
-                ))}
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={props.onAccept}
-                  disabled={!props.interactive}
-                  className="inline-flex items-center rounded-md px-2.5 py-1 text-[12px] font-medium text-emerald-700 transition-colors hover:bg-emerald-50 disabled:pointer-events-none disabled:opacity-40 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
-                >
-                  Accept <Kbd>A</Kbd>
-                </button>
-                <button
-                  type="button"
-                  onClick={props.onOpenDisagree}
-                  disabled={!props.interactive}
-                  className="inline-flex items-center rounded-md px-2.5 py-1 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-hover disabled:pointer-events-none disabled:opacity-40"
-                >
-                  Disagree <Kbd>D</Kbd>
-                </button>
-              </div>
-              {props.composerOpen && (
-                <DisagreeComposer
-                  onCancel={props.onCloseDisagree}
-                  onSubmit={props.onSubmitDisagree}
-                />
-              )}
+            <div className="mt-1 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={props.onAccept}
+                disabled={!props.interactive}
+                className="inline-flex items-center rounded-md px-2.5 py-1 text-[12px] font-medium text-emerald-700 transition-colors hover:bg-emerald-50 disabled:pointer-events-none disabled:opacity-40 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+              >
+                Accept <Kbd>A</Kbd>
+              </button>
+              <span className="text-[11px] text-faint">
+                disagree? copy the ref above and tell the agent in chat
+              </span>
             </div>
           ))}
       </div>
     </li>
-  );
-}
-
-// Disagree opens this: the objection that gets dispatched to the agent as a
-// scoped defend-or-revise task.
-function DisagreeComposer(props: { onCancel: () => void; onSubmit: (objection: string) => void }) {
-  const [text, setText] = useState("");
-  return (
-    <div className="flex flex-col gap-2 rounded-lg border-[0.5px] border-border bg-muted/40 p-2.5">
-      <textarea
-        autoFocus
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") props.onCancel();
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && text.trim()) props.onSubmit(text);
-        }}
-        rows={2}
-        placeholder="What's wrong with this conclusion? The agent must defend it or revise."
-        className="resize-y rounded-md border-[0.5px] border-border bg-background px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-faint focus-visible:border-brand focus-visible:outline-none"
-      />
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => props.onSubmit(text)}
-          disabled={!text.trim()}
-          className="rounded-md bg-brand px-2.5 py-1 text-[12px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-40"
-        >
-          Send
-        </button>
-        <button
-          type="button"
-          onClick={props.onCancel}
-          className="rounded-md px-2.5 py-1 text-[12px] font-medium text-muted-foreground hover:bg-hover"
-        >
-          Cancel
-        </button>
-        <span className="text-[11px] text-faint">⌘↵ to send · Esc to close</span>
-      </div>
-    </div>
   );
 }
 
@@ -517,7 +397,6 @@ export function ReviewView(props: {
   review: Review;
   sessionId?: string;
   readonly?: boolean;
-  comments?: Comment[];
   onBack?: () => void;
   // When rendered inside the board's main panel (not the standalone page), fill
   // the parent height instead of the viewport so it scrolls within the column.
@@ -531,11 +410,10 @@ export function ReviewView(props: {
   const itemRefs = useRef<(HTMLLIElement | null)[]>([]);
   const [active, setActive] = useState(0);
 
-  // Reviewer adjudication, keyed by the decision's stable id (see keyOf) so a
+  // Accepted decisions, keyed by the decision's stable id (see keyOf) so a
   // re-publish keeps the Accepts you've made — only a substantively new decision
   // resets. Drives the burndown.
-  const [state, setState] = useState<Record<string, "accepted" | "disputed">>({});
-  const [composerOpen, setComposerOpen] = useState<number | null>(null);
+  const [accepted, setAccepted] = useState<Set<string>>(() => new Set());
 
   // decisionId → its position in the queue, so a manifest row can jump to its
   // decision (and to render "decision N →" links).
@@ -547,29 +425,10 @@ export function ReviewView(props: {
     return m;
   }, [r.decisions]);
 
-  // Comments grouped under the decision they reference.
-  const threads = useMemo(() => {
-    const by = new Map<number, Comment[]>();
-    for (const c of props.comments ?? []) {
-      const idx = decisionRefOf(c.text);
-      if (idx === null) continue;
-      (by.get(idx) ?? by.set(idx, []).get(idx)!).push(c);
-    }
-    return by;
-  }, [props.comments]);
-
-  async function send(text: string) {
-    if (!props.sessionId) return;
-    await api("/api/comments", {
-      method: "POST",
-      body: JSON.stringify({ session: props.sessionId, author: "user", text }),
-    });
-  }
-
   function accept(idx: number) {
     const key = keyOf(r.decisions[idx]);
-    setState((prev) => ({ ...prev, [key]: "accepted" }));
-    const next = r.decisions.findIndex((d, i) => i > idx && state[keyOf(d)] === undefined);
+    setAccepted((prev) => new Set(prev).add(key));
+    const next = r.decisions.findIndex((d, i) => i > idx && !accepted.has(keyOf(d)));
     if (next >= 0) {
       itemRefs.current[next]?.scrollIntoView({ behavior: "smooth", block: "start" });
       setActive(next);
@@ -581,17 +440,11 @@ export function ReviewView(props: {
   }
   function undo(idx: number) {
     const key = keyOf(r.decisions[idx]);
-    setState((prev) => {
-      const n = { ...prev };
-      delete n[key];
+    setAccepted((prev) => {
+      const n = new Set(prev);
+      n.delete(key);
       return n;
     });
-  }
-  function disagree(idx: number, objection: string) {
-    if (!objection.trim() || !interactive) return;
-    setState((prev) => ({ ...prev, [keyOf(r.decisions[idx])]: "disputed" }));
-    setComposerOpen(null);
-    void send(disagreeText(idx, r.decisions[idx].assertion, objection.trim()));
   }
 
   // Active decision: the topmost section sitting in the top band of the scroll
@@ -613,7 +466,7 @@ export function ReviewView(props: {
     return () => obs.disconnect();
   }, [r.decisions.length]);
 
-  // j/k (or ↑/↓) move; a accept · d disagree the active decision.
+  // j/k (or ↑/↓) move; a accepts the active decision.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -628,35 +481,20 @@ export function ReviewView(props: {
       } else if (interactive && e.key === "a") {
         e.preventDefault();
         accept(active);
-      } else if (interactive && e.key === "d") {
-        e.preventDefault();
-        setComposerOpen(active);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, r.decisions.length, interactive, state]);
+  }, [active, r.decisions.length, interactive, accepted]);
 
-  // Burndown toward a reachable "Review complete". A decision is *settled* once
-  // the human acted on it AND, for a Disagree, the agent has answered (defended
-  // or revised — i.e. a non-user reply threads under it). An unanswered Disagree
-  // is still *waiting*: it shows as waiting rather than freezing the burndown one
-  // short of done forever.
+  // Burndown toward a reachable "Review complete": every decision Accepted. To
+  // push back on one, the human uses its copy-ref in chat — the agent revises and
+  // re-publishes, which updates it in place rather than parking it here.
   const total = r.decisions.length;
-  const summary = useMemo(() => {
-    let settled = 0;
-    let waiting = 0;
-    r.decisions.forEach((d, i) => {
-      const s = state[keyOf(d)];
-      if (s === "accepted") settled++;
-      else if (s === "disputed") {
-        const answered = (threads.get(i) ?? []).some((c) => c.author !== "user");
-        if (answered) settled++;
-        else waiting++;
-      }
-    });
-    return { settled, waiting };
-  }, [r.decisions, state, threads]);
+  const settled = useMemo(
+    () => r.decisions.reduce((n, d) => n + (accepted.has(keyOf(d)) ? 1 : 0), 0),
+    [r.decisions, accepted],
+  );
 
   return (
     <div
@@ -697,11 +535,9 @@ export function ReviewView(props: {
             </span>
             <span className="text-faint">
               {showVerbs
-                ? summary.settled === total
+                ? settled === total
                   ? `Review complete · ${total} decision${total === 1 ? "" : "s"}`
-                  : summary.waiting > 0
-                    ? `${summary.settled} / ${total} settled · ${summary.waiting} waiting`
-                    : `${summary.settled} / ${total} settled`
+                  : `${settled} / ${total} accepted`
                 : `${total} decision${total === 1 ? "" : "s"}`}
             </span>
           </div>
@@ -726,12 +562,10 @@ export function ReviewView(props: {
                 <Kbd>A</Kbd> accept
               </span>
               <span>
-                <Kbd>D</Kbd> disagree — it defends or revises
-              </span>
-              <span>
                 <Kbd>J</Kbd>
                 <Kbd>K</Kbd> move
               </span>
+              <span>disagree? copy a decision's ref and tell the agent in chat</span>
             </div>
           )}
 
@@ -754,17 +588,12 @@ export function ReviewView(props: {
                 index={i}
                 total={total}
                 active={i === active}
-                state={state[keyOf(d)]}
-                thread={threads.get(i) ?? []}
+                accepted={accepted.has(keyOf(d))}
                 showVerbs={showVerbs}
                 interactive={interactive}
-                composerOpen={composerOpen === i}
                 refCb={(el) => (itemRefs.current[i] = el)}
                 onAccept={() => accept(i)}
                 onUndo={() => undo(i)}
-                onOpenDisagree={() => setComposerOpen(i)}
-                onCloseDisagree={() => setComposerOpen(null)}
-                onSubmitDisagree={(obj) => disagree(i, obj)}
               />
             ))}
           </ol>
