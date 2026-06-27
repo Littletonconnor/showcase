@@ -4,22 +4,22 @@
 // scroll (gently snapping) and ONE sticky RIGHT pane crossfades to the *active*
 // decision's evidence as you move down.
 //
-// Three live actions, each a single key (the human directs the agent):
+// Two live actions, each a single key (the human directs the agent):
 //   • Accept (A)   — agree, move on. Local; drives the burndown.
-//   • Verify (V)   — make the agent check a gap it flagged. Sends a scoped ask.
 //   • Disagree (D) — tell it it's wrong; it defends with evidence or revises.
-// Verify/Disagree go over the existing comment channel and thread under the
-// decision; when the agent re-publishes, the decision updates in place. Local
-// state is keyed by the decision's text, so a re-publish never wipes the Accepts
-// you've already made — only a decision whose wording actually changed resets.
-// Disabled in a static export (no agent) and inert in `?review-preview`.
+// To make the agent verify a declared gap, copy the decision's ref (the chip in
+// its header) and ask in normal chat — no bespoke button for it. Disagree goes
+// over the existing comment channel and threads under the decision; when the
+// agent re-publishes, the decision updates in place. Local state is keyed by the
+// decision's text, so a re-publish never wipes the Accepts you've already made —
+// only a decision whose wording actually changed resets. Disabled in a static
+// export (no agent) and inert in `?review-preview`.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Ban, ChevronRight, CircleAlert, CircleCheck } from "lucide-react";
 import type {
   Comment,
   Decision,
   DecisionCall,
-  DecisionGap,
   FileDisposition,
   ManifestFile,
   Review,
@@ -117,16 +117,9 @@ function Manifest(props: {
   );
 }
 
-// What the verbs hand the agent — each names the decision (so the reply threads)
-// and forces a narrow, predictable action. The first line is the human gist; the
-// rest is the instruction.
-function verifyText(idx: number, gap: DecisionGap): string {
-  return (
-    `Verify · decision ${idx + 1}: ${gap.what}\n` +
-    (gap.proveScope ? `How: ${gap.proveScope}\n` : "") +
-    `Then update decision ${idx + 1} in place via publish_decisions; if it changes the call, say so.`
-  );
-}
+// What Disagree hands the agent — it names the decision (so the reply threads)
+// and forces a narrow, defend-or-concede action. The first line is the human
+// gist; the rest is the instruction.
 function disagreeText(idx: number, assertion: string, objection: string): string {
   return (
     `Disagree · decision ${idx + 1}: ${objection}\n` +
@@ -212,7 +205,6 @@ function DecisionSection(props: {
   refCb: (el: HTMLLIElement | null) => void;
   onAccept: () => void;
   onUndo: () => void;
-  onVerify: (gapIdx: number) => void;
   onOpenDisagree: () => void;
   onCloseDisagree: () => void;
   onSubmitDisagree: (objection: string) => void;
@@ -268,6 +260,15 @@ function DecisionSection(props: {
           <p className="text-[13px] leading-relaxed text-muted-foreground">→ {d.impact}</p>
         ) : null}
 
+        {/* the rationale — the agent's fuller explanation of the call (markdown).
+            Renders below the one-line assertion/impact for anyone who wants the
+            reasoning, edge cases, and why it landed on this call. */}
+        {d.details ? (
+          <div className="text-[13px] leading-relaxed text-muted-foreground">
+            <MarkdownPart part={{ kind: "markdown", markdown: d.details }} />
+          </div>
+        ) : null}
+
         {/* the honesty ledger — labeled rows so it scans, not a wall of prose */}
         <div className="mt-1 flex flex-col gap-2 border-t-[0.5px] border-border pt-3 text-[12.5px]">
           <div className="flex items-center gap-1.5">
@@ -287,19 +288,9 @@ function DecisionSection(props: {
               </span>
               <div className="flex flex-col gap-1.5">
                 {(d.gaps ?? []).map((g, i) => (
-                  <div key={i} className="flex items-start gap-2">
-                    <span className="text-red-600 dark:text-red-400">{g.what}</span>
-                    {props.showVerbs && (
-                      <button
-                        type="button"
-                        onClick={() => props.onVerify(i)}
-                        disabled={!props.interactive}
-                        className="mt-px shrink-0 rounded-md border-[0.5px] border-border px-1.5 py-0.5 text-[11px] font-medium text-brand hover:bg-brand-subtle disabled:pointer-events-none disabled:opacity-40"
-                      >
-                        Verify
-                      </button>
-                    )}
-                  </div>
+                  <span key={i} className="text-red-600 dark:text-red-400">
+                    {g.what}
+                  </span>
                 ))}
               </div>
             </div>
@@ -309,7 +300,7 @@ function DecisionSection(props: {
         {/* the pivot (conditional) */}
         {d.pivot ? <p className="text-[12.5px] text-faint italic">⤳ {d.pivot}</p> : null}
 
-        {/* the conversation trail — your Verify/Disagree and the agent's replies */}
+        {/* the conversation trail — your Disagree and the agent's replies */}
         {props.thread.length > 0 && (
           <div className="mt-1 flex flex-col gap-1.5 border-l-2 border-border/70 pl-3">
             {props.thread.map((c) => {
@@ -363,19 +354,6 @@ function DecisionSection(props: {
                   className="inline-flex items-center rounded-md px-2.5 py-1 text-[12px] font-medium text-emerald-700 transition-colors hover:bg-emerald-50 disabled:pointer-events-none disabled:opacity-40 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
                 >
                   Accept <Kbd>A</Kbd>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => props.onVerify(0)}
-                  disabled={!props.interactive || (props.decision.gaps ?? []).length === 0}
-                  title={
-                    (props.decision.gaps ?? []).length === 0
-                      ? "No flagged gap to verify"
-                      : "Make the agent check a flagged gap"
-                  }
-                  className="inline-flex items-center rounded-md px-2.5 py-1 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-hover disabled:pointer-events-none disabled:opacity-40"
-                >
-                  Verify <Kbd>V</Kbd>
                 </button>
                 <button
                   type="button"
@@ -578,11 +556,6 @@ export function ReviewView(props: {
       return n;
     });
   }
-  function verify(idx: number, gapIdx: number) {
-    const gap = r.decisions[idx].gaps?.[gapIdx];
-    if (!gap || !interactive) return;
-    void send(verifyText(idx, gap));
-  }
   function disagree(idx: number, objection: string) {
     if (!objection.trim() || !interactive) return;
     setState((prev) => ({ ...prev, [r.decisions[idx].assertion]: "disputed" }));
@@ -609,7 +582,7 @@ export function ReviewView(props: {
     return () => obs.disconnect();
   }, [r.decisions.length]);
 
-  // j/k (or ↑/↓) move; a accept · v verify · d disagree the active decision.
+  // j/k (or ↑/↓) move; a accept · d disagree the active decision.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -624,9 +597,6 @@ export function ReviewView(props: {
       } else if (interactive && e.key === "a") {
         e.preventDefault();
         accept(active);
-      } else if (interactive && e.key === "v") {
-        e.preventDefault();
-        verify(active, 0);
       } else if (interactive && e.key === "d") {
         e.preventDefault();
         setComposerOpen(active);
@@ -690,9 +660,6 @@ export function ReviewView(props: {
               <Kbd>A</Kbd> accept
             </span>
             <span>
-              <Kbd>V</Kbd> make it verify a flagged gap
-            </span>
-            <span>
               <Kbd>D</Kbd> disagree — it defends or revises
             </span>
             <span>
@@ -728,7 +695,6 @@ export function ReviewView(props: {
                 refCb={(el) => (itemRefs.current[i] = el)}
                 onAccept={() => accept(i)}
                 onUndo={() => undo(i)}
-                onVerify={(gi) => verify(i, gi)}
                 onOpenDisagree={() => setComposerOpen(i)}
                 onCloseDisagree={() => setComposerOpen(null)}
                 onSubmitDisagree={(obj) => disagree(i, obj)}

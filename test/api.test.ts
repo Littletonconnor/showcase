@@ -1653,6 +1653,7 @@ test("publishes and round-trips a decision-queue review", async () => {
         scope: "whole-file",
         assertion: "The limiter counts per-process.",
         impact: "The real cap is N×workers.",
+        details: "Each worker holds its own `Map`, so the cap multiplies by worker count.",
         confidence: "high",
         coverage: "Read the limiter; did not load-test.",
         gaps: [{ what: "no shared store", proveScope: "wire a shared counter and re-test" }],
@@ -1702,6 +1703,7 @@ test("publishes and round-trips a decision-queue review", async () => {
   assert.equal(stored.verdict, "block");
   assert.equal(stored.decisions.length, 2);
   assert.equal(stored.decisions[0].id, "d-per-process");
+  assert.match(stored.decisions[0].details, /own `Map`/);
   assert.equal(stored.decisions[0].evidence[0].kind, "diff");
   assert.equal(stored.decisions[0].gaps[0].what, "no shared store");
   // The suggested fix (the change → the fix) round-trips for the blocked decision.

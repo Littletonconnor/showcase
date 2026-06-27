@@ -265,6 +265,10 @@ export interface Decision {
   scope: DecisionScope; // how far the reviewer must look to judge it
   assertion: string; // one sentence — the conclusion
   impact?: string; // why it matters — who hits it, how bad
+  // The fuller explanation (markdown): the reasoning behind the call, edge cases,
+  // how the code actually behaves. Rendered under the one-line assertion/impact
+  // for anyone who wants the depth; the assertion stays the scannable headline.
+  details?: string;
   confidence: DecisionConfidence;
   coverage: string; // what was / wasn't verified — the honesty ledger
   gaps?: DecisionGap[]; // declared uncertainties → each a scoped [Verify]

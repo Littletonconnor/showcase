@@ -1089,6 +1089,7 @@ export function coerceReview(raw: any): { review: CreateReviewInput } | { error:
       scope: d.scope,
       assertion: d.assertion,
       ...(typeof d.impact === "string" && d.impact.trim() ? { impact: d.impact } : {}),
+      ...(typeof d.details === "string" && d.details.trim() ? { details: d.details } : {}),
       confidence: d.confidence,
       coverage: d.coverage,
       ...(gaps && gaps.length ? { gaps } : {}),

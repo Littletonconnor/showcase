@@ -204,6 +204,7 @@ _The next-generation review, designed for the age of agents and large diffs (`do
 - **`id`** — a short, **stable** ref (e.g. `"d-stale-token"`). Keep it identical across re-publishes: it's the human's copy-paste handle, the manifest's link target, and what preserves their adjudication when you revise. Omit and the server mints one — but then it churns each publish, so supply your own.
 - **`call`** — `block | ship | decide` (your recommendation) · **`kind`** — bug/fix/capability/refactor/migration/risk · **`scope`** — `changed-line | whole-file | codebase` (how far the reviewer must look).
 - **`assertion`** — one sentence, the conclusion · **`impact`** — who hits it, how bad (optional).
+- **`details`** — the fuller explanation (markdown): the reasoning, how the code actually behaves, edge cases, what you traced. The `assertion` is the headline; `details` is the depth under it. Write it for anything non-obvious — a one-sentence assertion alone leaves the reviewer guessing.
 - **`confidence`** + **`coverage`** are **REQUIRED** — the honesty ledger: what you DID and did NOT verify. The form factor mandates this so a confident-but-unchecked claim can't hide as prose.
 - **`gaps`** — declared uncertainties, each `{what, proveScope}`: what you didn't check + the scoped task the reviewer's **"Prove it"** would run. Be honest here; it's the interaction surface.
 - **`pivot`** — `"flips to ✅/⛔ if …"`, ONLY when there's a real fork. Omit on a clean ship — never noise.
@@ -228,6 +229,7 @@ _The next-generation review, designed for the age of agents and large diffs (`do
       "scope": "changed-line",
       "assertion": "Oversized uploads buffer the whole body before the size check.",
       "impact": "A 2 GB upload exhausts heap before the 413 is returned.",
+      "details": "The handler calls `req.arrayBuffer()` on the entry path, which fully reads the body into memory *before* `tooLarge()` runs — so the size guard only fires after the allocation it was meant to prevent. Under concurrent uploads the heap climbs to roughly N×body before any 413. A streaming read with a hard cap rejects mid-stream and also covers the chunked, no-content-length case the header check misses.",
       "confidence": "high",
       "coverage": "Reproduced with a 2 GB upload; did not test chunked uploads with no content-length.",
       "gaps": [

@@ -151,6 +151,8 @@ const d = {
   decisionAssertion:
     "One sentence — the conclusion (e.g. 'Token refresh accepts a stale token on a cache hit').",
   decisionImpact: "Why it matters — who hits it, how bad, under what input. Optional.",
+  decisionDetails:
+    "Optional fuller explanation (markdown) rendered under the assertion/impact: the reasoning behind the call, how the code actually behaves, edge cases, what you traced. The `assertion` stays the one-line headline — put the depth here so a reviewer who wants more than a sentence isn't left guessing. Use it on anything non-obvious, especially block/decide.",
   decisionConfidence: "REQUIRED — high | medium | low. How sure you are.",
   decisionCoverage:
     "REQUIRED — the honesty ledger: what you DID and did NOT verify (e.g. 'reproduced with a test' / 'read the caller, did not run the migration'). The form factor mandates this so a confident-but-unchecked claim can't hide.",
@@ -478,6 +480,7 @@ export const HTTP_MCP_TOOLS = [
               },
               assertion: { type: "string", description: d.decisionAssertion },
               impact: { type: "string", description: d.decisionImpact },
+              details: { type: "string", description: d.decisionDetails },
               confidence: {
                 type: "string",
                 enum: ["high", "medium", "low"],
