@@ -1,8 +1,17 @@
 #!/usr/bin/env node
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir, userInfo } from "node:os";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { homedir, tmpdir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -15,6 +24,10 @@ const HELP = `showcase — a live visual surface for terminal coding agents
 
 usage:
   showcase serve [--port N] [--open]      start the surface (API + viewer)
+  showcase service <install|uninstall|status> [--port N]
+                                          run the surface as a background OS
+                                          service (launchd/systemd) — no terminal
+                                          tab; starts on login, restarts on crash
   showcase review <branch> [options]      scaffold a review session from a diff
       --base <branch>   base to diff against (default: origin/HEAD or main)
       --title <t>       session title (default: "Review: <branch>")
@@ -175,9 +188,8 @@ function findChrome() {
 }
 
 async function api(path, init = {}) {
-  let res;
-  try {
-    res = await fetch(`${BASE}${path}`, {
+  const send = () =>
+    fetch(`${BASE}${path}`, {
       ...init,
       headers: {
         "content-type": "application/json",
@@ -185,9 +197,10 @@ async function api(path, init = {}) {
         ...init.headers,
       },
     });
-  } catch {
-    fail(`server not reachable at ${BASE} — start it with: showcase serve`);
-  }
+  // On a connection failure, try to auto-start a local server, then retry once.
+  let res = await send().catch(() => null);
+  if (!res && (await ensureServerUp())) res = await send().catch(() => null);
+  if (!res) fail(`server not reachable at ${BASE} — start it with: showcase serve`);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) fail(body.error ?? `${res.status} ${res.statusText}`);
   return body;
@@ -466,9 +479,8 @@ async function uploadFile(file, { session, kind } = {}) {
   params.set("filename", file.split(/[\\/]/).pop() ?? "upload");
   if (session) params.set("session", session);
   if (kind) params.set("kind", kind);
-  let res;
-  try {
-    res = await fetch(`${BASE}/api/assets?${params}`, {
+  const send = () =>
+    fetch(`${BASE}/api/assets?${params}`, {
       method: "POST",
       headers: {
         "content-type": contentTypeFor(file),
@@ -476,9 +488,9 @@ async function uploadFile(file, { session, kind } = {}) {
       },
       body: bytes,
     });
-  } catch {
-    fail(`server not reachable at ${BASE} — start it with: showcase serve`);
-  }
+  let res = await send().catch(() => null);
+  if (!res && (await ensureServerUp())) res = await send().catch(() => null);
+  if (!res) fail(`server not reachable at ${BASE} — start it with: showcase serve`);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) fail(body.error ?? `${res.status} ${res.statusText}`);
   return body;
@@ -567,6 +579,173 @@ function ensureNodeCanRun(entry) {
       `  Switch with nvm: \`nvm use 22\` (or 24), then re-run —\n` +
       `  or run a one-off with a newer binary: PATH="$(dirname "$(nvm which 22)"):$PATH" showcase serve`,
   );
+}
+
+// --- background service (`showcase service …`) ---
+//
+// Run the surface as an OS-managed user service so it survives closing the
+// terminal, restarts on crash, and comes back on login — no more babysitting a
+// `serve` tab. launchd on macOS, systemd --user on Linux. Both bake in the
+// current node binary + server entrypoint, so a later restart by the OS uses the
+// exact interpreter that could run it at install time.
+const SERVICE_LABEL = "dev.showcase.server"; // launchd label / reverse-DNS id
+const SERVICE_UNIT = "showcase.service"; // systemd unit name
+const SERVICE_LOG = join(homedir(), ".showcase", "server.log");
+
+// Escape the five XML entities so a home path with `&` or `<` can't corrupt the
+// plist. Paths almost never contain them, but a malformed plist fails silently.
+function xmlEscape(s) {
+  return s.replace(
+    /[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[c],
+  );
+}
+
+// Resolve the per-platform service facts: where the unit file lives, the loader
+// commands, and how to read its running state. `null` on an unsupported platform
+// (Windows has no launchd/systemd) so the command can fail with a clear hint.
+function serviceConfig(port) {
+  const entry = entrypoint("server", "index.ts");
+  ensureNodeCanRun(entry);
+  const exec = process.execPath;
+  const home = homedir();
+  if (process.platform === "darwin") {
+    const path = join(home, "Library", "LaunchAgents", `${SERVICE_LABEL}.plist`);
+    const content = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${SERVICE_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${xmlEscape(exec)}</string>
+    <string>${xmlEscape(entry)}</string>
+  </array>
+  <key>WorkingDirectory</key><string>${xmlEscape(ROOT)}</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PORT</key><string>${port}</string>
+    <key>PATH</key><string>${xmlEscape(dirname(exec))}:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>${xmlEscape(SERVICE_LOG)}</string>
+  <key>StandardErrorPath</key><string>${xmlEscape(SERVICE_LOG)}</string>
+</dict>
+</plist>
+`;
+    return {
+      kind: "launchd",
+      path,
+      content,
+      // `unload` first makes install idempotent (reloads a changed plist);
+      // soft because nothing is loaded on a fresh install.
+      load: [
+        ["launchctl", ["unload", path], { soft: true }],
+        ["launchctl", ["load", "-w", path]],
+      ],
+      unload: [["launchctl", ["unload", "-w", path], { soft: true }]],
+      // `launchctl list <label>` exits non-zero when the service isn't loaded.
+      isRunning: () => run("launchctl", ["list", SERVICE_LABEL], { soft: true }).ok,
+    };
+  }
+  if (process.platform === "linux") {
+    const path = join(home, ".config", "systemd", "user", SERVICE_UNIT);
+    const content = `[Unit]
+Description=showcase — live visual surface for terminal coding agents
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${ROOT}
+Environment=PORT=${port}
+ExecStart=${exec} ${entry}
+StandardOutput=append:${SERVICE_LOG}
+StandardError=append:${SERVICE_LOG}
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+`;
+    return {
+      kind: "systemd",
+      path,
+      content,
+      load: [
+        ["systemctl", ["--user", "daemon-reload"]],
+        ["systemctl", ["--user", "enable", "--now", SERVICE_UNIT]],
+      ],
+      unload: [
+        ["systemctl", ["--user", "disable", "--now", SERVICE_UNIT], { soft: true }],
+        ["systemctl", ["--user", "daemon-reload"], { soft: true }],
+      ],
+      isRunning: () =>
+        run("systemctl", ["--user", "is-active", "--quiet", SERVICE_UNIT], { soft: true }).ok,
+    };
+  }
+  return null;
+}
+
+// Run a command, capturing success. `soft` swallows a non-zero exit (returns
+// ok:false) so callers can probe/clean up without aborting the whole command.
+function run(cmd, args, { soft = false } = {}) {
+  try {
+    const out = execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    return { ok: true, out };
+  } catch (err) {
+    if (!soft) fail(`${cmd} ${args.join(" ")} failed — ${err.stderr || err.message}`);
+    return { ok: false, out: err.stderr || "" };
+  }
+}
+
+// Auto-start a local server on demand. When a CLI call can't reach the surface
+// and BASE is local, spawn the server detached in the background and wait for it
+// to answer — so an agent's first `publish` "just works" with no babysat tab and
+// no service install. No-op for a remote SHOWCASE_URL (not ours to start), when
+// SHOWCASE_NO_AUTOSTART is set, or on a node too old to run the .ts source. Tries
+// at most once per process; returns whether the server is now reachable.
+let autoStartAttempted = false;
+async function ensureServerUp() {
+  if (autoStartAttempted) return false; // one shot — don't respawn on every retry
+  autoStartAttempted = true;
+  if (process.env.SHOWCASE_NO_AUTOSTART) return false;
+  let url;
+  try {
+    url = new URL(BASE);
+  } catch {
+    return false;
+  }
+  if (!["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname)) return false;
+  const entry = entrypoint("server", "index.ts");
+  if (entry.endsWith(".ts")) {
+    const [major, minor] = process.versions.node.split(".").map(Number);
+    if (!(major > 22 || (major === 22 && minor >= 18))) return false; // can't type-strip
+  }
+  const port = url.port || "8229";
+  mkdirSync(dirname(SERVICE_LOG), { recursive: true });
+  // Detached + unref'd so the server outlives this short-lived CLI process;
+  // output goes to the same log the OS service uses. This is a plain background
+  // process — `showcase service install` is still how you get restart-on-crash.
+  const log = openSync(SERVICE_LOG, "a");
+  const child = spawn(process.execPath, [entry], {
+    detached: true,
+    stdio: ["ignore", log, log],
+    env: { ...process.env, PORT: port },
+  });
+  child.unref();
+  closeSync(log);
+  // Poll a tiny endpoint until it answers (any HTTP response means it's
+  // listening) or give up after ~6s.
+  for (let i = 0; i < 60; i++) {
+    await sleep(100);
+    const up = await fetch(`${BASE}/api/kits`).then(
+      () => true,
+      () => false,
+    );
+    if (up) return true;
+  }
+  return false;
 }
 
 // --- git helpers, for `showcase review` ---
@@ -691,6 +870,76 @@ const commands = {
       env: process.env,
     });
     child.on("exit", (code) => process.exit(code ?? 0));
+  },
+
+  // Manage the surface as an OS-level user service so you never have to keep a
+  // `serve` tab open: install/uninstall/status. The server then starts on login,
+  // restarts on crash, and runs in the background.
+  async service() {
+    const { values: flags, positionals } = parse({
+      allowPositionals: true,
+      options: { port: { type: "string" } },
+    });
+    const action = positionals[0];
+    const port = flags.port ?? process.env.PORT ?? "8229";
+    const cfg = serviceConfig(port);
+    if (!cfg) {
+      fail(
+        `\`showcase service\` needs launchd (macOS) or systemd (Linux); ${process.platform} has neither.\n` +
+          "  Run `showcase serve` in a background process/terminal multiplexer instead.",
+      );
+    }
+
+    if (action === "install") {
+      mkdirSync(dirname(cfg.path), { recursive: true });
+      mkdirSync(dirname(SERVICE_LOG), { recursive: true });
+      writeFileSync(cfg.path, cfg.content);
+      // Load the service; if any loader fails (e.g. no systemd user bus), roll
+      // back the unit file so a retry starts clean rather than from a half state.
+      for (const [cmd, args, opts] of cfg.load) {
+        const res = run(cmd, args, { ...opts, soft: true });
+        if (!res.ok && !opts?.soft) {
+          rmSync(cfg.path, { force: true });
+          fail(
+            `${cmd} ${args.join(" ")} failed — ${res.out.trim() || "could not load the service"}`,
+          );
+        }
+      }
+      console.log(
+        `showcase service installed (${cfg.kind}) → http://localhost:${port}\n` +
+          `  unit:  ${cfg.path}\n` +
+          `  logs:  ${SERVICE_LOG}\n` +
+          `  it now starts on login and restarts on crash.\n` +
+          (cfg.kind === "systemd"
+            ? "  to keep it running after you log out: `loginctl enable-linger`\n"
+            : "") +
+          "  stop & remove it any time with: showcase service uninstall",
+      );
+      return;
+    }
+
+    if (action === "uninstall") {
+      for (const [cmd, args, opts] of cfg.unload) run(cmd, args, opts);
+      if (existsSync(cfg.path)) rmSync(cfg.path);
+      console.log(`showcase service uninstalled (${cfg.kind}). The unit file was removed.`);
+      return;
+    }
+
+    if (action === "status") {
+      const installed = existsSync(cfg.path);
+      const running = installed && cfg.isRunning();
+      console.log(
+        `showcase service (${cfg.kind}): ${
+          !installed ? "not installed" : running ? "running" : "installed, not running"
+        }\n` +
+          `  unit:  ${cfg.path}${installed ? "" : " (missing)"}\n` +
+          (running ? `  url:   http://localhost:${port}\n` : "") +
+          `  logs:  ${SERVICE_LOG}`,
+      );
+      return;
+    }
+
+    fail("usage: showcase service <install|uninstall|status> [--port N]");
   },
 
   async publish() {
