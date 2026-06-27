@@ -23,7 +23,7 @@ A surface can combine parts — `[html, diff]` is a diagram with its code review
 
 ## Before your first publish
 
-Fetch the design contract once per session (fragment rules, theme CSS variables, CDN allowlist, sizing):
+Fetch the design contract once per session (fragment rules, theme CSS variables, external-resource policy, sizing):
 
 ```sh
 showcase guide        # or: curl -s ${SHOWCASE_URL:-http://localhost:8229}/guide

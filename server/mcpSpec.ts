@@ -270,7 +270,7 @@ export const MCP_TOOL_DESCRIPTIONS = {
   uploadAssetStdio:
     "Upload a binary asset (image, trace file, any file) and get back its id and URL. base64-encode the bytes in `data`. Then reference it: put {kind:'image', assetId} or {kind:'trace', assetId} in a surface's parts, or embed the returned url in an html part (<img src=\"...\">). Attached to this conversation's session.",
   getDesignGuide:
-    "Fetch the design contract: surface parts, html fragment rules, theme CSS variables, CDN allowlist, and the interactivity bridge. Call once per session before publishing.",
+    "Fetch the design contract: surface parts, html fragment rules, theme CSS variables, the external-resource policy, and the interactivity bridge. Call once per session before publishing.",
   configureSession:
     "Pin a PRESET (an explainer blueprint + optional theme) to a whole session, so EVERY surface you publish to it comes out in the same structure + look no matter what is asked — a 'design-doc session', a 'product-demo session'. Pass session + blueprint (and/or theme); pass null to clear a field. Returns the pinned preset and its section structure — author each later surface against that structure (tag steps data-section=\"<id>\") for a consistent series. You can also just pass `blueprint` on your first publish_surface to pin it; use this tool to set it up FRONT, before publishing, or to switch a running session's preset. List available presets via GET /api/blueprints or `showcase blueprints`.",
   publishPostmortem:

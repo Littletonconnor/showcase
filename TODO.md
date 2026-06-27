@@ -379,10 +379,11 @@ deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
   self-rendered "board status" surface (uptime, surface/asset counts, store size,
   last error) — showcase dogfooding its own monitoring. _Effort: low–medium._
 - **Tighten the html-part CSP + write down the threat model** — the sandbox
-  invariant is solid, but html parts run with a broad `script-src` that lets agents
-  pull from any CDN, plus wide `img/media/connect`. Make the CDN allowlist
-  configurable/narrowable, add a `docs/SECURITY.md` threat model, and wire the
-  `security-review` skill into a recurring check. _Effort: low–medium._
+  invariant is solid. The CDN allowlist and `connect-src` are now gone (parts run
+  inline-only with no external origins), but `img/media` still allow wide
+  `https:`/`data:`/`blob:` sources. Narrow those, add a `docs/SECURITY.md` threat
+  model, and wire the `security-review` skill into a recurring check.
+  _Effort: low–medium._
 
 **Extensibility ergonomics**
 

@@ -38,18 +38,10 @@ const kitAccentCss = (mode?: Mode): string => schemeCss(KIT_ACCENTS_LIGHT, KIT_A
 // scheme is left to the OS, preserving the media-query behavior unchanged.
 const colorSchemeCss = (mode?: Mode): string => (mode ? `:root{color-scheme:${mode}}` : "");
 
-// Origins html parts may load external resources from. Mirrors the allowlist
-// agents already know from Claude's inline widget surface.
-const CDN_ALLOWLIST = [
-  "https://cdnjs.cloudflare.com",
-  "https://esm.sh",
-  "https://unpkg.com",
-  "https://fonts.googleapis.com",
-  "https://fonts.gstatic.com",
-];
-
-const cdns = CDN_ALLOWLIST.join(" ");
-
+// No external origins are allowed: html parts may use inline scripts/styles and
+// `data:` fonts, but every CDN is off the allowlist. `connect-src` is omitted so
+// it falls back to `default-src 'none'`, blocking all fetch/XHR.
+//
 // `origin` is the server's own origin, added to img/media so uploaded assets
 // (served at <origin>/a/:id) embed by URL. It is needed because the iframe runs
 // at an opaque origin (sandbox without allow-same-origin), so `'self'` matches
@@ -57,11 +49,10 @@ const cdns = CDN_ALLOWLIST.join(" ");
 function buildCsp(origin: string): string {
   return [
     `default-src 'none'`,
-    `script-src 'unsafe-inline' ${cdns}`,
-    `style-src 'unsafe-inline' ${cdns}`,
-    `font-src ${cdns} data:`,
+    `script-src 'unsafe-inline'`,
+    `style-src 'unsafe-inline'`,
+    `font-src data:`,
     `img-src https: data: blob: ${origin}`,
-    `connect-src ${cdns}`,
     `media-src https: data: blob: ${origin}`,
   ].join("; ");
 }
@@ -278,13 +269,13 @@ export const escapeHtml = (s: string) =>
 // board's color tokens (theme-dependent) are injected first so the static base
 // + kit resolve against them; `theme` defaults to the github preset.
 // CSP for a rich part (markdown/mermaid/diff). These render markup our own
-// libraries produced — they never load CDN scripts and never need the network,
-// so the policy is *tighter* than an html part's: only the inline bridge runs,
-// and there is no `connect-src`, so even if a sanitizer regression let agent
-// markup execute, the script is boxed into an opaque origin with no way to
-// phone home. `img-src origin` lets inline markdown images at <origin>/a/:id
-// load (the iframe is opaque-origin, so `'self'` matches nothing — same reason
-// buildCsp adds it explicitly).
+// libraries produced — they never need the network, so the policy omits
+// `media-src` that html parts carry, but is otherwise the same locked-down set:
+// only the inline bridge runs and there is no `connect-src`, so even if a
+// sanitizer regression let agent markup execute, the script is boxed into an
+// opaque origin with no way to phone home. `img-src origin` lets inline markdown
+// images at <origin>/a/:id load (the iframe is opaque-origin, so `'self'`
+// matches nothing — same reason buildCsp adds it explicitly).
 function buildRichCsp(origin: string): string {
   return [
     `default-src 'none'`,
