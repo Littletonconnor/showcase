@@ -45,10 +45,11 @@ const CALL = {
 } satisfies Record<DecisionCall, { label: string; Icon: typeof Ban; cls: string }>;
 
 const VERDICT_LABEL = { block: "Block", approve: "Approve", comment: "Comments" } as const;
+// How sure the agent is — plain words, not a "confidence" scale to decode.
 const CONFIDENCE = {
-  high: { label: "High confidence", dot: "bg-emerald-500" },
-  medium: { label: "Medium confidence", dot: "bg-amber-500" },
-  low: { label: "Low confidence", dot: "bg-red-500" },
+  high: { label: "Confident", dot: "bg-emerald-500" },
+  medium: { label: "Fairly sure", dot: "bg-amber-500" },
+  low: { label: "Not sure", dot: "bg-red-500" },
 } as const;
 
 // Every changed file's disposition in the manifest — the dot + the label the
@@ -269,22 +270,28 @@ function DecisionSection(props: {
           </div>
         ) : null}
 
-        {/* the honesty ledger — labeled rows so it scans, not a wall of prose */}
+        {/* the honesty ledger — how sure the agent is, what it verified, and
+            what it did NOT. Three aligned rows so anyone can scan it. */}
         <div className="mt-1 flex flex-col gap-2 border-t-[0.5px] border-border pt-3 text-[12.5px]">
-          <div className="flex items-center gap-1.5">
-            <span className={cx("size-1.5 rounded-full", conf.dot)} />
-            <span className="font-medium text-foreground">{conf.label}</span>
+          <div className="flex gap-2">
+            <span className="w-[92px] shrink-0 text-[11px] font-medium tracking-wide text-faint uppercase">
+              How sure
+            </span>
+            <span className="flex items-center gap-1.5 font-medium text-foreground">
+              <span className={cx("size-1.5 rounded-full", conf.dot)} />
+              {conf.label}
+            </span>
           </div>
           <div className="flex gap-2">
-            <span className="shrink-0 text-[11px] font-medium tracking-wide text-faint uppercase">
-              Checked
+            <span className="w-[92px] shrink-0 text-[11px] font-medium tracking-wide text-faint uppercase">
+              Verified
             </span>
             <span className="text-muted-foreground">{d.coverage}</span>
           </div>
           {(d.gaps ?? []).length > 0 && (
             <div className="flex gap-2">
-              <span className="shrink-0 text-[11px] font-medium tracking-wide text-faint uppercase">
-                Not&nbsp;yet
+              <span className="w-[92px] shrink-0 text-[11px] font-medium tracking-wide text-faint uppercase">
+                Not verified
               </span>
               <div className="flex flex-col gap-1.5">
                 {(d.gaps ?? []).map((g, i) => (
