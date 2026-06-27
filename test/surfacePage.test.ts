@@ -39,7 +39,6 @@ function cspDirectives(doc: string): Record<string, string[]> {
 const ALLOWED_CDNS = [
   "https://cdnjs.cloudflare.com",
   "https://esm.sh",
-  "https://cdn.jsdelivr.net",
   "https://unpkg.com",
   "https://fonts.googleapis.com",
   "https://fonts.gstatic.com",

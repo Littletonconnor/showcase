@@ -43,7 +43,6 @@ const colorSchemeCss = (mode?: Mode): string => (mode ? `:root{color-scheme:${mo
 const CDN_ALLOWLIST = [
   "https://cdnjs.cloudflare.com",
   "https://esm.sh",
-  "https://cdn.jsdelivr.net",
   "https://unpkg.com",
   "https://fonts.googleapis.com",
   "https://fonts.gstatic.com",

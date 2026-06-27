@@ -274,7 +274,7 @@ A `<marker id="arrow">` is injected into every html part — end any line with
 ```
 
 Icons: the Tabler webfont is on the CSP allowlist —
-`<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">`
+`<link rel="stylesheet" href="https://unpkg.com/@tabler/icons-webfont@3/dist/tabler-icons.min.css">`
 then `<i class="ti ti-check"></i>`.
 
 ### Annotations — label a detail on a mockup
@@ -473,7 +473,7 @@ the user switch it from the card's ⋯ menu. Because the tokens drive everything
 ## External resources
 
 A CSP allows loading ONLY from these origins (anything else silently fails):
-`cdnjs.cloudflare.com`, `esm.sh`, `cdn.jsdelivr.net`, `unpkg.com`,
+`cdnjs.cloudflare.com`, `esm.sh`, `unpkg.com`,
 `fonts.googleapis.com`, `fonts.gstatic.com`. Images may load from any https URL,
 a `data:` URI, or an asset you uploaded to this server (`<img src="/a/<id>">`).
 
