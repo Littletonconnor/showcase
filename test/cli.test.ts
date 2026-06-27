@@ -73,7 +73,7 @@ const post = (url: string, body: unknown) =>
 // None of these reach the network: --help and option errors resolve in
 // parsing, before any request (no server needs to be running).
 
-for (const cmd of ["serve", "publish", "diff", "update", "wait", "watch", "list", "kits"]) {
+for (const cmd of ["serve", "publish", "diff", "update", "wait", "watch", "list", "kits", "gc"]) {
   test(`${cmd} --help prints usage and exits 0`, async () => {
     const { code, stdout, stderr } = await run(cmd, "--help");
     assert.equal(code, 0);
@@ -155,6 +155,54 @@ test("watch streams each new user comment as one line and re-arms", async () => 
     assert.equal(stdout.match(/tighten the spacing/g)?.length, 1);
 
     child.kill();
+  } finally {
+    await server.close();
+  }
+});
+
+test("gc reclaims orphaned assets and board shows the tally", async () => {
+  const server = await serveApp();
+  try {
+    const env = { SHOWCASE_URL: server.url, SHOWCASE_NO_AUTOSTART: "1" };
+    // Upload an asset referenced by nothing -> an orphan the sweep should drop.
+    await fetch(`${server.url}/api/assets`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: Buffer.from(new Uint8Array([1, 2, 3, 4])).toString("base64"),
+        contentType: "image/png",
+      }),
+    });
+
+    const board = await runWith({ env }, "board");
+    assert.equal(board.code, 0);
+    assert.match(board.stdout, /1 asset.*orphaned/);
+
+    const dry = await runWith({ env }, "gc", "--dry-run");
+    assert.equal(dry.code, 0);
+    assert.match(dry.stdout, /Would reclaim 1 orphaned asset/);
+
+    const gc = await runWith({ env }, "gc");
+    assert.equal(gc.code, 0);
+    assert.match(gc.stdout, /Reclaimed 1 orphaned asset/);
+
+    // After the sweep the orphan count is gone and a re-run is a no-op.
+    const again = await runWith({ env }, "gc");
+    assert.match(again.stdout, /Nothing to reclaim/);
+  } finally {
+    await server.close();
+  }
+});
+
+test("gc --json emits the structured sweep result", async () => {
+  const server = await serveApp();
+  try {
+    const env = { SHOWCASE_URL: server.url, SHOWCASE_NO_AUTOSTART: "1" };
+    const { code, stdout } = await runWith({ env }, "gc", "--json");
+    assert.equal(code, 0);
+    const result = JSON.parse(stdout);
+    assert.equal(result.removed, 0);
+    assert.ok(result.stats && typeof result.stats.assets.count === "number");
   } finally {
     await server.close();
   }

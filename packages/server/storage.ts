@@ -10,6 +10,7 @@ import {
   type CreateReviewInput,
   type CreateSessionInput,
   type CreateSurfaceInput,
+  type BoardStats,
   hashAssetId,
   HISTORY_LIMIT,
   htmlPart,
@@ -538,5 +539,48 @@ export class JsonFileStore implements Store {
   async isAssetReferenced(id: string) {
     await this.load();
     return this.referencedAssetIds().has(id);
+  }
+
+  async gcAssets() {
+    await this.load();
+    const referenced = this.referencedAssetIds();
+    let removed = 0;
+    let bytesFreed = 0;
+    for (const [aid, asset] of this.assets) {
+      if (referenced.has(aid)) continue;
+      bytesFreed += asset.byteLength;
+      removed++;
+      this.assets.delete(aid);
+    }
+    if (removed > 0) await this.persist();
+    return { removed, bytesFreed, stats: this.computeStats() };
+  }
+
+  async boardStats() {
+    await this.load();
+    return this.computeStats();
+  }
+
+  // Callers already hold `load()`; reuses referencedAssetIds so the orphan tally
+  // matches exactly what gcAssets would drop.
+  private computeStats(): BoardStats {
+    const referenced = this.referencedAssetIds();
+    let bytes = 0;
+    let orphaned = 0;
+    let orphanedBytes = 0;
+    for (const [aid, asset] of this.assets) {
+      bytes += asset.byteLength;
+      if (referenced.has(aid)) continue;
+      orphaned++;
+      orphanedBytes += asset.byteLength;
+    }
+    return {
+      sessions: this.sessions.size,
+      surfaces: this.surfaces.size,
+      comments: this.comments.length,
+      reviews: this.reviews.size,
+      assets: { count: this.assets.size, bytes, orphaned, orphanedBytes },
+      assetBudgetBytes: MAX_BOARD_ASSET_BYTES,
+    };
   }
 }

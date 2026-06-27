@@ -370,10 +370,14 @@ deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
 
 **Housekeeping**
 
-- **Asset lifecycle / GC** — eviction only runs eagerly on upload; orphaned assets
-  (referenced by no live or historical surface) accumulate until the board budget
-  forces LRU. Add a lazy GC pass (`isAssetReferenced` already exists), a
-  `showcase gc` command, and a board-size status line. _Effort: low._
+- **✅ Shipped — Asset lifecycle / GC.** Eager upload eviction only fires under
+  budget pressure, so orphaned assets (referenced by no live or historical
+  surface) used to sit resident until then. Now `Store.gcAssets()` (a lazy sweep
+  reusing `referencedAssetIds`) + `Store.boardStats()` back two routes —
+  `POST /api/board/gc` and `GET /api/board` — surfaced as **`showcase gc`**
+  (`--dry-run` previews, `--json` for scripting) and **`showcase board`** (the
+  one-line size tally: sessions · surfaces · comments · reviews · assets
+  (bytes / budget) · orphaned). Covered by store-contract, API, and CLI tests.
 
 **Quality & trust**
 

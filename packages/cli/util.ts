@@ -6,6 +6,20 @@ import { fail } from "./errors.ts";
 
 export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Human-readable byte size: "B" under 1 KiB, otherwise one decimal up to 10
+// then whole units. Binary (1024) steps to match the board's byte budgets.
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+}
+
 // Read a command's content argument: a path, or "-"/missing for stdin.
 export function readContent(arg: string | undefined): string {
   if (!arg || arg === "-") {

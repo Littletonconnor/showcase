@@ -2,7 +2,17 @@
 // option spec — both the top-level overview and per-command `--help`.
 import type { Command, OptionSpec, OptionSpecs } from "./command.ts";
 
-const GROUP_ORDER = ["Run", "Publish", "Revise", "Feedback", "Inspect", "Share", "Learn", "Setup"];
+const GROUP_ORDER = [
+  "Run",
+  "Publish",
+  "Revise",
+  "Feedback",
+  "Inspect",
+  "Manage",
+  "Share",
+  "Learn",
+  "Setup",
+];
 
 const HEADER = "showcase — a live visual surface for terminal coding agents";
 

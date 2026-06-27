@@ -1264,6 +1264,15 @@ export function createApp({
   // ids, for discovery. The full palettes are server/viewer internals.
   app.get("/api/themes", (c) => c.json(themeIds()));
 
+  // Board size + orphaned-asset tally (drives `showcase gc`'s status line and
+  // its --dry-run preview). Owner-scoped — not in the publicRead allowlist.
+  app.get("/api/board", async (c) => c.json(await store.boardStats()));
+
+  // Reclaim orphaned assets — those no live or historical surface references.
+  // Eager upload eviction only fires under budget pressure, so this is the
+  // on-demand sweep. Returns { removed, bytesFreed, stats } (post-sweep tally).
+  app.post("/api/board/gc", async (c) => c.json(await store.gcAssets()));
+
   // Author a brand theme at runtime from a few SEED colors (the "match my
   // product" path — an agent reads a screenshot, names the brand color(s), and
   // the engine derives a full contrast-checked light+dark palette; see

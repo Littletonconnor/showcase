@@ -5,6 +5,22 @@ import { fail } from "../errors.ts";
 import { api, BASE } from "../http.ts";
 import { emit } from "../output.ts";
 import { resolveSession } from "../session.ts";
+import { formatBytes } from "../util.ts";
+
+// One-line board tally, shared by `board` and `gc`'s post-sweep summary.
+function statusLine(s: any): string {
+  const a = s.assets;
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const parts = [
+    plural(s.sessions, "session"),
+    plural(s.surfaces, "surface"),
+    plural(s.comments, "comment"),
+    plural(s.reviews, "review"),
+    `${plural(a.count, "asset")} (${formatBytes(a.bytes)} / ${formatBytes(s.assetBudgetBytes)})`,
+  ];
+  if (a.orphaned > 0) parts.push(`${a.orphaned} orphaned (${formatBytes(a.orphanedBytes)})`);
+  return parts.join(" · ");
+}
 
 const list: Command = {
   name: "list",
@@ -144,4 +160,45 @@ const demo: Command = {
   },
 };
 
-export const boardCommands: Command[] = [list, sessions, kits, blueprints, demo];
+const board: Command = {
+  name: "board",
+  group: "Inspect",
+  summary: "show board size — sessions, surfaces, assets, orphaned slack",
+  usage: "showcase board",
+  async run() {
+    const stats = await api("/api/board");
+    emit(stats, () => statusLine(stats));
+  },
+};
+
+const gc: Command = {
+  name: "gc",
+  group: "Manage",
+  summary: "reclaim orphaned assets no surface references",
+  usage: "showcase gc [--dry-run]",
+  options: {
+    "dry-run": { type: "boolean", desc: "report what would be reclaimed without deleting" },
+  },
+  async run({ flags }) {
+    if (flags["dry-run"]) {
+      const stats = await api("/api/board");
+      emit({ ...stats, dryRun: true }, () => {
+        const { orphaned, orphanedBytes } = stats.assets;
+        return orphaned === 0
+          ? `Nothing to reclaim — ${statusLine(stats)}`
+          : `Would reclaim ${orphaned} orphaned asset${orphaned === 1 ? "" : "s"} (${formatBytes(orphanedBytes)}).\n${statusLine(stats)}`;
+      });
+      return;
+    }
+    const result = await api("/api/board/gc", { method: "POST" });
+    emit(result, () => {
+      const head =
+        result.removed === 0
+          ? "Nothing to reclaim — no orphaned assets."
+          : `Reclaimed ${result.removed} orphaned asset${result.removed === 1 ? "" : "s"}, freed ${formatBytes(result.bytesFreed)}.`;
+      return `${head}\n${statusLine(result.stats)}`;
+    });
+  },
+};
+
+export const boardCommands: Command[] = [list, sessions, kits, blueprints, board, gc, demo];

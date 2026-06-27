@@ -212,7 +212,12 @@ An **asset** (`types.ts:333`) is an uploaded blob (image, trace, file) stored
 The board keeps assets under a budget (`MAX_BOARD_ASSET_BYTES = 2 GiB`) with a
 **reference-aware LRU eviction**: oldest-accessed first, but a blob a live surface
 still points at is only evicted as a last resort (`selectEvictions`,
-`types.ts:537`). Per-asset cap is `MAX_ASSET_BYTES = 5 MiB`.
+`types.ts:537`). Per-asset cap is `MAX_ASSET_BYTES = 5 MiB`. That eviction only
+fires under budget pressure on upload, so orphaned blobs (referenced by no live or
+historical surface) otherwise sit resident; `store.gcAssets()` is the on-demand
+sweep that reclaims them — `POST /api/board/gc` / `showcase gc` — and
+`store.boardStats()` (`GET /api/board` / `showcase board`) reports the tally,
+orphan slack included.
 
 ---
 

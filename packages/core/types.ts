@@ -444,6 +444,27 @@ export interface CommentQuery {
 // Storage interface — implemented by JsonFileStore (the only store in this
 // local fork). Kept as an interface so the store-contract test can hold a
 // future second implementation honest.
+// A point-in-time tally of what's resident on the board. The whole board lives
+// in memory and is rewritten to one JSON file per mutation, so these counts (and
+// asset bytes especially) ARE the resident-size story. `orphaned*` counts assets
+// no live or historical surface references — the slack `showcase gc` reclaims.
+export interface BoardStats {
+  sessions: number;
+  surfaces: number;
+  comments: number;
+  reviews: number;
+  assets: { count: number; bytes: number; orphaned: number; orphanedBytes: number };
+  assetBudgetBytes: number;
+}
+
+// The outcome of a `gcAssets()` sweep: how much orphaned slack was reclaimed,
+// plus the post-sweep tally so a caller can print the new board size in one trip.
+export interface GcResult {
+  removed: number;
+  bytesFreed: number;
+  stats: BoardStats;
+}
+
 export interface Store {
   listSessions(): Promise<Session[]>;
   getSession(id: string): Promise<Session | null>;
@@ -482,6 +503,14 @@ export interface Store {
   // Whether any live surface (current or historical version) references this
   // asset id. Drives the optimistic-read wait and reference-aware deletion.
   isAssetReferenced(id: string): Promise<boolean>;
+  // Drop every asset no live or historical surface references — the lazy GC pass
+  // behind `showcase gc`. Eager upload eviction only fires under budget pressure
+  // (selectEvictions), so orphans from deleted/revised surfaces otherwise sit
+  // resident until then; this reclaims them on demand. Returns the sweep tally.
+  gcAssets(): Promise<GcResult>;
+  // A point-in-time tally of resident board contents (drives the gc status line
+  // and the `--dry-run` orphan preview).
+  boardStats(): Promise<BoardStats>;
 }
 
 export const HISTORY_LIMIT = 20;
