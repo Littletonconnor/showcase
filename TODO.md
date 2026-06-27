@@ -5,9 +5,9 @@ session. Sections 1–5 are "how it works / how to work here" (stable reference)
 section 6 is the roadmap (what to build); sections 7–8 are open decisions and
 how to pick up work autonomously. Architecture detail lives in `AGENTS.md`.
 
-**👉 Active focus is the decision-review form factor — it's built and dogfooded;
-one open item (drop the Disagree button) remains, see immediately below.** Sections
-1–8 are the stable guide/roadmap underneath it.
+**👉 The decision-review form factor is built, dogfooded, and complete — the
+shipped summary is immediately below.** Sections 1–8 are the stable guide/roadmap
+underneath it.
 
 ---
 
@@ -49,7 +49,7 @@ The form factor is built and was dogfooded against a real Java PR
 - **Decision IDs + adjudication** (Phase 2) — "Verify" verb dropped; each decision
   carries a stable copy-ref (`CopyRef`) you paste into normal agent chat to scope a
   revision; a lightweight local **Accept** drives the burndown; content-keyed so it
-  survives an agent re-publish; per-decision comment trail.
+  survives an agent re-publish.
 - **Honest ledger** (Phase 3) — the "High confidence / Checked / Not yet" labels are
   gone; one signal, "How sure", in plain words (Confident / Fairly sure / Not sure).
   Unbacked self-reported "what I verified" claims were dropped.
@@ -58,13 +58,11 @@ The form factor is built and was dogfooded against a real Java PR
 - (Also fixed the `code-review` skill to scope depth per-slice so reviews stop
   fanning out 5 specialists over the whole diff — `~/Sites/ai-config`.)
 
-### The one open item — drop the Disagree button
-
-**Disagree** is still a bespoke button that posts a structured comment
-(`disagreeText`, live in `ReviewView.tsx` / `ReviewPage.tsx`). The north star is to
-drop it in favor of the copy-ref + normal-chat flow — but it's the one verb that
-auto-threads a defend-or-revise instruction, so it stays until chat covers that
-ergonomically. More design than plumbing.
+- **Single in-browser verb: Accept** — the Disagree button (and its composer,
+  `D` key, structured `disagreeText` comment, and per-decision comment trail) was
+  dropped. Pushback is now the copy-ref + normal-chat flow: copy a decision's
+  stable ref and paste it into agent chat to scope a revision; the agent
+  re-publishes and the decision updates in place. The burndown is accepted-only.
 
 ### Key files
 
@@ -113,9 +111,9 @@ editor (Cursor / Claude Code) and reaches _out_ to showcase over MCP.
    An agent reviews a diff and publishes a **decision queue** (`publish_decisions`):
    a plain-English Brief anyone can read, a risk-ranked list of **decisions** each
    with its evidence (a diff, a control-flow **mermaid**, a suggested-fix diff), and
-   a complete changed-file manifest. You Accept or Disagree each decision; it
-   defends or revises in place; the review carries a shareable verdict. No GitHub
-   thread renders like that.
+   a complete changed-file manifest. You Accept each decision, or copy its ref into
+   chat to ask for a revision; it revises in place; the review carries a shareable
+   verdict. No GitHub thread renders like that.
 2. **Learning & explainers** — share a screenshot/snippet with your agent and get
    back an **animated, interactive** explainer you can scrub and ask questions of.
 
@@ -297,12 +295,11 @@ complete. The stable base everything below assumes:
 
 ### 🔨 What's actually left
 
-Everything in §1's two flagship workflows is shipped. Three things remain, none
-of them load-bearing:
+Everything in §1's two flagship workflows is shipped. Two things remain, neither
+load-bearing:
 
-1. **Drop the Disagree button** — the active-focus open item (top of this file).
-2. **Review-depth visuals** — the opt-in per-PR chart track below.
-3. **In-file moved-code detection** + an optional **Tour surface** — both below.
+1. **Review-depth visuals** — the opt-in per-PR chart track below.
+2. **In-file moved-code detection** + an optional **Tour surface** — both below.
 
 #### Review depth — fancier review visualizations (a track to develop)
 
@@ -364,9 +361,9 @@ shipped-foundation list above.)_
 2. `git branch --show-current` — if not on a task branch, branch from `main`.
 3. Both flagship workflows are shipped — Workflow 1 (visual PR review, R1–R4) and
    Workflow 2 (learning & explainers, L1–L3); the supporting **static export** is
-   shipped too. Remaining work is the active-focus open item (**drop the Disagree
-   button**, top of file) plus the **review-depth / fancier-visualizations** track
-   (opt-in per-PR chart types). If an item is an "open decision" in §7, confirm it first.
+   shipped too. Remaining work is the **review-depth / fancier-visualizations**
+   track (opt-in per-PR chart types). If an item is an "open decision" in §7,
+   confirm it first.
 4. Build in small commits; after each, run the §5 verify suite. For UI, screenshot
    and look.
 5. Keep the oracle green; if you change behavior it covers, update the oracle in

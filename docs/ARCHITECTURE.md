@@ -20,8 +20,8 @@ works in your terminal can't show you anything richer than scrollback. Showcase
 gives it a browser tab you keep open: the agent **publishes surfaces** (cards
 made of typed parts — html, markdown, diff, mermaid, terminal, image, json,
 code, chart, trace), you **watch them render live**, you **comment back** (a
-remark on a card, an annotation pinned to a spot, an Accept/Disagree on a review
-decision), and the agent **reads that feedback and revises**.
+remark on a card, or Accept a review decision), and the agent **reads that
+feedback and revises**.
 
 That two-way loop — **publish → live render → comment → revise/reply** — is the
 product. Everything below is in service of it. When a design question is
@@ -196,7 +196,7 @@ surfaced honesty signal), and optional `impact`/`details`, `pivot`, `evidence`
 (surface parts, usually a diff), and `proposal` (a before/after fix). Stored **one
 per session**, distinct from the card stream, and rendered at
 `/?review=<sessionId>`. See `review-form-factor.md` for the full rationale and the
-Accept / Disagree interaction loop.
+Accept + copy-ref interaction loop.
 
 ### 4.5 Asset
 
@@ -279,8 +279,8 @@ The agent revises **in place** (`update_surface` / `PUT /api/surfaces/:id` →
 new parts replace it, `version` bumps, and a `surface-updated` event re-renders
 the open card. Republishing a review (`publishDecisions`) broadcasts
 `review-updated` so an open review page updates the decision in place — the live
-half of the Accept / Disagree loop, where a Disagree threads a comment the agent
-must defend-or-concede.
+half of the loop: the human Accepts decisions locally, or pastes a decision's ref
+into agent chat to ask for a revision, which the agent re-publishes.
 
 ---
 
@@ -392,10 +392,10 @@ triaged out of the diff, and a required **manifest** tagging every changed file
 (`has-decision` / `reviewed-no-comment` / `mechanical-skipped`). Each decision
 carries an `assertion`, a `call` (block/ship/decide), a `scope`, and a required
 `confidence` — the structure is the API, so a review physically can't regress into
-one wall of prose. The human adjudicates with **Accept / Disagree**: a Disagree
-threads a comment the agent must defend-or-concede, and re-publishing updates the
-decision in place. See [`review-form-factor.md`](./review-form-factor.md) for the
-full form factor.
+one wall of prose. The human adjudicates with **Accept** (local; drives the
+burndown); to push back they copy a decision's ref into agent chat to scope a
+revision, and re-publishing updates the decision in place. See
+[`review-form-factor.md`](./review-form-factor.md) for the full form factor.
 
 A session that carries a stored review is `kind:"review"`: it chips its verdict in
 the sidebar and opens the queue inline (the viewer's `ReviewView` / `ReviewInline`

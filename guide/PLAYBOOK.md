@@ -182,9 +182,9 @@ This is showcase's flagship review workflow, designed for the age of agents and 
 }
 ```
 
-**The human adjudicates** each decision: **Accept** (ratify, burns down) or **Disagree** (they push back → you defend with evidence or concede and revise). They can also just chat normally, pasting a decision's `id` to scope the ask ("re-check `d-stale-token` against the no-length case"). Either way you act, then re-publish.
+**The human adjudicates** each decision: **Accept** (ratify, burns down) is the one in-browser verb. To push back they chat with you normally, pasting a decision's `id` to scope the ask ("re-check `d-stale-token` against the no-length case"). You act, then re-publish.
 
-**The loop is live — stay parked after you publish.** Call `wait_for_feedback`; a Disagree arrives as a session comment tagged with the decision: `[Disagree · Decision N of M] …` (defend with evidence, or concede — one or the other, no hedging). Free-form chat that names a decision `id` works the same way. Act, then **re-publish the whole review with `publish_decisions`** — the decision updates in place in front of the reviewer (the call may flip), and the burndown reflects it. Re-publishing is the resolution; keep the unchanged decisions as-is and revise only the one in question.
+**The loop is live — stay parked after you publish.** Pushback reaches you in your terminal as ordinary chat naming a decision `id` (the human copies the decision's ref from its header and pastes it). Act on it, then **re-publish the whole review with `publish_decisions`** — the decision updates in place in front of the reviewer (the call may flip), and the burndown reflects it. Re-publishing is the resolution; keep the unchanged decisions as-is and revise only the one in question. (`wait_for_feedback` still delivers comments left on non-review surfaces.)
 
 ## Recipe: animated explainer
 
@@ -250,7 +250,7 @@ Feedback attaches to a surface (`surfaceId`); when it arrives, do substantial ch
 
 **Where the conversation happens.** The inline browser chat was removed. Each card shows a **copy-to-clipboard card id** in its header; the user copies it and talks to you about that surface in **your terminal** — so the back-and-forth lives where you're running, not in the tab. Refer to surfaces back to the user by id (`list_surfaces` fetches one's current content).
 
-**Review feedback from the browser.** While you are parked in a `wait_for_feedback` / `showcase wait`, the viewer shows a live green **"Listening"** badge in the session header, so the user can see you are reachable. On a review the user adjudicates in the tab — **Accept** / **Disagree** (or free-form chat scoped by a decision `id`) on each decision — and those land here as user comments. Act on them in your terminal and republish the review so the board burns down; when you stop waiting the badge goes idle, honestly telling the user their next signal will queue until you check back.
+**Review feedback from the browser.** While you are parked in a `wait_for_feedback` / `showcase wait`, the viewer shows a live green **"Listening"** badge in the session header, so the user can see you are reachable. On a review the user **Accepts** decisions in the tab (local, burns the board down) and pushes back via free-form chat scoped by a decision `id` — the latter reaches you in your terminal, not here. Act on it and republish the review so the board reflects it; when you stop waiting the badge goes idle, honestly telling the user their next signal will queue until you check back. (`wait_for_feedback` still delivers comments on non-review surfaces.)
 
 ## Remote surfaces
 
