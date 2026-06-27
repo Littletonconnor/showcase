@@ -101,6 +101,11 @@ test("publish into unknown session 404s instead of silently creating", async () 
   const app = makeApp();
   const res = await app.request("/api/snippets", json({ html: "<p>x</p>", session: "nope" }));
   assert.equal(res.status, 404);
+  // The message names the id and the fix (omit it) so a stale stdio MCP client
+  // can re-mint automatically instead of wedging — see mcp/server.ts withSession.
+  const body = (await res.json()) as any;
+  assert.match(body.error, /session "nope" not found/);
+  assert.match(body.error, /omit the session id/);
 });
 
 test("a surface badge is validated, echoed, updatable, and clearable", async () => {

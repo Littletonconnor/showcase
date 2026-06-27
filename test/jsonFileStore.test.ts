@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -56,4 +56,19 @@ test("JsonFileStore: data survives a reload from disk", async () => {
   // lastSeq is restored too: the next comment continues the sequence
   const next = await reloaded.createComment({ sessionId: session.id, author: "user", text: "2" });
   assert.ok(next && next.seq > comments[0].seq);
+});
+
+test("JsonFileStore: recovers from .bak when the live file is corrupt", async () => {
+  const path = freshPath();
+  const store = new JsonFileStore(path);
+  const session = await store.createSession({ agent: "pi", title: "Backed up" });
+  await store.createSurface({ sessionId: session.id, parts: [htmlPart("<p>x</p>")] });
+
+  // A truncated/garbled live file must not lose the board: the .bak mirror,
+  // written after each good persist, carries the last valid state.
+  writeFileSync(path, "{ this is not json");
+
+  const recovered = new JsonFileStore(path);
+  assert.equal((await recovered.getSession(session.id))?.title, "Backed up");
+  assert.equal((await recovered.listSurfaces(session.id)).length, 1);
 });
