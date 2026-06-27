@@ -31,7 +31,10 @@ that surfaced. Get the human's intent right; this is UX, not just plumbing.
 - Content-keyed local adjudication (survives an agent re-publish) + a per-decision
   comment trail.
 - The live loop: `publish_decisions` MCP tool, `review-updated` SSE event,
-  `ReviewView` / `ReviewInline` / `ReviewPage`.
+  `ReviewView` / `ReviewInline` / `ReviewPage`. **⚠️ Gap:** `publish_decisions`
+  is only registered on the HTTP MCP (`server/mcpSpec.ts`), NOT on the stdio MCP
+  server (`mcp/server.ts`) — so editor agents (Claude Code / Cursor, which use
+  stdio) can't call it. `publish_review` is on both. Worth fixing.
 - Sidebar: review sessions chip their verdict; the row opens the review inline.
 - (Also fixed the `code-review` skill to scope depth per-slice so reviews stop
   fanning out 5 specialists over the whole diff — `~/Sites/ai-config`.)
@@ -266,8 +269,11 @@ stable base everything below assumes.
   session-trace pipeline, the Cloudflare SqlStore, and the multi-theme engine —
   now one fixed GitHub light/dark theme with `server/themes.ts` as the single
   color source for chrome + sandboxed parts.
-- **Chat thread** — the comment thread is a real chat-bubble UI (sender shown by
-  alignment + colour, no labels) with a persistent composer.
+- **Chat thread** — _**RETIRED** (commit `03c2693`)._ The per-surface comment
+  thread + persistent composer (`Thread.tsx`, `Composer`) were removed. Surface
+  feedback is now: Approve/Dismiss on finding cards, decision threads inside
+  `ReviewView`, and "copy the card id from its header, mention it in your
+  terminal" for everything else (see the Card.tsx footer comment).
 - **claude.ai-grade chrome (Pillar F, F1–F17 — all done)** — shadcn `Sidebar`
   (collapsible rail, mobile offcanvas, persisted state), per-session overflow menu
   (rename / delete / copy-link), live search, refined rows/groups/header/footer, a
@@ -280,25 +286,31 @@ stable base everything below assumes.
 These are done — build _on_ them, don't redo them. They're the primitives the two
 workflows compose.
 
-- [x] **Charts** — native `chart` part (Recharts), themed SVG, `showcase chart`.
+- [x] **Charts** — native `chart` part (Recharts), themed SVG, `showcase chart`,
+      and discoverable in the MCP schema (enum + description).
 - [x] **Math** — markdown renders `$inline$`/`$$display$$` via KaTeX → MathML,
       self-contained, crisp in Chromium + WebKit.
-- [x] **Drill-down loop** — a surface's `sendPrompt()` renders as a **"Suggested
-      by this surface"** chip with a one-tap **Send to agent** relay (can't
-      impersonate the user). Closes output → tap → revise.
+- [~] **Drill-down loop** — _PARTIAL._ The `sendPrompt()` plumbing still exists
+      (`surfacePage.ts` → `bridge.ts` posts an `author:"surface"` comment), but
+      the **"Suggested by this surface"** chip + **Send to agent** button were
+      removed along with the surface comment UI (commit `03c2693`). The relay has
+      no entry point in the viewer today.
 - [x] **Kit gallery / guide pass** — copy-paste markup for the `issues` / `slides`
       kits + the drill-down pattern documented.
-- [x] **Editor-agent chat (was Pillar B — complete).** In-browser chat talks to the
-      user's running Claude Code / Cursor over the MCP bridge (no hosted SDK).
-      Presence/responding state, session-level chat, sidebar presence dots, the
-      arm flow, and no-SDK auto-start (`showcase chat` + MCP `instructions`) all
-      shipped and proven live. The one inherent limit — showcase can't _push_ a
-      turn into an idle editor (MCP is pull-based) — is surfaced honestly in the UI.
-- [x] **Anchored annotations** — a 📍 toggle drops a pin at a clicked spot and
-      stores the comment with a resolution-independent `anchor` (`{xPct, yPct}`)
-      that rides through to the agent. _(Point anchor; line/element anchor is R4.)_
-- [x] **Structured feedback** — one-tap **Approve** (👍) posts a recognizable
-      `author:"user"` signal; the composer is "request a change."
+- [~] **Editor-agent chat (was Pillar B) — _RETIRED / never shipped as described._**
+      There is no in-browser chat-to-editor UI, no `showcase chat` command, no
+      "arm" flow, and no presence dots. What survives is a single `listening`
+      flag (the agent is parked in `wait_for_feedback`), rendered as a green dot
+      in the sidebar. The real loop is the comment/`wait_for_feedback` pull in
+      §4 — there is no session-level editor chat.
+- [~] **Anchored annotations** — _**RETIRED** with the comment UI (commit `03c2693`)._
+      The point-pin (📍) and the line-click composer (R4) are both gone; the
+      `CommentAnchor` `{xPct,yPct}`/`{line,lineType}` types and the server-side
+      `parseAnchor` still exist but are **vestigial** (no viewer produces them,
+      and `onLineClick` pipes to nothing). Cleanup candidate.
+- [x] **Structured feedback** — one-tap **Approve** (👍) and **Dismiss** (⊘) on
+      finding cards post a recognizable `author:"user"` signal. _(Still shipped —
+      these are the surviving surface-feedback affordances.)_
 - [~] **Pinned Library** — _cut_ (the daily-use razor: not used most sessions).
       The pin/Library wiring was removed end-to-end; a "save for later" almost
       nobody revisits.
@@ -339,13 +351,13 @@ workflows compose.
       **delegates the analysis to the agent's `code-review` skill** (which dispatches
       to language-specific hygiene skills) and then renders its findings via
       `publish_review`; showcase owns the rendering, not the review methodology.
-- [x] **R4 — Line-anchored diff comments (shipped).** Click a diff line and a
-      "Comment on line N" composer opens; the comment carries a line `anchor`
-      (`{line, lineType}`) so the agent knows exactly what to fix. The in-frame
-      bridge resolves the clicked line via `composedPath` (the lines live in
-      @pierre/diffs shadow roots) and posts it out; `CommentAnchor` gained the line
-      variant alongside the point one; the thread shows a "Line N" chip. Server +
-      real-DOM oracle (composed-click through the sandboxed frame) cover it.
+- [~] **R4 — Line-anchored diff comments — _RETIRED (commit `03c2693`)._** The
+      "Comment on line N" composer and the "Line N" thread chip were removed with
+      the rest of the surface comment UI. The in-frame line-click bridge
+      (`composedPath` through the @pierre/diffs shadow roots), the `onLineClick`
+      prop chain (DiffPart→SandboxedPart→Card), and the server `CommentAnchor`
+      line variant + `parseAnchor` all still exist but are **dead** — Card passes
+      no `onLineClick`, so the posted line-click message is consumed by nobody.
 
 _(A GitHub round-trip — `gh pr review` with line comments — was considered and
 **dropped**: showcase is its own surface, not a GitHub front-end. Sharing a
@@ -424,18 +436,23 @@ for their own sake.
       renders with zero requests. `--pdf` renders that HTML through headless system
       Chrome (`findChrome` / `$SHOWCASE_CHROME`, no npm dep) to a flat PDF for
       recipients who won't open an HTML file; an `@media print` pass drops the app
-      chrome. Best for reviews (verified); interactive explainers (animate/slides)
-      reveal all steps stacked but a tall part can clip — share those as HTML.
+      chrome. The `--pdf` path requests a **flattened** export (`?flatten=1`):
+      rich parts (markdown/code/diff/mermaid/terminal) render inline in document
+      flow instead of in srcdoc iframes, so a tall part now **paginates across
+      pages** instead of clipping at the iframe height cap, and a review export
+      renders its card stream (the verdict + finding surfaces) since the
+      decision-queue data isn't in the static bundle. Remaining limit: raw `html`
+      parts stay sandboxed (iframe), so a tall html part can still clip in PDF.
       Verified end-to-end in a browser and as a PDF (offline, no network).
 
 ---
 
 ## 7. Open decisions (flag to the user before building the affected pillar)
 
-- **~~Editor-agent engine~~ (DECIDED):** no SDK. The in-browser chat reaches the
-  user's running editor agent over the existing MCP bridge — not a hosted
-  `@anthropic-ai/sdk` / Agent SDK runtime. No API key, no injection surface.
-  (Shipped — see "Editor-agent chat" under Shipped capabilities.)
+- **~~Editor-agent engine~~ (DECIDED, then feature RETIRED):** the no-SDK stance
+  still holds, but the in-browser editor chat it described was removed (see
+  "Editor-agent chat" above). The feedback path is the comment/`wait_for_feedback`
+  pull in §4 — no hosted SDK, and no in-browser chat either.
 - **No GitHub round-trip (DECIDED):** showcase is its own surface, not a GitHub
   front-end. Sharing a review means static export, not posting back to a PR.
 - **Sharing is read-only:** the one-board/one-user stance means shared output

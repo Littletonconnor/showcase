@@ -1445,7 +1445,13 @@ const commands = {
     if (!session) fail("usage: showcase export <session> [--out <file>] [--pdf]");
     let res;
     try {
-      res = await fetch(`${BASE}/api/sessions/${encodeURIComponent(session)}/export`, {
+      // The PDF path asks for the flattened export (?flatten=1): rich parts
+      // render inline so they paginate across page breaks instead of being
+      // stranded/clipped in iframes Chrome can't split (see server/export.ts).
+      const url =
+        `${BASE}/api/sessions/${encodeURIComponent(session)}/export` +
+        (flags.pdf ? "?flatten=1" : "");
+      res = await fetch(url, {
         headers: TOKEN ? { authorization: `Bearer ${TOKEN}` } : {},
       });
     } catch {

@@ -23,7 +23,8 @@ product. When in doubt, optimize for the loop.
 - `server/mcpHttp.ts` / `mcp/server.ts` — streamable-HTTP MCP at `/mcp` and the
   stdio MCP server (a thin client over the HTTP API).
 - `server/surfacePage.ts` / `server/themes.ts` / `server/kits.ts` — sandboxed
-  rendering, theme registry, opt-in html-part style bundles (`issues`, `slides`).
+  rendering, theme registry, opt-in html-part style bundles (`issues`, `slides`,
+  `animate`, `review`).
 - `viewer/` — React + TypeScript (zustand store, Tailwind, vendored shadcn/ui),
   Vite-built into a single self-contained `viewer/dist/index.html`.
 - `bin/showcase.js` — zero-dependency CLI. `guide/` — runtime agent instructions.

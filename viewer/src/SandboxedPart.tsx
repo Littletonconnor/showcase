@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { renderSandboxedPart } from "../../server/surfacePage.ts";
 import { themeById } from "../../server/themes.ts";
+import { isFlatten } from "./api.ts";
 import { useActiveTheme, useResolvedMode } from "./theme.ts";
 
 // location.origin is constant for the page lifetime — read it once, not per
@@ -17,6 +18,56 @@ export function applyFrameHeight(iframe: HTMLIFrameElement, reportedHeight: unkn
   iframe.style.height = Math.min(Math.max(Number(reportedHeight), MIN_H), MAX_H) + "px";
 }
 
+// The part CSS targets `body` as its root (the iframe document's body); a shadow
+// root has no body, so remap those rules to `:host` (the host element). Only the
+// leading `body` of a selector — `body {`, `body > x` — never `tbody`/attribute
+// values (word boundary + a rule delimiter before it).
+function bodyToHost(css: string): string {
+  return css.replace(/(^|[{}>;,])(\s*)body\b/g, "$1$2:host");
+}
+
+// Flatten/PDF mode: render the part's HTML inline (in document flow) inside a
+// shadow root instead of a srcdoc iframe, so a tall part splits across print
+// pages instead of being stranded or clipped at the iframe height cap. The
+// shadow root scopes the part's CSS, and `setHTMLUnsafe` parses @pierre/diffs'
+// declarative shadow roots while — like all fragment parsing — never executing
+// `<script>`, so the inlined library markup stays inert. Theme custom properties
+// inherit across the shadow boundary from :root, so colors match the chrome.
+function InlinePart(props: { body: string; css: string; class?: string }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const activeTheme = useActiveTheme();
+  const mode = useResolvedMode();
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const root = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+    const html = `<style>:host{display:block}${bodyToHost(props.css)}</style>${props.body}`;
+    const sink = root as ShadowRoot & { setHTMLUnsafe?: (html: string) => void };
+    if (typeof sink.setHTMLUnsafe === "function") sink.setHTMLUnsafe(html);
+    else root.innerHTML = html;
+  }, [props.body, props.css, activeTheme, mode]);
+  return <div ref={hostRef} className={props.class ?? "partframe"} />;
+}
+
+type SandboxedPartProps = {
+  body: string;
+  css: string;
+  class?: string;
+  // Diff/code parts: the in-frame bridge reports a clicked line so the host can
+  // pin a comment to it (see server/surfacePage.ts and DiffPart).
+  onLineClick?: (anchor: { line: number; lineType?: "context" | "addition" | "deletion" }) => void;
+};
+
+// Dispatcher: the PDF export flattens rich parts into the document so they
+// paginate (line anchoring is interactive-only, so it's simply absent there);
+// the live board renders each part in an opaque-origin sandbox iframe. isFlatten
+// is a page-lifetime constant, so this branch is stable per mount — keeping the
+// hook-bearing work in two child components satisfies the rules of hooks.
+export function SandboxedPart(props: SandboxedPartProps) {
+  if (isFlatten()) return <InlinePart body={props.body} css={props.css} class={props.class} />;
+  return <FramePart {...props} />;
+}
+
 // Renders agent-produced markup (markdown, mermaid, diff) inside the SAME
 // opaque-origin sandbox html parts use, instead of innerHTML in the trusted
 // viewer. The caller renders the part to a STRING (string building is not a DOM
@@ -29,14 +80,7 @@ export function applyFrameHeight(iframe: HTMLIFrameElement, reportedHeight: unkn
 // each frame sizes itself from messages whose source is its own contentWindow.
 // (Link clicks and the session-switch shortcut ride App's global bridge handler,
 // which keys off message type, not the frame registry.)
-export function SandboxedPart(props: {
-  body: string;
-  css: string;
-  class?: string;
-  // Diff/code parts: the in-frame bridge reports a clicked line so the host can
-  // pin a comment to it (see server/surfacePage.ts and DiffPart).
-  onLineClick?: (anchor: { line: number; lineType?: "context" | "addition" | "deletion" }) => void;
-}) {
+function FramePart(props: SandboxedPartProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const activeTheme = useActiveTheme();
   const mode = useResolvedMode();

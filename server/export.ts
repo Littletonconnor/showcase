@@ -123,11 +123,20 @@ function toScriptLiteral(value: unknown): string {
 
 // Inject the bundle + read-only flag into the viewer HTML, before </head> so it
 // runs before the app script (mirrors app.ts withViewerConfig). Base path is
-// forced to "" so the file works opened from disk at any path.
-export function renderExportHtml(viewerHtml: string, bundle: ExportBundle): string {
+// forced to "" so the file works opened from disk at any path. `flatten` is the
+// PDF path: it sets __SHOWCASE_FLATTEN__ so the viewer renders rich parts inline
+// (in document flow) instead of in srcdoc iframes — iframes can't be split
+// across print page breaks, so flattening is what lets a long diff/markdown
+// paginate cleanly when the file is printed to PDF (see SandboxedPart).
+export function renderExportHtml(
+  viewerHtml: string,
+  bundle: ExportBundle,
+  flatten = false,
+): string {
   const script =
     `<script>window.__SHOWCASE_BASE_PATH__="";` +
     `window.__SHOWCASE_READONLY__=true;` +
+    (flatten ? `window.__SHOWCASE_FLATTEN__=true;` : ``) +
     `window.__SHOWCASE_EXPORT__=${toScriptLiteral(bundle)};</script>`;
   const headClose = viewerHtml.lastIndexOf("</head>");
   return headClose >= 0

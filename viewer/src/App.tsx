@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import {
   api,
   appPath,
+  exportBundle,
   isReadonly,
   layoutMode,
   relTime,
@@ -876,10 +877,14 @@ function SessionView() {
           <ReviewSummary surfaces={surfaces} />
         </div>
       </div>
-      {current?.kind === "review" && selected ? (
+      {current?.kind === "review" && selected && !exportBundle() ? (
         // A review takes over the main panel with its own bounded-height scroll
         // container (the decision queue's scroll-snap + sticky evidence need it),
-        // sitting under the sticky session header.
+        // sitting under the sticky session header. A static export can't drive
+        // the decision queue — its data isn't in the bundle and the live
+        // adjudication is read-only anyway — so an exported review instead falls
+        // through to its card stream (the verdict + finding surfaces), which
+        // also flows and paginates cleanly when printed to PDF.
         <div className="h-[calc(100svh-4.5rem)]">
           <ReviewInline sessionId={selected} />
         </div>
