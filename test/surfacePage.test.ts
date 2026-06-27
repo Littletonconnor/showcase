@@ -33,28 +33,19 @@ function cspDirectives(doc: string): Record<string, string[]> {
   return out;
 }
 
-// The CDN allowlist html parts may load from. This is a deliberate, fixed set —
-// the test pins it so widening it (a new origin, a wildcard) is a conscious edit
-// that updates this list, never an accident.
-const ALLOWED_CDNS = [
-  "https://cdnjs.cloudflare.com",
-  "https://esm.sh",
-  "https://cdn.jsdelivr.net",
-  "https://unpkg.com",
-  "https://fonts.googleapis.com",
-  "https://fonts.gstatic.com",
-];
-
-test("the CSP locks down default-src and allowlists exactly the known CDNs", () => {
-  const policy = csp(renderHtmlPage({ title: "t", html: "<p>x</p>", origin: ORIGIN }));
+test("the CSP locks down default-src and permits no external host", () => {
+  const page = renderHtmlPage({ title: "t", html: "<p>x</p>", origin: ORIGIN });
+  const policy = csp(page);
+  const directives = cspDirectives(page);
 
   // nothing loads unless a later directive re-permits it
   assert.ok(policy.includes("default-src 'none'"), "default-src must be 'none'");
 
-  // script/style are inline + the allowlist, and every CDN appears
-  for (const cdn of ALLOWED_CDNS) {
-    assert.ok(policy.includes(cdn), `CSP should allow ${cdn}`);
-  }
+  // script/style are inline only — no CDN origin survives anywhere in the policy
+  assert.ok(!/https:\/\/[^\s;'"]/.test(policy), "no external host may appear in the CSP");
+  assert.deepEqual(directives["script-src"], ["'unsafe-inline'"], "script-src is inline only");
+  assert.deepEqual(directives["style-src"], ["'unsafe-inline'"], "style-src is inline only");
+  assert.deepEqual(directives["font-src"], ["data:"], "font-src is data: only");
 
   // the sandbox runs at an opaque origin, so the server origin is what lets
   // uploaded assets embed — it must be present in img/media, and only there
@@ -70,12 +61,11 @@ test("the CSP never permits same-origin escapes, eval, or a wildcard host", () =
 
   assert.ok(!policy.includes("'self'"), "'self' would defeat the opaque-origin sandbox");
   assert.ok(!policy.includes("'unsafe-eval'"), "eval must stay disallowed");
-  // a bare * host source would make the allowlist meaningless
+  // a bare * host source would open every directive to any host
   assert.ok(!/(^|[\s;])\*([\s;]|$)/.test(policy), "no wildcard host source");
-  // connect-src is limited to the named CDNs — no bare `https:` scheme source
-  // that would open fetch/XHR to any host (the `https://…` CDN URLs are fine)
-  const connect = policy.match(/connect-src([^;]*)/)?.[1] ?? "";
-  assert.ok(!/https:(?!\/)/.test(connect), "connect-src must not open all of https:");
+  // connect-src is omitted so it falls back to default-src 'none' — fetch/XHR
+  // is blocked entirely, with no host or scheme source to open it
+  assert.ok(!/connect-src/.test(policy), "connect-src must fall back to default-src 'none'");
 });
 
 test("the document title is HTML-escaped so a crafted title can't break out", () => {
@@ -182,10 +172,10 @@ test("renderSandboxedPart embeds the body and css inside the sandbox doc", () =>
   assert.ok(doc.includes("--bg:"), "theme vars are injected");
 });
 
-test("renderSandboxedPart uses a tighter CSP than html parts: no connect-src, no CDN", () => {
+test("renderSandboxedPart locks script-src to the inline bridge and omits connect-src", () => {
   const d = cspDirectives(renderSandboxedPart({ body: "x", css: "", origin: ORIGIN }));
   assert.deepEqual(d["default-src"], ["'none'"], "locked-down default");
-  // script-src is EXACTLY the inline bridge — no CDN sources leak in
+  // script-src is EXACTLY the inline bridge — no external sources leak in
   assert.deepEqual(d["script-src"], ["'unsafe-inline'"], "only the inline bridge runs");
   // a contained script must have no way to phone home
   assert.ok(!("connect-src" in d), "no connect-src");
@@ -193,18 +183,15 @@ test("renderSandboxedPart uses a tighter CSP than html parts: no connect-src, no
   assert.ok(d["img-src"]?.includes(ORIGIN), "origin allowed for images");
 });
 
-test("html parts keep their CDN allowlist (rich-part tightening did not leak)", () => {
+test("html and rich parts both lock script-src to the inline bridge — no CDN sources", () => {
   const html = cspDirectives(renderHtmlPage({ title: "t", html: "<b>x</b>", origin: ORIGIN }));
   const rich = cspDirectives(renderSandboxedPart({ body: "x", css: "", origin: ORIGIN }));
-  // rich parts lock script-src to the inline bridge alone; html parts add the
-  // CDN sources on top, so html's source list is strictly larger. (Asserting on
-  // the count rather than a host literal keeps this off the URL-substring path.)
+  // with the CDN allowlist gone, neither surface adds host sources on top of the
+  // inline bridge, and neither opens fetch/XHR via connect-src
+  assert.deepEqual(html["script-src"], ["'unsafe-inline'"], "html = inline bridge only");
   assert.deepEqual(rich["script-src"], ["'unsafe-inline'"], "rich = inline bridge only");
-  assert.ok(
-    html["script-src"].length > rich["script-src"].length,
-    "html parts keep extra (CDN) script sources",
-  );
-  assert.ok("connect-src" in html, "html parts still have connect-src");
+  assert.ok(!("connect-src" in html), "html parts have no connect-src");
+  assert.ok(!("connect-src" in rich), "rich parts have no connect-src");
 });
 
 test("the board origin is never a connect/script source — img/media only", () => {
