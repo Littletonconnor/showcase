@@ -340,6 +340,75 @@ not a GitHub front-end; sharing is the static export.
 _(Workflow 2 — learning & explainers — and static export are both shipped; see the
 shipped-foundation list above.)_
 
+#### Platform, durability & trust — a new track (June 2026)
+
+A set of directions surfaced in a codebase review that harden the engine and
+deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
+
+**Workflow 2 depth**
+
+- **Interactive, conversational explainers** — the scrub half of the §1 vision
+  ("scrub _and ask questions of_") shipped as the `animate` kit; the "ask questions
+  of" half is only implicit in the generic comment loop. Make it first-class: a
+  question posted under an explainer routes back to the agent _scoped to that
+  surface/step_, and the agent revises in place (the content-keyed pattern
+  decision-review already uses). Turns a static animation into the interactive
+  artifact the north star promises. _Effort: medium._
+
+**Durability & scale**
+
+- **SQLite store behind the `Store` interface** — `JsonFileStore` holds the whole
+  board in memory and rewrites the entire file on every mutation (O(n), no
+  mid-write transaction). The `Store` interface is already complete and
+  runtime-isolated — the seam was built for this swap (the Cloudflare SqlStore was
+  removed but the contract remains). SQLite gives durability, incremental writes,
+  and indexed queries; it's the unlock for the two items below. _Effort: medium._
+- **Full-text search across content** — live search only matches session title +
+  agent name; there's no way to find a past decision, diagram, or snippet by its
+  content. SQLite FTS5 (riding on the store swap) over surface parts, comments, and
+  decision briefs makes the board an actual searchable record. _Effort: low (once
+  the store lands)._
+- **Asset lifecycle / GC** — eviction only runs eagerly on upload; orphaned assets
+  (referenced by no live or historical surface) accumulate until the board budget
+  forces LRU. Add a lazy GC pass (`isAssetReferenced` already exists), a
+  `showcase gc` command, and a board-size status line. _Effort: low._
+
+**Quality & trust**
+
+- **Accessibility pass** — for a product whose premise is _visual_ surfaces in
+  sandboxed iframes, there's no a11y story: iframe titles, focus order across
+  cards, contrast on the tone chips, screen-reader labels on the decision queue. A
+  deliberate WCAG pass is table stakes. _Effort: medium._
+- **Operational observability** — the CLI installs showcase as a launchd/systemd
+  service, but there's no `/api/health`, no structured logging, and update-check
+  failures are silent. Add a health endpoint, structured request logging, and a
+  self-rendered "board status" surface (uptime, surface/asset counts, store size,
+  last error) — showcase dogfooding its own monitoring. _Effort: low–medium._
+- **Tighten the html-part CSP + write down the threat model** — the sandbox
+  invariant is solid, but html parts run with a broad `script-src` that lets agents
+  pull from any CDN, plus wide `img/media/connect`. Make the CDN allowlist
+  configurable/narrowable, add a `docs/SECURITY.md` threat model, and wire the
+  `security-review` skill into a recurring check. _Effort: low–medium._
+
+**Extensibility ergonomics**
+
+- **Schema validation + `showcase validate`** — `userConfig.ts` validates only
+  rough shape; a malformed palette color or blueprint section is skipped with a
+  boot warning and no author-facing error. Ship JSON schemas + a `showcase
+  validate` command so theme/kit/blueprint authors (`docs/themable-explainers.md`)
+  get real errors before publishing. _Effort: low._
+- **Expose board state to the agent via MCP resources/prompts** — the MCP server is
+  publish-heavy with thin read-back (`list_surfaces` only). Expose existing
+  surfaces/sessions as MCP **resources** (and blueprint recipes as MCP **prompts**)
+  so the agent sees what it already published and avoids redundant re-publishes —
+  protocol-native, and it keeps the agent's model of the board accurate.
+  _Effort: medium._
+
+_Considered and cut from this track:_ a surface version-diff view (history exists,
+but the iterate loop doesn't need it) and cross-browser/mobile e2e expansion. The
+agent wake/notify path (notifications when feedback lands — _not_ a return of the
+in-app comment UI) is parked pending a call on whether to pursue it.
+
 ---
 
 ## 7. Open decisions (flag to the user before building the affected pillar)
