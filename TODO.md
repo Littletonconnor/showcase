@@ -471,6 +471,7 @@ package that forbids `node:` imports, turning today's convention into something 
 can enforce (an `oxlint`/dependency-cruiser rule per package).
 
 Things that must survive the split:
+
 - **No-build-step type stripping** for `core` / `server` / `mcp` / `cli` — keep
   erasable-syntax-only TS, `.ts` extensions in relative imports, run on Node ≥22.18.
   The viewer stays the one Vite-built exception.
@@ -484,33 +485,42 @@ Things that must survive the split:
   dev tasks; evaluate `turbo`/`pnpm -r --parallel` for task graph + caching, but
   don't let it become a hard dep if a few root scripts suffice.
 - **Validation gates** (`typecheck` / `test` / `lint` / `format:check`) run per
-  package *and* aggregated at the root; the Playwright oracle (`e2e/`) stays at the
+  package _and_ aggregated at the root; the Playwright oracle (`e2e/`) stays at the
   root since it drives the whole system end-to-end.
 - The **guide/**, **skills/**, **docs/**, and **e2e/** trees stay repo-level (they
   describe the product, not one package).
 
 ##### Move 1 — best-in-class CLI (`packages/cli`)
 
-Today `bin/showcase.js` is a single ~1400-line zero-dep file: hand-rolled
-`parseArgs`, ad-hoc `fetch` per subcommand, inconsistent error/exit-code behavior.
-It works but is hard to extend. Rework it into a real CLI, modeled on curly:
+**✅ Mostly shipped — the command-layout rework landed; only the package move
+remains.** The old single ~1400-line `bin/showcase.js` was reworked into a real
+CLI in the **current single-package layout** under `cli/` (the pnpm split is
+Move 0; this move was done on top of today's tree, so it relocates into
+`packages/cli` as part of move 0 rather than blocking on it). Modeled on curly:
 
-- **Command router** — `src/index.ts` (version check + dispatch) → one folder per
-  command, `src/commands/<name>/index.ts` (serve, service, publish, mermaid, diff,
-  markdown, code, image, trace, decisions, export, gc, demo, validate, blueprints,
-  kits, themes, upload, asset-url …). Each command owns its own `--help`.
-- **Shared infra** — `src/lib/http.ts` (one HTTP client + **one place** that maps API
-  failures → exit codes + human messages), `src/lib/args.ts` (typed/validated option
-  parsing), `src/lib/output.ts` (human + `--json` for scripting, color, tables),
-  `src/lib/exit.ts` (the exit-code map).
-- **Best-in-class affordances** — per-command help, `--json` everywhere for
-  scripting, **shell completions** (curly ships a `completions` command — copy the
-  pattern), consistent exit codes, clear actionable errors, and **command-level
-  tests** (currently the CLI has none).
-- **Keep the loop the priority** and the **install story zero-friction**. The current
-  zero-dep stance (CLAUDE.md) is a real constraint: a publishable CLI shouldn't drag
-  a heavy arg-parser/framework. If a small dep is added, weigh it explicitly — see
-  open decisions.
+- **Command router** ✅ — `bin/showcase.js` is now a thin launcher into
+  `cli/main.ts`; a **command registry** (`cli/registry.ts`) holds one `Command`
+  per subcommand under `cli/commands/*` (grouped modules rather than curly's
+  one-folder-per-command, since most are small), each owning its own `--help`
+  generated from its option spec. (Layout note: `cli/commands/<group>.ts`, not
+  `src/commands/<name>/index.ts`.)
+- **Shared infra** ✅ — `cli/http.ts` (one HTTP client + **one place** mapping an
+  API failure / unreachable server → exit code + human message, local auto-start
+  preserved), `cli/command.ts` (typed/validated option parsing + per-command
+  help), `cli/output.ts` (human by default + `--json` for scripting),
+  `cli/errors.ts` (the `fail`/exit path + Levenshtein "did you mean").
+- **Best-in-class affordances** ✅ — per-command help, `--json` everywhere for
+  scripting, **shell completions** (`showcase completions <bash|zsh|install>`,
+  generated from the live registry), consistent exit codes, clear actionable
+  errors (did-you-mean for both mistyped flags and commands), and
+  **command-level tests** (`test/cli.test.ts`).
+- **Kept the loop the priority** and the **install story zero-friction** ✅ — the
+  rework stayed **strictly zero-dep** (node built-ins only) and type-stripped like
+  the server; no arg-parser/framework added. Note: the publish-family `--json`
+  _part_ flag was renamed `--json-part` to free the global `--json`.
+- **Remaining:** relocate `cli/` into `packages/cli` (imports _types only_ from
+  `@showcase/core`, must not pull the viewer's React/Vite tree) when Move 0 lands;
+  optionally add color/tables to the human output.
 
 ##### Move 2 — best-in-class MCP (`packages/mcp` + the server's HTTP transport)
 
@@ -543,7 +553,7 @@ Already React 19 + zustand + Tailwind v4 + vendored shadcn, Vite → one self-co
 - **Typed wire contract** — import surface/part types from `@showcase/core` instead of
   re-declaring them, so a server-side model change breaks the viewer build (good).
 - **Keep the single-file artifact** — it's a feature (the server serves one file); do
-  *not* code-split. Note the tension with bundle growth and revisit only if it bites.
+  _not_ code-split. Note the tension with bundle growth and revisit only if it bites.
 - **Component/unit tests** — add `vitest` + Testing Library for the part renderers
   (`*Part.tsx`) and the review views; the Playwright oracle stays the integration
   gate but per-component tests are missing today.
@@ -553,12 +563,13 @@ Already React 19 + zustand + Tailwind v4 + vendored shadcn, Vite → one self-co
 
 ##### Sequencing & open decisions
 
-**Order:** (0) workspace split with packages 1:1 to today's folders and *no behavior
-change* — get green on `typecheck`/`test`/`lint`/oracle first; **then** (1) CLI, (2)
+**Order:** (0) workspace split with packages 1:1 to today's folders and _no behavior
+change_ — get green on `typecheck`/`test`/`lint`/oracle first; **then** (1) CLI, (2)
 MCP, (3) viewer independently, each its own series of small commits. Don't combine
 the structural move with a surface rework — land the split boringly first.
 
 **Open decisions to flag before starting** (see also §7):
+
 - **`pnpm` migration itself** — replaces `npm` + the root `package-lock.json`;
   confirm the user wants `pnpm` (vs. `npm` workspaces) before converting CLAUDE.md's
   `npm run …` muscle-memory and the dev scripts.
