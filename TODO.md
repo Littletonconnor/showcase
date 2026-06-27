@@ -401,6 +401,35 @@ validate` command so theme/kit/blueprint authors (`docs/themable-explainers.md`)
   `test/api.test.ts` ("mcp read-back"). _Next: surface the assets/sessions as
   resources too if a need shows up._
 
+**Developer experience & architecture**
+
+- **Build out a more robust CLI** — `bin/showcase.js` is a single ~1400-line
+  zero-dependency file: hand-rolled `parseArgs` flag handling, ad-hoc `fetch`
+  calls, and inconsistent error/exit-code behavior per subcommand. It works but is
+  hard to extend and easy to break. Rework it into a real CLI: a proper
+  command/subcommand router with per-command help, validated/typed options, shared
+  HTTP-client + error-formatting helpers (one place that maps API failures to exit
+  codes and human messages), `--json` output for scripting, shell-completion, and
+  command-level tests. Keep the publish→render→comment loop the priority and the
+  install story zero-friction — if a dependency is added (e.g. a small arg parser),
+  weigh it against the current zero-dep stance in CLAUDE.md. _Effort: medium._
+- **Modernize into a pnpm-workspace monorepo** — today everything (CLI, HTTP
+  server, stdio MCP, the Vite viewer, guide/skills) lives in one root `package.json`
+  with one dependency tree and the viewer build coupled to the server (`npm run dev`
+  builds the viewer, the server reads `viewer/dist/index.html` at boot). Split into
+  clearly separated workspace packages — e.g. `packages/cli` (`bin/`), `packages/server`
+  (the runtime-agnostic Hono app + Node wiring), `packages/mcp` (`mcp/` stdio +
+  `server/mcpHttp.ts`), `packages/viewer` (the Vite app), and a shared `packages/core`
+  for `types.ts` / `surfacePage.ts` / the data model — wired with pnpm workspaces so
+  each has its own deps, build, and test, with explicit internal dependencies between
+  them. Goals: faster installs, independent typecheck/lint/test per package, a
+  publishable CLI that doesn't pull the viewer's React/Vite tree, and an enforced
+  boundary that keeps the runtime-agnostic invariant (no `node:` imports in the
+  shared/server-core packages) a package constraint rather than a convention.
+  Preserve the no-build-step type-stripping story for the server/CLI and the single
+  self-contained `viewer/dist/index.html` artifact. _Effort: large; do as its own
+  track — it touches every import path, `tsconfig`, the dev/build scripts, and CI._
+
 _Deferred / punted (revisit later):_ a **durable searchable store** (SQLite +
 FTS5) for referencing old mockups/reviews — `JsonFileStore` is fine at personal
 scale and `showcase export` → HTML → Notion already covers the "keep it for later"
