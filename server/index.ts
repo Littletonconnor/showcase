@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server";
-import { readFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,28 @@ import {
 // package root either way.
 let root = join(dirname(fileURLToPath(import.meta.url)), "..");
 if (basename(root) === "dist") root = join(root, "..");
+
+// One-time lift of a pre-existing repo-local board into the new home-dir
+// location, so upgrading doesn't present an empty board. Only runs when the
+// destination doesn't exist yet and a legacy file is actually there.
+async function migrateLegacyData(from: string, to: string) {
+  if (from === to) return;
+  try {
+    await stat(to);
+    return; // destination already populated — leave it
+  } catch (err: any) {
+    if (err?.code !== "ENOENT") throw err;
+  }
+  try {
+    await stat(from);
+  } catch (err: any) {
+    if (err?.code === "ENOENT") return; // no legacy board to migrate
+    throw err;
+  }
+  await mkdir(dirname(to), { recursive: true });
+  await copyFile(from, to);
+  console.log(`showcase: migrated board from ${from} to ${to}`);
+}
 
 const [viewerHtml, guideMarkdown, setupText, playbookText] = await Promise.all([
   readFile(join(root, "viewer", "dist", "index.html"), "utf8").catch(() => {
@@ -55,8 +77,16 @@ const { themes, kits, blueprints } = mergeExtensions([repoExt, userExt]); // rep
 const defaultBlueprint = repoCfg.defaultBlueprint ?? userCfg.defaultBlueprint;
 const defaultTheme = repoCfg.defaultTheme ?? userCfg.defaultTheme;
 
+// The board lives in the user's home, not the install tree — a repo-local
+// data/ dir got wiped on every reinstall, re-clone, or ephemeral checkout,
+// silently taking published surfaces with it. SHOWCASE_DATA still overrides.
+const dataPath = process.env.SHOWCASE_DATA ?? join(homedir(), ".showcase", "data", "showcase.json");
+if (!process.env.SHOWCASE_DATA) {
+  await migrateLegacyData(join(root, "data", "showcase.json"), dataPath);
+}
+
 const app = createApp({
-  store: new JsonFileStore(process.env.SHOWCASE_DATA ?? join(root, "data", "showcase.json")),
+  store: new JsonFileStore(dataPath),
   viewerHtml,
   guideMarkdown,
   setupText,
