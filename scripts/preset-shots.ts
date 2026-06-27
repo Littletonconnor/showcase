@@ -11,10 +11,10 @@ import { chromium } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BLUEPRINTS } from "../server/blueprints.ts";
-import { PRESET_RENDERERS } from "../server/presetRenders.ts";
-import { renderHtmlPage } from "../server/surfacePage.ts";
-import type { Mode } from "../server/themes.ts";
+import { BLUEPRINTS } from "@showcase/core/blueprints";
+import { PRESET_RENDERERS } from "@showcase/server/presetRenders";
+import { renderHtmlPage } from "@showcase/core/surfacePage";
+import type { Mode } from "@showcase/core/themes";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = join(ROOT, "docs", "images", "presets");

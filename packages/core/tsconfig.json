@@ -1,0 +1,9 @@
+{
+  // core is runtime-agnostic. The real invariant — no `node:` specifier imports
+  // — is enforced by scripts/check-core-boundary.mjs (a lint gate), not by
+  // stripping `types`: core legitimately uses universal Web Platform globals
+  // (atob/btoa/crypto) that @types/node also declares, so a bare `types: []`
+  // would false-positive on them.
+  "extends": "../../tsconfig.base.json",
+  "include": ["**/*.ts"]
+}

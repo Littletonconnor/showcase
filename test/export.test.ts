@@ -3,8 +3,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { buildExportBundle, exportFilename, renderExportHtml } from "../server/export.ts";
-import { JsonFileStore } from "../server/storage.ts";
+import { buildExportBundle, exportFilename, renderExportHtml } from "@showcase/core/export";
+import { JsonFileStore } from "@showcase/server/storage";
 
 const freshStore = () =>
   new JsonFileStore(join(mkdtempSync(join(tmpdir(), "showcase-export-")), "data.json"));

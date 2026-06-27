@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { createApp } from "../server/app.ts";
+import { createApp } from "@showcase/server/app";
 import {
   PRESET_RENDERERS,
   renderArchitecture,
@@ -12,10 +12,10 @@ import {
   renderPostmortem,
   renderProductDemo,
   renderStatus,
-} from "../server/presetRenders.ts";
-import { JsonFileStore } from "../server/storage.ts";
-import type { RenderedPreset } from "../server/presetRenders.ts";
-import type { ChartPart } from "../server/types.ts";
+} from "@showcase/server/presetRenders";
+import { JsonFileStore } from "@showcase/server/storage";
+import type { RenderedPreset } from "@showcase/server/presetRenders";
+import type { ChartPart } from "@showcase/core/types";
 
 // Concatenated html-part bodies of a rendered preset (most are a single html part).
 const htmlOf = (r: RenderedPreset): string =>

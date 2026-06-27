@@ -7,7 +7,7 @@ import {
   themeById,
   tokenThemeCss,
   viewerThemeCss,
-} from "../server/themes.ts";
+} from "@showcase/core/themes";
 
 // The flat keys every Palette must define, plus the semantic accents which each
 // carry bg/text/border. A theme added with a missing key would silently emit a

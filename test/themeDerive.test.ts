@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { deriveTheme, parseHex, themePreviewHtml } from "../server/themeDerive.ts";
-import type { Palette } from "../server/themes.ts";
+import { deriveTheme, parseHex, themePreviewHtml } from "@showcase/core/themeDerive";
+import type { Palette } from "@showcase/core/themes";
 
 // Recompute WCAG contrast in the test so the assertion is independent of the
 // engine's own clamp — this is the property that actually matters (a derived

@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DEFAULT_THEME_ID, themeById, viewerVars } from "../server/themes.ts";
+import { DEFAULT_THEME_ID, themeById, viewerVars } from "@showcase/core/themes";
 import {
   THEME_DEFAULTS,
   THEME_TOKEN_NAMES,
   type ThemeTokens,
   themeTokens,
-} from "../server/theme-tokens.ts";
+} from "@showcase/core/theme-tokens";
 
 // Every mirrored token name must be exactly its `viewerVars` key with the `--`
 // prefix — that lockstep is what lets themeTokens() map one to the other with a

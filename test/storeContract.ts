@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { HISTORY_LIMIT, htmlPart, type Store } from "../server/types.ts";
+import { HISTORY_LIMIT, htmlPart, type Store } from "@showcase/core/types";
 
 const bytes = (...values: number[]) => new Uint8Array(values);
 

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isKnownKit, KIT_IDS, kitAssets, kitSummaries } from "../server/kits.ts";
-import { renderHtmlPage } from "../server/surfacePage.ts";
-import { coerceSurfaceParts, validateSurfaceParts } from "../server/surfaceParts.ts";
+import { isKnownKit, KIT_IDS, kitAssets, kitSummaries } from "@showcase/core/kits";
+import { renderHtmlPage } from "@showcase/core/surfacePage";
+import { coerceSurfaceParts, validateSurfaceParts } from "@showcase/core/surfaceParts";
 
 // --- kitAssets ---
 

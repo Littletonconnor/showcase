@@ -18,9 +18,9 @@ revise** — is the whole point. No GitHub thread or terminal scrollback does th
 A self-contained local-only engine: a Hono server, a React viewer, an MCP
 server, and a zero-dependency CLI. It runs entirely on your machine.
 
-> **See it in 30 seconds:** `npm install && npm run build:viewer && npm run serve`,
-> then `node bin/showcase.js demo` and open <http://localhost:8229>. Every
-> screenshot in this README is a real `showcase demo` session.
+> **See it in 30 seconds:** `pnpm install && pnpm build:viewer && pnpm serve`,
+> then `node packages/cli/bin/showcase.js demo` and open <http://localhost:8229>.
+> Every screenshot in this README is a real `showcase demo` session.
 
 ---
 
@@ -196,23 +196,24 @@ a preset's `theme` at it to brand the whole format. See
 native type-stripping — no build step).
 
 ```sh
-npm install
-npm run build:viewer     # builds viewer/dist/index.html (once, and after viewer edits)
-npm run serve            # API + viewer on http://localhost:8229
+pnpm install
+pnpm build:viewer        # builds packages/viewer/dist/index.html (once, and after viewer edits)
+pnpm serve               # API + viewer on http://localhost:8229
 ```
 
 1. Open **http://localhost:8229**.
-2. Seed the example sessions above to explore: `node bin/showcase.js demo`.
-3. List the CLI: `node bin/showcase.js --help`.
+2. Seed the example sessions above to explore: `node packages/cli/bin/showcase.js demo`.
+3. List the CLI: `node packages/cli/bin/showcase.js --help`.
 
-> Tip: install the CLI globally with `npm link` so `showcase` is on your PATH;
-> the examples below assume that. Otherwise use `node bin/showcase.js …`.
+> Tip: install the CLI globally (`pnpm --filter @showcase/cli link --global`) so
+> `showcase` is on your PATH; the examples below assume that. Otherwise use
+> `node packages/cli/bin/showcase.js …`.
 
 ---
 
 ## Keep it running (no babysat tab)
 
-`npm run serve` ties the server to a terminal. You don't have to keep that tab
+`pnpm serve` ties the server to a terminal. You don't have to keep that tab
 open — there are two lighter options.
 
 **Auto-start on demand (zero config).** Any CLI/MCP call to a _local_ surface
@@ -373,13 +374,15 @@ channels.
 
 ## Project layout
 
+A **pnpm workspace** — five `@showcase/*` packages under `packages/*`:
+
 | Path               | What                                                                                                                                                      |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `server/`          | Runtime-agnostic Hono app: routes, SSE, the surface/comment model, sandboxed rendering. `server/storage.ts` is the local JSON-file store.                 |
-| `viewer/`          | React 19 + zustand + Tailwind viewer, Vite-built to a single `viewer/dist/index.html`.                                                                    |
-| `mcp/`             | stdio MCP server — a thin client over the HTTP API.                                                                                                       |
-| `bin/showcase.js`  | Thin launcher into `cli/`.                                                                                                                                |
-| `cli/`             | The CLI: a command registry (`cli/commands/*`) over shared http/error/output helpers. Zero runtime deps; human output by default, `--json` for scripting. |
+| `packages/core/`   | `@showcase/core` — runtime-agnostic data model + string-builder renderers + the MCP spec. No `node:` imports (CI-enforced).                               |
+| `packages/server/` | `@showcase/server` — the Node Hono app: routes, SSE, the surface/comment model, sandboxed rendering, `JsonFileStore`.                                     |
+| `packages/mcp/`    | `@showcase/mcp` — stdio MCP server, a thin client over the HTTP API.                                                                                      |
+| `packages/cli/`    | `@showcase/cli` — the `showcase` bin: a command registry (`commands/*`) over shared http/error/output helpers. Zero runtime deps; `--json` for scripting. |
+| `packages/viewer/` | `@showcase/viewer` — React 19 + zustand + Tailwind viewer, Vite-built to a single `dist/index.html`. Imports wire types from `@showcase/core`.            |
 | `guide/`           | The instructions agents fetch at runtime (`/setup`, `/guide`, `/playbook`).                                                                               |
 | `skills/showcase/` | The Claude Code skill.                                                                                                                                    |
 
@@ -388,11 +391,12 @@ channels.
 ## Develop
 
 ```sh
-npm run dev          # server + viewer watch build, with live reload
-npm test             # node --test (unit/API + store contract)
-npm run typecheck    # node + viewer tsc programs
-npm run lint         # oxlint (warnings are errors)
-npm run test:e2e     # Playwright (publish → render → comment oracle)
+pnpm install         # once after cloning
+pnpm dev             # server + viewer watch build, with live reload
+pnpm test            # node --test (unit/API + store contract)
+pnpm typecheck       # root test program + `pnpm -r typecheck` (per package)
+pnpm lint            # oxlint (warnings are errors) + core no-node: boundary
+pnpm test:e2e        # Playwright (publish → render → comment oracle)
 ```
 
 The full developer guide and roadmap live in `CLAUDE.md` and `TODO.md`.

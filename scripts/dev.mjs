@@ -53,24 +53,32 @@ if (process.argv.includes("--stop")) {
 const swept = freePort();
 if (swept.length) console.log(`freed :${PORT} — killed stale pid ${swept.join(", ")}`);
 
-// Initial build so the server has a dist to serve the instant it boots.
+// Initial build so the server has a dist to serve the instant it boots. Vite
+// runs inside the viewer package (its config + index.html live there).
+const VIEWER = "packages/viewer";
 console.log("building viewer…");
-execSync("vite build", { stdio: "inherit" });
+execSync("vite build", { stdio: "inherit", cwd: VIEWER });
 
 const children = [];
-function run(cmd, args, env) {
-  const child = spawn(cmd, args, { stdio: "inherit", env: { ...process.env, ...env } });
+function run(cmd, args, env, cwd) {
+  const child = spawn(cmd, args, { stdio: "inherit", cwd, env: { ...process.env, ...env } });
   children.push(child);
   return child;
 }
 
-// Watcher 1 — rebuild viewer/dist whenever viewer source changes.
-run("vite", ["build", "--watch"]);
+// Watcher 1 — rebuild the viewer's dist whenever its source changes.
+run("vite", ["build", "--watch"], {}, VIEWER);
 // Watcher 2 — restart the server when server code OR the freshly-built dist
 // changes (so a viewer edit reloads the page content too).
-run("node", ["--watch-path=./server", "--watch-path=./viewer/dist", "server/index.ts"], {
-  SHOWCASE_DEV: "1",
-});
+run(
+  "node",
+  [
+    "--watch-path=./packages/server",
+    "--watch-path=./packages/viewer/dist",
+    "packages/server/index.ts",
+  ],
+  { SHOWCASE_DEV: "1" },
+);
 
 console.log(`\nshowcase dev → http://localhost:${PORT}  (Ctrl-C to stop everything cleanly)\n`);
 
