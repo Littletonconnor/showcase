@@ -89,7 +89,9 @@ test("every card header shows a click-to-copy card id handle", async ({ page, re
   const card = page.locator(`.card[data-id="${surfaceId}"]`);
   await expect(card).toBeVisible();
 
-  await expect(card.getByRole("button", { name: `Copy card ID ${surfaceId}` })).toBeVisible();
+  await expect(
+    card.getByRole("button", { name: `Copy a reference to surface ${surfaceId}` }),
+  ).toBeVisible();
 });
 
 test("the Approve quick-action posts a user feedback signal", async ({ page, request }) => {

@@ -340,6 +340,76 @@ not a GitHub front-end; sharing is the static export.
 _(Workflow 2 — learning & explainers — and static export are both shipped; see the
 shipped-foundation list above.)_
 
+#### Platform, durability & trust — a new track (June 2026)
+
+A set of directions surfaced in a codebase review that harden the engine and
+deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
+
+**Editor-side conversation ergonomics**
+
+- **✅ Shipped — tighten the editor↔surface reference loop.** The conversation
+  deliberately lives in Cursor / Claude Code, not in showcase (the in-app comment
+  UI was stripped on purpose); the copy-ref affordance is the bridge, now scoped.
+  (a) **Scoped copy-refs** — `CardIdChip` (`viewer/src/Card.tsx`) copies a
+  paste-ready phrase `showcase surface <id> "<title>"` instead of a bare id, so a
+  paste into your terminal carries exact scope. (b) **Agent read-back** — a new
+  **`get_surface`** MCP tool (both transports) returns a surface's CURRENT full
+  content, so when a ref lands the agent reads what's on it and `update_surface`s it
+  in place; the old `MCP_INSTRUCTIONS` claim that `list_surfaces` returned content
+  is fixed (it's the title index; `get_surface` is the content). The explainer
+  stays a plain document; the conversation stays in the editor. _Next refinement
+  (optional): per-step copy buttons inside the `animate` kit for step-level scope._
+
+**Housekeeping**
+
+- **Asset lifecycle / GC** — eviction only runs eagerly on upload; orphaned assets
+  (referenced by no live or historical surface) accumulate until the board budget
+  forces LRU. Add a lazy GC pass (`isAssetReferenced` already exists), a
+  `showcase gc` command, and a board-size status line. _Effort: low._
+
+**Quality & trust**
+
+- **Accessibility pass** — for a product whose premise is _visual_ surfaces in
+  sandboxed iframes, there's no a11y story: iframe titles, focus order across
+  cards, contrast on the tone chips, screen-reader labels on the decision queue. A
+  deliberate WCAG pass is table stakes. _Effort: medium._
+- **Operational observability** — the CLI installs showcase as a launchd/systemd
+  service, but there's no `/api/health`, no structured logging, and update-check
+  failures are silent. Add a health endpoint, structured request logging, and a
+  self-rendered "board status" surface (uptime, surface/asset counts, store size,
+  last error) — showcase dogfooding its own monitoring. _Effort: low–medium._
+- **Tighten the html-part CSP + write down the threat model** — the sandbox
+  invariant is solid, but html parts run with a broad `script-src` that lets agents
+  pull from any CDN, plus wide `img/media/connect`. Make the CDN allowlist
+  configurable/narrowable, add a `docs/SECURITY.md` threat model, and wire the
+  `security-review` skill into a recurring check. _Effort: low–medium._
+
+**Extensibility ergonomics**
+
+- **Schema validation + `showcase validate`** — `userConfig.ts` validates only
+  rough shape; a malformed palette color or blueprint section is skipped with a
+  boot warning and no author-facing error. Ship JSON schemas + a `showcase
+validate` command so theme/kit/blueprint authors (`docs/themable-explainers.md`)
+  get real errors before publishing. _Effort: low._
+- **✅ Shipped — expose board state to the agent via MCP resources/prompts.** Both
+  transports now advertise `resources` + `prompts` capabilities. Surfaces are
+  browsable/attachable as `showcase://surface/<id>` resources (`resources/list` +
+  `resources/read` on HTTP; a `ResourceTemplate` on stdio, scoped to the session),
+  and the flagship recipes ship as **prompts** (`review_pr`, `explainer`) with text
+  shared by both transports (`promptMessages` in `server/mcpSpec.ts`). Covered by
+  `test/api.test.ts` ("mcp read-back"). _Next: surface the assets/sessions as
+  resources too if a need shows up._
+
+_Deferred / punted (revisit later):_ a **durable searchable store** (SQLite +
+FTS5) for referencing old mockups/reviews — `JsonFileStore` is fine at personal
+scale and `showcase export` → HTML → Notion already covers the "keep it for later"
+need; revisit only if the in-memory board hits a real ceiling (the whole board,
+asset bytes included, is resident and rewritten per mutation). _Cut:_ a surface
+version-diff view (history exists, but the iterate loop doesn't need it) and
+cross-browser/mobile e2e expansion. _Parked:_ the agent wake/notify path
+(notifications when feedback lands — _not_ a return of the in-app comment UI),
+pending a call on whether to pursue it.
+
 ---
 
 ## 7. Open decisions (flag to the user before building the affected pillar)

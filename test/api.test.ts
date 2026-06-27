@@ -1722,6 +1722,101 @@ test("mcp endpoint: initialize, tools/list, publish round trip", async () => {
   assert.ok(fb.lastSeq > 0);
 });
 
+test("mcp read-back: get_surface tool + surface resources + recipe prompts", async () => {
+  const app = makeApp();
+
+  // initialize advertises the new capabilities so a client knows to use them.
+  const init = (await (
+    await app.request("/mcp", mcpCall(1, "initialize", { protocolVersion: "2025-03-26" }))
+  ).json()) as any;
+  assert.ok(init.result.capabilities.resources);
+  assert.ok(init.result.capabilities.prompts);
+
+  // get_surface is listed alongside the publish tools.
+  const list = (await (await app.request("/mcp", mcpCall(2, "tools/list"))).json()) as any;
+  assert.ok(list.result.tools.map((t: any) => t.name).includes("get_surface"));
+
+  const published = JSON.parse(
+    (
+      (await (
+        await app.request(
+          "/mcp",
+          mcpCall(3, "tools/call", {
+            name: "publish_snippet",
+            arguments: { title: "Auth flow", html: "<p>backfill then flip</p>" },
+          }),
+        )
+      ).json()) as any
+    ).result.content[0].text,
+  );
+
+  // get_surface returns the FULL current content (the html part), not just metadata.
+  const got = JSON.parse(
+    (
+      (await (
+        await app.request(
+          "/mcp",
+          mcpCall(4, "tools/call", { name: "get_surface", arguments: { id: published.id } }),
+        )
+      ).json()) as any
+    ).result.content[0].text,
+  );
+  assert.equal(got.id, published.id);
+  assert.equal(got.title, "Auth flow");
+  assert.equal(got.parts[0].kind, "html");
+  assert.match(got.parts[0].html, /backfill/);
+
+  // get_surface on a missing id is a clean tool error, not a crash.
+  const missing = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(5, "tools/call", { name: "get_surface", arguments: { id: "nope" } }),
+    )
+  ).json()) as any;
+  assert.ok(missing.result.isError);
+
+  // resources/list surfaces the published card as showcase://surface/<id>.
+  const resources = (await (await app.request("/mcp", mcpCall(6, "resources/list"))).json()) as any;
+  const uri = `showcase://surface/${published.id}`;
+  assert.ok(resources.result.resources.some((r: any) => r.uri === uri));
+
+  // resources/read returns the same full content as the tool.
+  const read = (await (
+    await app.request("/mcp", mcpCall(7, "resources/read", { uri }))
+  ).json()) as any;
+  const body = JSON.parse(read.result.contents[0].text);
+  assert.equal(body.id, published.id);
+  assert.match(body.parts[0].html, /backfill/);
+
+  // A non-surface uri is rejected, not silently empty.
+  const badRead = (await (
+    await app.request("/mcp", mcpCall(8, "resources/read", { uri: "file:///etc/passwd" }))
+  ).json()) as any;
+  assert.ok(badRead.error);
+
+  // prompts/list exposes the flagship recipes.
+  const prompts = (await (await app.request("/mcp", mcpCall(9, "prompts/list"))).json()) as any;
+  const promptNames = prompts.result.prompts.map((p: any) => p.name);
+  assert.ok(promptNames.includes("review_pr"));
+  assert.ok(promptNames.includes("explainer"));
+
+  // prompts/get builds the recipe text, weaving in the argument.
+  const review = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(10, "prompts/get", { name: "review_pr", arguments: { branch: "feat/x" } }),
+    )
+  ).json()) as any;
+  assert.match(review.result.messages[0].content.text, /publish_decisions/);
+  assert.match(review.result.messages[0].content.text, /feat\/x/);
+
+  // An unknown prompt is a clean error.
+  const badPrompt = (await (
+    await app.request("/mcp", mcpCall(11, "prompts/get", { name: "nope", arguments: {} }))
+  ).json()) as any;
+  assert.ok(badPrompt.error);
+});
+
 test("DELETE /api/surfaces/:id removes the surface", async () => {
   const app = makeApp();
   const created = (await (
@@ -1812,7 +1907,7 @@ test("mcp publish_snippet honors sessionTitle on first publish only", async () =
 
 test("mcp endpoint: unknown method and unknown tool", async () => {
   const app = makeApp();
-  const bad = (await (await app.request("/mcp", mcpCall(1, "resources/list"))).json()) as any;
+  const bad = (await (await app.request("/mcp", mcpCall(1, "nonexistent/method"))).json()) as any;
   assert.equal(bad.error.code, -32601);
   const badTool = (await (
     await app.request("/mcp", mcpCall(2, "tools/call", { name: "nope", arguments: {} }))
