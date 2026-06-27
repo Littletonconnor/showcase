@@ -43,14 +43,24 @@ export type {
 
 export type PublicReadMode = "session" | "full";
 
+// What a session contains, computed server-side from its cards: a PR "review"
+// (finding/verdict cards or a decision-queue review) or a "visual" (a diagram /
+// explainer / chart / sketch — everything else). Names and icons the row.
+export type SessionKind = "review" | "visual";
+
 // GET /api/sessions decorates each session with its surface count and whether
 // an agent is currently parked in wait_for_feedback on it (live presence).
 export interface SessionRow extends Session {
   surfaceCount: number;
   listening?: boolean;
+  // Whether this session is a PR review or a visualization/explainer.
+  kind?: SessionKind;
   // Unresolved review findings in this session (severity-badged cards the user
   // hasn't Approved/Dismissed) — the sidebar's "where did I leave off" count.
   openFindings?: number;
+  // Set when the session carries a decision-queue review — the row chips the
+  // verdict and links to /?review=<id> instead of the (empty) board view.
+  reviewVerdict?: "block" | "approve" | "comment";
 }
 
 // GET /api/version — upgradeCommand and notes are set only when an update
@@ -165,7 +175,14 @@ export async function api<T = unknown>(path: string, init?: RequestInit): Promis
   return res.json() as Promise<T>;
 }
 
-export const sessionLabel = (s: Session) => s.title || s.agent + " session";
+// A session's display name for its kind, used when the agent didn't set a title.
+export const sessionKindLabel = (kind: SessionKind | undefined) =>
+  kind === "review" ? "PR Review" : "Visualization";
+
+// Name a session by what it is: the agent-set title, else its kind — never the
+// agent that authored it.
+export const sessionLabel = (s: Session & { kind?: SessionKind }) =>
+  s.title || sessionKindLabel(s.kind);
 
 export function relTime(iso: string): string {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;

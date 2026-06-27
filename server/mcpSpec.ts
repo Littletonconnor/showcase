@@ -21,29 +21,24 @@ export const MCP_INSTRUCTIONS =
   "a raw `patch`, which renders empty if it isn't a valid unified diff. NEVER write a review as one " +
   "big markdown surface — that wall of text is the failure mode publish_review exists to prevent. " +
   "Call get_design_guide once before your first publish. On your first " +
-  'publish, also pass sessionTitle to name the session after the task (e.g. "Auth refactor"). The ' +
-  "user can comment in their browser; call wait_for_feedback after publishing something you want a " +
-  "reaction to. Any publish/update/reply result may carry a userFeedback array — comments the user " +
-  "left since your last call, delivered once. " +
-  "CHATTING: the user can talk to you in the browser — under a surface, or in the session-level " +
-  '"Chat with your agent" panel. When they want a conversation, hold a real back-and-forth: after ' +
-  "each reply, call wait_for_feedback again and keep looping (wait → reply → wait), until they say " +
-  "they're done. While you are parked in wait_for_feedback the browser shows a live green " +
-  '"Listening" badge, so the user can see you are reachable; when you stop looping it goes idle. ' +
-  "Reply with reply_to_user — omit surfaceId to answer in the session-level chat, or pass it to " +
-  "answer under a specific surface. " +
-  "KEEP THE CONVERSATION IN THE TAB: when a message arrives via wait_for_feedback, or you need to " +
-  "ask the user anything while a showcase conversation is going, send it with reply_to_user so it " +
-  "appears in the browser tab they are watching — never stop to ask a question in your terminal, " +
-  "which they are not looking at. Ask in the tab, then wait_for_feedback for their answer.";
+  'publish, also pass sessionTitle to name the session after the task (e.g. "Auth refactor"). ' +
+  "REFERENCING A SURFACE: every card shows a copy-to-clipboard card id in its header. The user copies " +
+  "that id and mentions it to you in YOUR TERMINAL — that's where the conversation happens. Refer to " +
+  "surfaces back to the user by id; list_surfaces fetches one if you need its current content. " +
+  "FEEDBACK FROM THE BROWSER: on a code review the user adjudicates in the tab — Approve or Dismiss on " +
+  "each finding card, and Prove-it or Challenge on a decision-queue review — and those arrive as user " +
+  "comments. Call wait_for_feedback after publishing a review (or anything you want a reaction to) to " +
+  "receive them; any publish/update result may also carry a userFeedback array — comments the user " +
+  "left since your last call, delivered once. Act on that feedback in your normal terminal loop: make " +
+  "the change, then republish the review (publish_review / publish_decisions) so the board updates.";
 
 // Rides on every wait_for_feedback delivery (both transports) as an in-context
 // reminder, right when the agent is deciding how to respond.
 export const FEEDBACK_REPLY_NOTE =
-  "These are messages from the user in the showcase browser tab — that's where this conversation is " +
-  "happening. To answer, or to ask a clarifying question before continuing, call reply_to_user (it " +
-  "shows in the tab); do NOT ask in your terminal — the user is watching the tab, not the terminal. " +
-  "Then call wait_for_feedback again to hear back.";
+  "These are the user's responses from the showcase browser — review adjudications (Approve/Dismiss on " +
+  "findings, Prove-it/Challenge on decisions) and comments on the surfaces they're watching. Act on " +
+  "them in your terminal: make the change and republish the review (publish_review / publish_decisions) " +
+  "so the board updates, then call wait_for_feedback again if you expect more.";
 
 const d = {
   title: "Short human-readable title shown above the card",
@@ -111,7 +106,6 @@ const d = {
     "On update_surface, pass null to clear it.",
   timeout: "How long to wait, 0-300",
   afterSeq: "explicit cursor override (default: where the agent left off)",
-  replyMessage: "Plain-text reply",
   assetData: "base64-encoded file bytes",
   assetContentType: "MIME type, e.g. image/png, application/json",
   assetFilename: "Original filename (used for downloads)",
@@ -257,9 +251,7 @@ export const MCP_TOOL_DESCRIPTIONS = {
   deleteSurface:
     "Delete a surface you published — removes the card and ALL its versions from the board permanently. Use it to clean up while iterating: a stale, duplicate, or superseded card. Prefer update_surface to revise a card in place; reach for this only when the card should disappear entirely. Irreversible. Returns the deleted id and its sessionId.",
   waitForFeedback:
-    "Block until the user comments on this session in their browser (or the timeout passes). Returns new comments since the agent last received feedback on any channel (delivered as one batch — the wait coalesces messages the user queues). Use timeoutSeconds 0 for a non-blocking check. The returned comments are the user talking to you in the tab: answer them — and ask any follow-up questions — with reply_to_user, never in the terminal, then wait again.",
-  replyToUser:
-    "Reply to the user in their browser tab — your voice in showcase. Pass surfaceId to reply under a specific surface's thread; omit it to reply in the session-level chat. Use it to acknowledge feedback, explain a revision, and — crucially — to ask any clarifying question while a showcase conversation is going. Whenever the conversation is happening in showcase, use this instead of pausing for a terminal prompt the user is not watching.",
+    "Block until the user adjudicates or comments on this session in their browser (or the timeout passes). On a review the user Approves/Dismisses findings and Prove-its/Challenges decisions; those arrive here as user comments, coalesced into one batch (delivered once, resuming from where the agent last left off). Use timeoutSeconds 0 for a non-blocking check. Act on what comes back in your terminal and republish the review so the board reflects it.",
   listSurfacesHttp: "List surfaces — pass a session id to scope, or omit for all sessions.",
   listSurfacesStdio: "List surfaces in this conversation's session.",
   uploadAsset:
@@ -590,30 +582,6 @@ export const HTTP_MCP_TOOLS = [
     },
   },
   {
-    name: "reply_to_user",
-    description: MCP_TOOL_DESCRIPTIONS.replyToUser,
-    inputSchema: {
-      type: "object",
-      properties: {
-        surfaceId: {
-          type: "string",
-          description: "Surface whose thread to reply in (omit to reply session-level)",
-        },
-        sessionId: {
-          type: "string",
-          description: "Session to reply in when no surfaceId — the session-level chat",
-        },
-        message: { type: "string", description: d.replyMessage },
-        author: {
-          type: "string",
-          description:
-            'Your agent name (default "agent"; "user" is reserved and coerced to "agent")',
-        },
-      },
-      required: ["message"],
-    },
-  },
-  {
     name: "list_surfaces",
     description: MCP_TOOL_DESCRIPTIONS.listSurfacesHttp,
     inputSchema: {
@@ -840,13 +808,6 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
       .max(300)
       .optional()
       .describe(`${d.timeout} (default 120, 0 = check only)`),
-  },
-  replyToUser: {
-    surfaceId: z
-      .string()
-      .optional()
-      .describe("Surface whose thread to reply in (omit to reply session-level)"),
-    message: z.string().describe(d.replyMessage),
   },
   uploadAsset: {
     data: z.string().describe(d.assetData),

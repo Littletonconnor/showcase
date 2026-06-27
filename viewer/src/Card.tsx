@@ -9,7 +9,6 @@ import {
   isReadonly,
   relTime,
   type ChartPart as ChartPartData,
-  type CommentAnchor,
   type DiffPart as DiffPartData,
   type HtmlPart as HtmlPartData,
   type ImagePart as ImagePartData,
@@ -26,7 +25,6 @@ import {
 import { ChartPart } from "./ChartPart.tsx";
 import { CodePart } from "./CodePart.tsx";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,11 +44,11 @@ import { cx } from "./cx.ts";
 import { DiffPart } from "./DiffPart.tsx";
 import {
   BookOpen,
+  Check,
   CircleSlash,
-  Code,
+  Copy,
   ExternalLink,
   Link2,
-  MessageSquare,
   MoreHorizontal,
   ThumbsUp,
   Trash2,
@@ -67,7 +65,6 @@ import {
   resolvedMode,
 } from "./theme.ts";
 import { TracePart } from "./TracePart.tsx";
-import { Thread } from "./Thread.tsx";
 import {
   APPROVAL_MARK,
   DISMISS_MARK,
@@ -300,40 +297,32 @@ function SurfaceBadgeChip(props: { badge: SurfaceBadge }) {
   );
 }
 
-// A small note input for a clicked diff line. Enter sends, Escape cancels.
-// Floats near the top of the parts region, centered. (Point-anchored
-// annotations were retired — line comments are the one anchored-feedback path,
-// since they point at exactly the code the agent must change.)
-function LineCommentComposer(props: {
-  anchor: CommentAnchor;
-  onSend: (text: string) => Promise<string | null>;
-  onCancel: () => void;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+// The card's stable handle: a click-to-copy chip of the surface id, always
+// shown in the header. Copy it and mention it to your agent in the terminal —
+// that's how a surface is referenced now (the in-browser comment thread is
+// gone). A monospace pill so it reads as an identifier, not prose.
+function CardIdChip(props: { id: string }) {
+  const [copied, setCopied] = useState(false);
   return (
-    <div className="absolute top-2 left-1/2 z-30 w-60 max-w-[88%] -translate-x-1/2 rounded-lg border-[0.5px] border-border bg-card p-2 shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
-      <div className="mb-1 flex items-center gap-1 text-[11px] font-medium text-faint">
-        <Code className="size-3" /> Comment on line {props.anchor.line}
-      </div>
-      <Input
-        ref={inputRef}
-        placeholder="What about this line?"
-        aria-label="Line comment"
-        className="h-8 text-[13px]"
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            const text = e.currentTarget.value.trim();
-            if (text) void props.onSend(text);
-            else props.onCancel();
-          } else if (e.key === "Escape") {
-            props.onCancel();
-          }
-        }}
-      />
-    </div>
+    <button
+      type="button"
+      aria-label={`Copy card ID ${props.id}`}
+      title="Copy card ID — mention it to your agent"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(props.id);
+          setCopied(true);
+          toast("Card ID copied");
+          setTimeout(() => setCopied(false), 1200);
+        } catch {
+          toast("Couldn't copy the card ID");
+        }
+      }}
+      className="inline-flex flex-none items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-hover hover:text-foreground"
+    >
+      {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+      {props.id}
+    </button>
   );
 }
 
@@ -376,10 +365,6 @@ export function Card(props: { surface: Surface }) {
   const activeTheme = useActiveTheme();
   const mode = useResolvedMode();
   const scrollTarget = useBoard((s) => s.scrollTarget);
-
-  // Line comments: clicking a diff line sets `draftAnchor` and opens a small
-  // composer; on send the comment carries the line anchor through to the agent.
-  const [draftAnchor, setDraftAnchor] = useState<CommentAnchor | null>(null);
 
   const surfaceId = props.surface.id;
 
@@ -517,24 +502,10 @@ export function Card(props: { surface: Surface }) {
       </VerdictButton>
     ) : null;
 
-  // Post a line comment from the draft line composer.
-  const sendAnnotation = (text: string): Promise<string | null> => {
-    const anchor = draftAnchor;
-    if (!anchor) return Promise.resolve(null);
-    setDraftAnchor(null);
-    return sendComment(
-      { surface: surfaceId, text, author: "user", anchor },
-      surfaceId,
-      text,
-      anchor,
-    );
-  };
-
-  // Per-surface secondary actions, shared by the collapsed footer bar and the
-  // persistent-composer footer (see Thread). "Read" (the focused one-at-a-time
-  // reader) is an explainer affordance, so it shows only on non-finding cards —
-  // a review card wants density and burndown, not a slideshow. Copy link / open
-  // / delete live in the ⋯ overflow.
+  // Per-surface secondary actions in the footer toolbar. "Read" (the focused
+  // one-at-a-time reader) is an explainer affordance, so it shows only on
+  // non-finding cards — a review card wants density and burndown, not a
+  // slideshow. Copy link / open / delete live in the ⋯ overflow.
   const surfaceActions = (
     <>
       {!isFinding ? (
@@ -593,6 +564,7 @@ export function Card(props: { surface: Surface }) {
           <span className="flex-none text-[11px] font-normal text-faint tabular-nums">v1</span>
         )}
         <span className="flex-1"></span>
+        <CardIdChip id={surfaceId} />
         <span className="flex-none text-[11px] text-faint tabular-nums">
           {relTime(props.surface.updatedAt)}
         </span>
@@ -636,13 +608,7 @@ export function Card(props: { surface: Surface }) {
             case "mermaid":
               return <MermaidPart key={i} part={part as MermaidPartData} />;
             case "diff":
-              return (
-                <DiffPart
-                  key={i}
-                  part={part as DiffPartData}
-                  onLineClick={isReadonly() ? undefined : (a) => setDraftAnchor(a)}
-                />
-              );
+              return <DiffPart key={i} part={part as DiffPartData} />;
             case "image":
               return <ImagePart key={i} part={part as ImagePartData} />;
             case "trace":
@@ -666,53 +632,22 @@ export function Card(props: { surface: Surface }) {
               );
           }
         })}
-        {draftAnchor ? (
-          <LineCommentComposer
-            anchor={draftAnchor}
-            onSend={sendAnnotation}
-            onCancel={() => setDraftAnchor(null)}
-          />
-        ) : null}
       </div>
-      {/* The thread (comments + composer + the Approve/Dismiss/Request-change
-          footer) is interactive chrome — hidden when the board is printed/saved
-          as PDF so the document shows just the card content. */}
-      <div data-print-hide>
-        <Thread
-          surfaceId={surfaceId}
-          placeholder="Leave a comment…"
-          collapsible
-          readonly={isReadonly()}
-          actions={(startReply) => (
-            <TooltipProvider delayDuration={300}>
-              {!isReadonly() ? (
-                <>
-                  {approveAction}
-                  {dismissAction}
-                  <VerdictButton
-                    tone="change"
-                    label={isFinding ? "Request change" : "Comment"}
-                    onClick={startReply}
-                  >
-                    <MessageSquare />
-                  </VerdictButton>
-                </>
-              ) : null}
-              <span className="flex-1" />
-              {surfaceActions}
-            </TooltipProvider>
-          )}
-          secondaryActions={
-            <TooltipProvider delayDuration={300}>
-              {approveAction}
-              {dismissAction}
-              {surfaceActions}
-            </TooltipProvider>
-          }
-          send={(text) =>
-            sendComment({ surface: surfaceId, text, author: "user" }, surfaceId, text)
-          }
-        />
+      {/* Footer toolbar: review verdict actions (Approve / Dismiss, on finding
+          cards) plus per-surface utilities. Interactive chrome — hidden when the
+          board is printed/saved as PDF. There is no inline composer: to discuss a
+          surface with the agent, copy its card id (the header chip) and mention
+          it in your terminal. */}
+      <div
+        data-print-hide
+        className="flex min-h-[34px] items-center gap-0.5 border-t-[0.5px] border-border px-2.5 py-2"
+      >
+        <TooltipProvider delayDuration={300}>
+          {approveAction}
+          {dismissAction}
+          <span className="flex-1" />
+          {surfaceActions}
+        </TooltipProvider>
       </div>
     </div>
   );

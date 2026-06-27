@@ -865,6 +865,39 @@ test("publish_decisions MCP tool stores a decision review and returns the /?revi
   assert.ok(bad.error || bad.result?.isError, "missing coverage should error");
 });
 
+test("re-publishing a decision review broadcasts review-updated so the open page refetches", async () => {
+  const app = makeApp();
+  const body = {
+    brief: "Adds a guard so one client can't overwhelm the server.",
+    decisions: [
+      {
+        call: "block",
+        kind: "bug",
+        scope: "whole-file",
+        assertion: "The limiter counts per-process.",
+        confidence: "high",
+        coverage: "read it; did not load-test",
+      },
+    ],
+  };
+  // A session to publish the review into.
+  const snip = (await (
+    await app.request("/api/snippets", json({ html: "<p>x</p>" }))
+  ).json()) as any;
+  const sessionId = snip.sessionId as string;
+  await app.request(`/api/sessions/${sessionId}/review`, json(body));
+
+  // Open the live channel for that session, then re-publish (a Prove-it revise).
+  const ac = new AbortController();
+  const stream = await app.request(`/api/events?session=${sessionId}`, { signal: ac.signal });
+  assert.equal(stream.status, 200);
+  await app.request(`/api/sessions/${sessionId}/review`, json(body));
+
+  const text = await readSseUntil(stream, "review-updated", () => ac.abort());
+  const line = text.split("\n").find((l) => l.includes("review-updated"))!;
+  assert.equal(JSON.parse(line.replace(/^data:\s*/, "")).sessionId, sessionId);
+});
+
 test("publishes a markdown part; /s has no html doc for it", async () => {
   const app = makeApp();
   const res = await app.request(
@@ -1910,8 +1943,8 @@ test("mcp endpoint: initialize, tools/list, publish round trip", async () => {
   ).json()) as any;
   assert.equal(init.result.serverInfo.name, "showcase");
   assert.ok(init.result.instructions.length > 0);
-  // The MCP instructions prime the chat loop, so a connected agent learns the
-  // wait → reply → wait behavior without the user pasting anything.
+  // The MCP instructions teach the feedback loop, so a connected agent learns to
+  // wait_for_feedback and act on review adjudications in its terminal loop.
   assert.match(init.result.instructions, /wait_for_feedback/);
   assert.match(init.result.instructions, /loop/i);
 
@@ -1919,6 +1952,8 @@ test("mcp endpoint: initialize, tools/list, publish round trip", async () => {
   const names = list.result.tools.map((t: any) => t.name);
   assert.ok(names.includes("publish_snippet"));
   assert.ok(names.includes("wait_for_feedback"));
+  // The browser chat channel is gone — the agent never replies into a tab.
+  assert.ok(!names.includes("reply_to_user"));
 
   const published = (await (
     await app.request(
@@ -2236,7 +2271,7 @@ test("feedback consumed via a REST wait is not re-delivered through the MCP wait
   );
 });
 
-test("delivered feedback nudges the agent to reply in the tab, not the terminal", async () => {
+test("delivered feedback nudges the agent to act on it and republish", async () => {
   const app = makeApp();
   const s = (await (await app.request("/api/snippets", json({ html: "<p>x</p>" }))).json()) as any;
   await app.request(
@@ -2254,9 +2289,9 @@ test("delivered feedback nudges the agent to reply in the tab, not the terminal"
   ).json()) as any;
   const payload = JSON.parse(res.result.content[0].text);
   // The in-context reminder rides with every non-empty delivery so the agent
-  // answers via reply_to_user instead of stalling on a terminal prompt.
-  assert.match(payload.note, /reply_to_user/);
-  assert.match(payload.note, /not the terminal/i);
+  // acts on the feedback in its terminal and republishes — no browser reply.
+  assert.match(payload.note, /republish/i);
+  assert.doesNotMatch(payload.note, /reply_to_user/);
 });
 
 test("mcp publish result carries userFeedback", async () => {
@@ -2662,26 +2697,6 @@ test("a comment with neither surface nor session is rejected", async () => {
   const app = makeApp();
   const res = await app.request("/api/comments", json({ author: "user", text: "orphan" }));
   assert.equal(res.status, 400);
-});
-
-test("reply_to_user without surfaceId replies session-level (MCP HTTP)", async () => {
-  const app = makeApp();
-  const session = (await (
-    await app.request("/api/sessions", json({ agent: "claude-code" }))
-  ).json()) as any;
-  const published = (await (
-    await app.request(
-      "/mcp",
-      mcpCall(1, "tools/call", {
-        name: "reply_to_user",
-        arguments: { sessionId: session.id, message: "Here's the session-level answer." },
-      }),
-    )
-  ).json()) as any;
-  const payload = JSON.parse(published.result.content[0].text);
-  assert.equal(payload.surfaceId, null);
-  assert.equal(payload.sessionId, session.id);
-  assert.equal(payload.author, "agent");
 });
 
 test("an anchored comment carries its anchor through to agent feedback", async () => {

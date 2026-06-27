@@ -17,6 +17,16 @@ import { collectAssetIds, type Comment, type Store, type Surface } from "./types
 // so an exported session shows the same sidebar open-count it had live.
 const FINDING_LABELS = new Set(["Bug", "Nit", "Question", "Praise"]);
 const isResolutionText = (t: string) => t.startsWith("✓ Approved") || t.startsWith("⊘ Dismissed");
+// Review-shaped badge labels (findings + verdicts + the `showcase review`
+// placeholder) — a session carrying any of them is a PR review, else a
+// visualization. Kept in sync with app.ts so an export labels sessions the same.
+const REVIEW_BADGE_LABELS = new Set([
+  ...FINDING_LABELS,
+  "Request changes",
+  "Approve",
+  "Comments",
+  "In review",
+]);
 
 // A shared export shouldn't reveal which model/tool produced it. The agent's
 // identity lives in `session.agent` (rendered in the header + sidebar + agent
@@ -77,6 +87,9 @@ export async function buildExportBundle(
   const openFindings = surfaces.filter(
     (s) => s.badge && FINDING_LABELS.has(s.badge.label) && !resolved.has(s.id),
   ).length;
+  const kind = surfaces.some((s) => s.badge && REVIEW_BADGE_LABELS.has(s.badge.label))
+    ? "review"
+    : "visual";
 
   return {
     sessionId,
@@ -86,6 +99,7 @@ export async function buildExportBundle(
         agent: REDACTED_AGENT,
         surfaceCount: surfaces.length,
         openFindings,
+        kind,
         listening: false,
       },
     ],

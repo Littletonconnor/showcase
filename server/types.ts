@@ -262,9 +262,19 @@ export interface Decision {
   impact?: string; // why it matters — who hits it, how bad
   confidence: DecisionConfidence;
   coverage: string; // what was / wasn't verified — the honesty ledger
-  gaps?: DecisionGap[]; // declared uncertainties → each a scoped [Prove it]
+  gaps?: DecisionGap[]; // declared uncertainties → each a scoped [Verify]
   pivot?: string; // conditional — "flips to ✅ if …"; omit unless there's a real fork
   evidence?: SurfacePart[]; // right-pane artifacts; absent → that decision is full-width
+  // A concrete suggested change, rendered under the evidence as a before→after
+  // diff ("Suggested change"). For block/decide decisions that propose a fix.
+  proposal?: DecisionProposal;
+}
+
+export interface DecisionProposal {
+  before: string;
+  after: string;
+  filename?: string; // labels the diff; defaults to a neutral name
+  note?: string; // one line on why the change is better
 }
 
 export interface Review {
@@ -399,6 +409,7 @@ export interface Store {
   // The decision-queue review for a session (one per session; replaces it on
   // re-publish). putReview returns null only if the session is missing.
   getReview(sessionId: string): Promise<Review | null>;
+  listReviews(): Promise<Review[]>;
   putReview(sessionId: string, input: CreateReviewInput): Promise<Review | null>;
 
   // Assets. putAsset evicts to stay under MAX_BOARD_ASSET_BYTES (see

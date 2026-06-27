@@ -5,6 +5,111 @@ session. Sections 1–5 are "how it works / how to work here" (stable reference)
 section 6 is the roadmap (what to build); sections 7–8 are open decisions and
 how to pick up work autonomously. Architecture detail lives in `AGENTS.md`.
 
+**👉 Active focus is the decision-review form factor — see the phased plan
+immediately below.** Sections 1–8 are the stable guide/roadmap underneath it.
+
+---
+
+## ⭐ Active focus — decision-review form factor
+
+An agent decomposes a PR into a small, risk-ranked queue of **decisions** (a
+plain-English Brief + an honesty ledger + evidence per decision), published via
+`publish_decisions` / `POST /api/sessions/:id/review`, rendered inline in the
+board for a `kind === "review"` session. North-star design: `docs/review-form-factor.md`.
+
+This is a **dogfood-driven redesign** — built it, reviewed a real Java PR through
+it (`wealthfront-lembas` `cl/ALLM-126`), and the phases below are the feedback
+that surfaced. Get the human's intent right; this is UX, not just plumbing.
+
+### Phase 0 — Shipped (do NOT redo — build on it)
+
+- Inline board rendering: a review session takes over the main panel via
+  `ReviewInline` → `ReviewView` (keyed off the server's `kind === "review"`).
+- `Decision.proposal` field renders a "Suggested change" diff under the evidence.
+- Server-side newline normalization in `coerceReview` (kills the "No newline at
+  end of file" noise for new publishes).
+- Content-keyed local adjudication (survives an agent re-publish) + a per-decision
+  comment trail.
+- The live loop: `publish_decisions` MCP tool, `review-updated` SSE event,
+  `ReviewView` / `ReviewInline` / `ReviewPage`.
+- Sidebar: review sessions chip their verdict; the row opens the review inline.
+- (Also fixed the `code-review` skill to scope depth per-slice so reviews stop
+  fanning out 5 specialists over the whole diff — `~/Sites/ai-config`.)
+
+### Phase 1 — Trust & transparency: the complete changed-file manifest
+
+- **Problem:** the review only surfaces risk-ranked *decisions*, so files the
+  agent deemed unremarkable just vanish — the human distrusts they're seeing the
+  whole change ("gives a false sense; I lost trust that I'm seeing everything").
+- **Approach:** add a **complete changed-file manifest** — every file in the diff,
+  each tagged with its disposition (`has decision` / `reviewed · no comment` /
+  `mechanical · skipped`) + line counts, linking to its decision when it has one.
+  Nothing omitted. Design is open ("not sure how it should look") — propose a
+  clean layout (collapsible "All N files changed" near the Brief, or a side rail).
+- **Acceptance:** you can see every changed file and account for it, even the ones
+  with no comment. Addresses the doc's "trusting the skip set" open question.
+
+### Phase 2 — Interaction redesign: decision IDs + normal chat (the verbs are clunky)
+
+- **Drop the "Verify" (`V`) verb entirely** — not needed.
+- **Replace the bespoke verb buttons** (which post structured comments) with
+  something lighter: **give each decision a short, stable, copy-pasteable
+  UUID/ref.** The human copies a decision's ref and chats with the agent through
+  the **normal agent-chat flow** (browser chat / editor), pasting the ref so the
+  agent knows exactly which decision — then the agent revises and re-publishes.
+- **Model it on the viz "send to agent" / drill-down relay** (how the
+  visualizations already talk to the agent in the browser). The review's
+  conversation should happen in normal chat, scoped by a copyable id — not a wall
+  of special-purpose buttons.
+- Likely **keep a lightweight local Accept** (burndown); lose Verify/Disagree as
+  buttons. Stable decision IDs also replace content-keying (durability) and make
+  the "trail" just be the normal chat.
+
+### Phase 3 — Ledger clarity (the verbiage is confusing)
+
+- The current labels ("High confidence" / "Checked" / "Not yet") read poorly and
+  are unclear. **Reword so anyone instantly gets** what was verified, what wasn't,
+  and how sure the agent is. Plain, unambiguous; propose clearer language.
+
+### Phase 4 — Suggested fixes in the diffs
+
+- When the agent thinks there should be a fix, the evidence diff should **show the
+  suggested change** (the `Decision.proposal` before→after) clearly. Make the
+  agent populate `proposal` whenever a concrete fix exists, and render it
+  obviously alongside/under the evidence.
+
+### Key files
+
+- `server/types.ts` — `Review` / `Decision` / `DecisionProposal` + `Store`. (Add
+  stable decision `id`s and a `manifest`/`files[]` field here.)
+- `server/app.ts` — `coerceReview()` validation, `publishDecisions` flow,
+  `/api/sessions/:id/review` routes, `/api/sessions` row decoration
+  (`kind`, `reviewVerdict`).
+- `server/mcpSpec.ts` — `publish_decisions` schema + field docs (update for new
+  fields).
+- `viewer/src/review/ReviewView.tsx` — the renderer (Brief, decision queue,
+  ledger, sticky evidence). `ReviewInline.tsx` embeds it in the board;
+  `ReviewPage.tsx` is the standalone `?review=` page.
+- `guide/PLAYBOOK.md` — the "decision review" recipe the agent follows (teach it
+  the manifest, decision IDs, and when to include a `proposal`).
+
+### Run & verify
+
+- Pinned Node: `export PATH="$HOME/.nvm/versions/node/v24.12.0/bin:$PATH"`.
+  Port **8229**. `npm run dev` builds the viewer + restarts the server on save.
+- Gate before "done": `npm run typecheck`, `npm test`, `npm run lint` (warnings =
+  errors), `npm run format:check`. For UI, screenshot with a headless Playwright
+  script and actually look — `http://localhost:8229/session/<reviewSessionId>`.
+
+### Cautions
+
+- **Parallel editing is happening** — the board is being refactored (`App.tsx`,
+  `api.ts`, `state.ts`, `Card.tsx`, session `kind` work) in another editor. Don't
+  clobber in-flight work; prefer `ReviewView.tsx` + server validation; confirm
+  before big `App.tsx` edits.
+- **Never `git commit` / `gh pr create` directly** (hooks block them); the human
+  commits. Don't push. Keep changes small and typechecking at each step.
+
 ---
 
 ## 1. What it is

@@ -153,7 +153,7 @@ uploading).
 ## Publishing
 
 Via MCP tools (preferred): `publish_surface`, `update_surface`,
-`wait_for_feedback`, `reply_to_user`, `list_surfaces`. (`publish_snippet` /
+`wait_for_feedback`, `list_surfaces`. (`publish_snippet` /
 `update_snippet` remain as html-only sugar aliases.) Via CLI:
 `showcase publish file.html --title "..."`, `showcase diff change.patch
 --title "..."`, `showcase wait`. Via raw HTTP:
@@ -218,8 +218,9 @@ The user can type comments under any surface. Comments attach to a surface
   keep working; when it exits with comments, handle them and re-arm. Always arm
   it on the session you actually published to.
 
-You can answer in the thread with `reply_to_user` / `showcase comment` — keep
-replies short; do substantial revisions as surface updates instead.
+Feedback arrives as the user adjudicates in the browser (Approve / Dismiss
+findings, Prove-it / Challenge decisions) and references surfaces by their card id
+in your terminal — act on it and do substantial revisions as surface updates.
 
 ## HTML contract
 

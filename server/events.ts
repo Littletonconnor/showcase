@@ -2,6 +2,10 @@ export type FeedEvent =
   | { type: "session-created" | "session-updated" | "session-deleted"; id: string }
   | { type: "surface-created" | "surface-updated"; id: string; sessionId: string; version: number }
   | { type: "surface-deleted"; id: string; sessionId: string }
+  // Emitted when a decision-queue review is (re-)published for a session, so the
+  // open review page re-fetches and the agent's revise lands in place — the live
+  // half of the Prove-it / Challenge loop (docs/review-form-factor.md).
+  | { type: "review-updated"; sessionId: string }
   | {
       type: "comment-created";
       id: string;

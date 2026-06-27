@@ -16,6 +16,7 @@ import {
   type CommentAnchor,
   type CreateReviewInput,
   type Decision,
+  type DecisionProposal,
   htmlPart,
   isAssetKind,
   MAX_ASSET_BYTES,
@@ -987,6 +988,7 @@ export function coerceOverview(raw: any): OverviewInput {
 // `coverage` is required on every decision — the honesty ledger is the API, the
 // same discipline that makes confidence/coverage required on a finding. Evidence
 // reuses the surface-part validator, so right-pane artifacts meet the card bar.
+const endWithNewline = (s: string) => (s.length && !s.endsWith("\n") ? s + "\n" : s);
 const DECISION_CALLS = new Set(["block", "ship", "decide"]);
 const DECISION_SCOPES = new Set(["changed-line", "whole-file", "codebase"]);
 const DECISION_CONFIDENCE = new Set(["high", "medium", "low"]);
@@ -1022,7 +1024,35 @@ export function coerceReview(raw: any): { review: CreateReviewInput } | { error:
     if (d.evidence != null) {
       const parsed = validateSurfaceParts(d.evidence);
       if (!parsed.ok) return { error: `decision ${i} evidence: ${parsed.error}` };
+      // A diff whose before/after doesn't end in a newline renders a "No newline
+      // at end of file" marker — pure noise in a review. Normalize it away.
+      for (const p of parsed.parts) {
+        if (p.kind === "diff" && Array.isArray(p.files)) {
+          for (const f of p.files) {
+            f.before = endWithNewline(f.before);
+            f.after = endWithNewline(f.after);
+          }
+        }
+      }
       evidence = parsed.parts;
+    }
+    let proposal: DecisionProposal | undefined;
+    if (
+      d.proposal &&
+      typeof d.proposal === "object" &&
+      typeof d.proposal.before === "string" &&
+      typeof d.proposal.after === "string"
+    ) {
+      proposal = {
+        before: endWithNewline(d.proposal.before),
+        after: endWithNewline(d.proposal.after),
+        ...(typeof d.proposal.filename === "string" && d.proposal.filename.trim()
+          ? { filename: d.proposal.filename }
+          : {}),
+        ...(typeof d.proposal.note === "string" && d.proposal.note.trim()
+          ? { note: d.proposal.note }
+          : {}),
+      };
     }
     const gaps = Array.isArray(d.gaps)
       ? d.gaps
@@ -1043,6 +1073,7 @@ export function coerceReview(raw: any): { review: CreateReviewInput } | { error:
       ...(gaps && gaps.length ? { gaps } : {}),
       ...(typeof d.pivot === "string" && d.pivot.trim() ? { pivot: d.pivot } : {}),
       ...(evidence ? { evidence } : {}),
+      ...(proposal ? { proposal } : {}),
     });
   }
   return { review: { brief: raw.brief, verdict, decisions } };
@@ -1352,6 +1383,9 @@ export function createApp({
     }
     const review = await store.putReview(sessionId, parsed.review);
     if (!review) return { error: "session not found", status: 404 };
+    // Push the (re-)published review to any open review page so a Prove-it /
+    // Challenge revise updates the decision in place (docs/review-form-factor.md).
+    bus.broadcast({ type: "review-updated", sessionId });
     return { sessionId, decisions: review.decisions.length };
   }
 
@@ -1751,11 +1785,16 @@ export function createApp({
   // --- sessions ---
 
   app.get("/api/sessions", async (c) => {
-    const [sessions, surfaces, comments] = await Promise.all([
+    const [sessions, surfaces, comments, reviews] = await Promise.all([
       store.listSessions(),
       store.listSurfaces(),
       store.listComments({}),
+      store.listReviews(),
     ]);
+    // A decision-queue review session has no surfaces — without this it shows as
+    // a blank row with no way back to the review. Carry its verdict so the row
+    // can chip it and link to /?review=<id>.
+    const reviewVerdict = new Map(reviews.map((r) => [r.sessionId, r.verdict]));
     const counts = new Map<string, number>();
     for (const s of surfaces) counts.set(s.sessionId, (counts.get(s.sessionId) ?? 0) + 1);
     // Open findings per session: a finding card (severity badge) with no
@@ -1766,16 +1805,29 @@ export function createApp({
         resolved.add(cm.surfaceId);
     }
     const open = new Map<string, number>();
+    // A session is a "review" if it carries any review-shaped card — a finding
+    // (Bug/Nit/…), a verdict, or the `showcase review` placeholder — or a stored
+    // decision-queue review. Everything else is a visualization/explainer. Drives
+    // the sidebar's per-session icon and name, so sessions read as what they are.
+    const reviewLabels = new Set<string>([
+      ...FINDING_LABELS,
+      ...Object.values(REVIEW_VERDICT).map((b) => b.label),
+      REVIEW_PLACEHOLDER_LABEL,
+    ]);
+    const review = new Set<string>(reviewVerdict.keys());
     for (const s of surfaces) {
       if (s.badge && FINDING_LABELS.has(s.badge.label) && !resolved.has(s.id)) {
         open.set(s.sessionId, (open.get(s.sessionId) ?? 0) + 1);
       }
+      if (s.badge && reviewLabels.has(s.badge.label)) review.add(s.sessionId);
     }
     return c.json(
       sessions.map((s) => ({
         ...s,
         surfaceCount: counts.get(s.id) ?? 0,
         openFindings: open.get(s.id) ?? 0,
+        kind: review.has(s.id) ? "review" : "visual",
+        ...(reviewVerdict.has(s.id) ? { reviewVerdict: reviewVerdict.get(s.id) } : {}),
         // Current agent presence so a freshly-loaded viewer shows the right
         // listening state without waiting for the next transition event.
         listening: isListening(s.id),
@@ -1848,11 +1900,17 @@ export function createApp({
   });
   app.post("/api/sessions/:id/review", async (c) => {
     const id = c.req.param("id");
-    const parsed = coerceReview(await c.req.json().catch(() => null));
-    if ("error" in parsed) return c.json({ error: parsed.error }, 400);
-    const review = await store.putReview(id, parsed.review);
-    if (!review) return c.json({ error: "session not found" }, 404);
-    return c.json(review, 201);
+    const body = await c.req.json().catch(() => null);
+    // Delegate to the shared flow so validation + the review-updated broadcast
+    // (the live half of the interaction loop) happen in exactly one place.
+    const result = await publishDecisions({
+      brief: body?.brief,
+      verdict: body?.verdict,
+      decisions: body?.decisions,
+      session: id,
+    });
+    if ("error" in result) return c.json({ error: result.error }, result.status);
+    return c.json(await store.getReview(id), 201);
   });
 
   // --- surfaces ---

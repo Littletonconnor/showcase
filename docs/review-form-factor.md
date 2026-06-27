@@ -1,7 +1,9 @@
 # The agent-era PR review form factor
 
-_A standardized structure for reviewing code in the age of agents. Design — not
-yet built. This is the north star: if an implementation drifts, come back here._
+_A standardized structure for reviewing code in the age of agents. The form
+factor and its live interaction loop (Accept / Override / Prove-it / Challenge)
+are built — published via `publish_decisions`, rendered at `/?review=<session>`.
+This is the north star: if an implementation drifts, come back here._
 
 ---
 
