@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { renderHtmlPage } from "../../server/surfacePage.ts";
-import { themeById } from "../../server/themes.ts";
+import { DEFAULT_THEME_ID, THEMES, themeById } from "../../server/themes.ts";
 import {
   api,
   appPath,
@@ -29,6 +29,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -42,17 +45,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cx } from "./cx.ts";
 import { DiffPart } from "./DiffPart.tsx";
-import {
-  BookOpen,
-  Check,
-  CircleSlash,
-  Copy,
-  ExternalLink,
-  Link2,
-  MoreHorizontal,
-  ThumbsUp,
-  Trash2,
-} from "lucide-react";
+import { BookOpen, Check, Copy, ExternalLink, Link2, MoreHorizontal, Trash2 } from "lucide-react";
 import { ImagePart } from "./ImagePart.tsx";
 import { JsonPart } from "./JsonPart.tsx";
 import { MarkdownPart } from "./MarkdownPart.tsx";
@@ -63,18 +56,10 @@ import {
   useResolvedMode,
   activeTheme as activeThemeNow,
   resolvedMode,
+  SurfaceThemeContext,
 } from "./theme.ts";
 import { TracePart } from "./TracePart.tsx";
-import {
-  APPROVAL_MARK,
-  DISMISS_MARK,
-  enterReading,
-  focusSurface,
-  sendComment,
-  setScrollTarget,
-  toast,
-  useBoard,
-} from "./state.ts";
+import { enterReading, focusSurface, setScrollTarget, toast, useBoard } from "./state.ts";
 
 // Card registry keyed by surface id: the "new surface" pill scrolls to the
 // card element, and each card tracks its html-part iframes so the postMessage
@@ -190,7 +175,7 @@ function IconAction(props: {
 // toolbar stays scannable and every still-visible icon is a loop action. Mirrors
 // the session row's overflow menu in App.tsx, so the app has one pattern for
 // "secondary actions" instead of two.
-function SurfaceOverflowMenu(props: { surfaceId: string; title: string }) {
+function SurfaceOverflowMenu(props: { surfaceId: string; title: string; theme?: string }) {
   const [open, setOpen] = useState(false);
   const link = surfaceLink(props.surfaceId);
   return (
@@ -228,6 +213,23 @@ function SurfaceOverflowMenu(props: { surfaceId: string; title: string }) {
         </DropdownMenuItem>
         {!isReadonly() ? (
           <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel className="text-faint">Theme</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={props.theme ?? DEFAULT_THEME_ID}
+              onValueChange={async (id) => {
+                await api(`/api/surfaces/${props.surfaceId}`, {
+                  method: "PUT",
+                  body: JSON.stringify({ theme: id }),
+                });
+              }}
+            >
+              {THEMES.map((t) => (
+                <DropdownMenuRadioItem key={t.id} value={t.id}>
+                  {t.label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
@@ -326,35 +328,6 @@ function CardIdChip(props: { id: string }) {
   );
 }
 
-// A labeled verdict action for finding cards. The review's primary decisions —
-// Approve / Dismiss / Request change — read as real buttons with words, not
-// ghost icons, so the daily review verbs are unmistakable at a glance.
-function VerdictButton(props: {
-  label: string;
-  onClick: () => void;
-  tone: "approve" | "dismiss" | "change";
-  children: ReactNode;
-}) {
-  const toneCls = {
-    approve: "text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300",
-    dismiss: "text-muted-foreground hover:bg-hover",
-    change: "text-brand hover:bg-brand-subtle",
-  }[props.tone];
-  return (
-    <button
-      type="button"
-      onClick={props.onClick}
-      className={cx(
-        "inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium transition-colors [&_svg]:size-3.5",
-        toneCls,
-      )}
-    >
-      {props.children}
-      {props.label}
-    </button>
-  );
-}
-
 export function Card(props: { surface: Surface }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const iframesRef = useRef<Set<HTMLIFrameElement>>(new Set());
@@ -367,6 +340,10 @@ export function Card(props: { surface: Surface }) {
   const scrollTarget = useBoard((s) => s.scrollTarget);
 
   const surfaceId = props.surface.id;
+  // This surface's theme — its own if set, else the global board theme. Drives
+  // both this card's html-part iframe srcs and (via SurfaceThemeContext) every
+  // rich part rendered inside it.
+  const surfaceTheme = props.surface.theme ?? activeTheme;
 
   // In a static export there is no `/s/:id` server route, so html parts can't
   // load from it. Render each html part to a self-contained sandbox doc here
@@ -385,7 +362,7 @@ export function Card(props: { surface: Surface }) {
             title: props.surface.title,
             html: inlineAssetRefs(p.html),
             origin: location.origin,
-            theme: themeById(activeTheme),
+            theme: themeById(surfaceTheme),
             mode,
             kits: p.kits,
           }),
@@ -394,12 +371,9 @@ export function Card(props: { surface: Surface }) {
     });
     return docs;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.surface.parts, props.surface.title, activeTheme, mode]);
-  // Approve / Dismiss are review-verdict decisions: they only do anything on a
-  // finding card (one carrying a severity badge), where they resolve the finding
-  // and strike its chip in the header verdict bar. On a plain diagram/explainer
-  // there's no verdict to burn down, so they'd be two buttons with no effect —
-  // gate them on the badge so every visible action has a purpose on its card.
+  }, [props.surface.parts, props.surface.title, surfaceTheme, mode]);
+  // A badged card is a review finding; the focused "Read" affordance is for
+  // explainers, so it shows only on non-finding cards.
   const isFinding = !!props.surface.badge;
 
   // Start the polling scroll when this card becomes the scrollTarget.
@@ -458,54 +432,10 @@ export function Card(props: { surface: Surface }) {
     }
   };
 
-  // Structured feedback: a one-tap "Approve" that posts a recognizable user
-  // signal to the agent (delivered like any comment — instantly if the agent is
-  // listening, queued otherwise). Lives in the trusted viewer chrome, so it's a
-  // genuine author:"user" message — the fast path for "yes, this is right" during
-  // iteration, vs typing it out. The "Request a change" path is just the composer.
-  const approveAction =
-    !isReadonly() && isFinding ? (
-      <VerdictButton
-        tone="approve"
-        label="Approve"
-        onClick={() => {
-          void sendComment(
-            { surface: surfaceId, text: APPROVAL_MARK, author: "user" },
-            surfaceId,
-            APPROVAL_MARK,
-          );
-          toast("Sent approval to your agent");
-        }}
-      >
-        <ThumbsUp />
-      </VerdictButton>
-    ) : null;
-
-  // Dismiss — the "won't change this" decision. Like Approve it posts a
-  // recognizable user marker and resolves the finding (the header verdict bar
-  // strikes resolved findings); the agent reads it as "drop this one".
-  const dismissAction =
-    !isReadonly() && isFinding ? (
-      <VerdictButton
-        tone="dismiss"
-        label="Dismiss"
-        onClick={() => {
-          void sendComment(
-            { surface: surfaceId, text: DISMISS_MARK, author: "user" },
-            surfaceId,
-            DISMISS_MARK,
-          );
-          toast("Dismissed — told your agent to drop it");
-        }}
-      >
-        <CircleSlash />
-      </VerdictButton>
-    ) : null;
-
   // Per-surface secondary actions in the footer toolbar. "Read" (the focused
   // one-at-a-time reader) is an explainer affordance, so it shows only on
-  // non-finding cards — a review card wants density and burndown, not a
-  // slideshow. Copy link / open / delete live in the ⋯ overflow.
+  // non-finding cards — a review card wants density, not a slideshow. Copy
+  // link / open / delete live in the ⋯ overflow.
   const surfaceActions = (
     <>
       {!isFinding ? (
@@ -513,63 +443,68 @@ export function Card(props: { surface: Surface }) {
           <BookOpen />
         </IconAction>
       ) : null}
-      <SurfaceOverflowMenu surfaceId={surfaceId} title={props.surface.title} />
+      <SurfaceOverflowMenu
+        surfaceId={surfaceId}
+        title={props.surface.title}
+        theme={props.surface.theme}
+      />
     </>
   );
 
   return (
-    <div
-      className="card mb-4 animate-in overflow-hidden rounded-xl border-[0.5px] border-border bg-card fade-in-0 slide-in-from-bottom-1 shadow-[0_1px_2px_rgba(0,0,0,0.035),0_1px_3px_rgba(0,0,0,0.045)] transition-[box-shadow,border-color] duration-200 ease-out hover:border-[var(--border-2)] hover:shadow-[0_1px_2px_rgba(0,0,0,0.05),0_8px_20px_rgba(0,0,0,0.07)] motion-reduce:animate-none dark:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_1px_3px_rgba(0,0,0,0.3)] dark:hover:shadow-[0_1px_2px_rgba(0,0,0,0.4),0_8px_24px_rgba(0,0,0,0.45)]"
-      data-id={surfaceId}
-      ref={cardRef}
-    >
-      <div className="flex items-center gap-2 px-4 py-3">
-        {props.surface.badge ? <SurfaceBadgeChip badge={props.surface.badge} /> : null}
-        <span className="card-title truncate text-[14px] font-semibold tracking-[-0.01em] text-foreground max-[700px]:min-w-0 max-[700px]:flex-[0_1_auto]">
-          {props.surface.title}
-        </span>
-        {/* A new version rebuilds the select, resetting the selection to the
+    <SurfaceThemeContext.Provider value={props.surface.theme}>
+      <div
+        className="card mb-4 animate-in overflow-hidden rounded-xl border-[0.5px] border-border bg-card fade-in-0 slide-in-from-bottom-1 shadow-[0_1px_2px_rgba(0,0,0,0.035),0_1px_3px_rgba(0,0,0,0.045)] transition-[box-shadow,border-color] duration-200 ease-out hover:border-[var(--border-2)] hover:shadow-[0_1px_2px_rgba(0,0,0,0.05),0_8px_20px_rgba(0,0,0,0.07)] motion-reduce:animate-none dark:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_1px_3px_rgba(0,0,0,0.3)] dark:hover:shadow-[0_1px_2px_rgba(0,0,0,0.4),0_8px_24px_rgba(0,0,0,0.45)]"
+        data-id={surfaceId}
+        ref={cardRef}
+      >
+        <div className="flex items-center gap-2 px-4 py-3">
+          {props.surface.badge ? <SurfaceBadgeChip badge={props.surface.badge} /> : null}
+          <span className="card-title truncate text-[14px] font-semibold tracking-[-0.01em] text-foreground max-[700px]:min-w-0 max-[700px]:flex-[0_1_auto]">
+            {props.surface.title}
+          </span>
+          {/* A new version rebuilds the select, resetting the selection to the
             latest like the live iframe src does. Version switching drives html
             parts via `/s/:id`, which a static export has no server for — so it's
             a live-only affordance; an export is a snapshot of the current version. */}
-        {props.surface.version > 1 && !exportBundle() ? (
-          <Select
-            key={props.surface.version}
-            defaultValue={String(props.surface.version)}
-            onValueChange={(ver) => {
-              const cb = Date.now();
-              for (const [part, frame] of htmlFramesRef.current) {
-                frame.src = `/s/${surfaceId}?part=${part}&ver=${ver}&cb=${cb}&theme=${activeThemeNow()}&mode=${resolvedMode()}`;
-              }
-            }}
-          >
-            <SelectTrigger
-              size="sm"
-              data-print-hide
-              className="h-[22px] flex-none gap-1 rounded-full border-border px-2.5 text-[11px] font-medium text-muted-foreground"
+          {props.surface.version > 1 && !exportBundle() ? (
+            <Select
+              key={props.surface.version}
+              defaultValue={String(props.surface.version)}
+              onValueChange={(ver) => {
+                const cb = Date.now();
+                for (const [part, frame] of htmlFramesRef.current) {
+                  frame.src = `/s/${surfaceId}?part=${part}&ver=${ver}&cb=${cb}&theme=${props.surface.theme ?? activeThemeNow()}&mode=${resolvedMode()}`;
+                }
+              }}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {versionRange(props.surface.version).map((v) => (
-                <SelectItem value={String(v)} key={v} className="text-xs">
-                  v{v}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ) : (
-          // v1 has no other versions to switch to, so it's plain text — not a
-          // pill that mimics the (interactive) version Select above.
-          <span className="flex-none text-[11px] font-normal text-faint tabular-nums">v1</span>
-        )}
-        <span className="flex-1"></span>
-        <CardIdChip id={surfaceId} />
-        <span className="flex-none text-[11px] text-faint tabular-nums">
-          {relTime(props.surface.updatedAt)}
-        </span>
-      </div>
-      {/* Parts render in order, dispatched by kind. The fallback is reserved for
+              <SelectTrigger
+                size="sm"
+                data-print-hide
+                className="h-[22px] flex-none gap-1 rounded-full border-border px-2.5 text-[11px] font-medium text-muted-foreground"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {versionRange(props.surface.version).map((v) => (
+                  <SelectItem value={String(v)} key={v} className="text-xs">
+                    v{v}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            // v1 has no other versions to switch to, so it's plain text — not a
+            // pill that mimics the (interactive) version Select above.
+            <span className="flex-none text-[11px] font-normal text-faint tabular-nums">v1</span>
+          )}
+          <span className="flex-1"></span>
+          <CardIdChip id={surfaceId} />
+          <span className="flex-none text-[11px] text-faint tabular-nums">
+            {relTime(props.surface.updatedAt)}
+          </span>
+        </div>
+        {/* Parts render in order, dispatched by kind. The fallback is reserved for
           a kind this viewer build doesn't know — which happens when a long-open
           tab predates a newly added part type. It must NOT assume diff (an
           unknown part is not a broken diff), so it shows a neutral refresh hint
@@ -577,78 +512,76 @@ export function Card(props: { surface: Surface }) {
           theme, or the resolved light/dark mode does, so unrelated refetches
           never reload it. The parts sit in a positioned wrapper so the line
           comment composer can layer over them. */}
-      <div className="relative">
-        {props.surface.parts.map((part, i) => {
-          switch (part.kind) {
-            case "html": {
-              const exportDoc = exportHtmlDocs?.get(i);
-              return (
-                <iframe
-                  key={i}
-                  ref={htmlFrameRef(i)}
-                  className="block h-[120px] w-full border-0 border-t-[0.5px] border-border bg-transparent"
-                  sandbox="allow-scripts"
-                  title={
-                    props.surface.parts.length > 1
-                      ? `${props.surface.title} (part ${i + 1})`
-                      : props.surface.title
-                  }
-                  {...(exportDoc !== undefined
-                    ? { srcDoc: exportDoc }
-                    : {
-                        src: appPath(
-                          `/s/${surfaceId}?part=${i}&ver=${props.surface.version}&cb=${props.surface.version}&theme=${activeTheme}&mode=${mode}`,
-                        ),
-                      })}
-                ></iframe>
-              );
+        <div className="relative">
+          {props.surface.parts.map((part, i) => {
+            switch (part.kind) {
+              case "html": {
+                const exportDoc = exportHtmlDocs?.get(i);
+                return (
+                  <iframe
+                    key={i}
+                    ref={htmlFrameRef(i)}
+                    className="block h-[120px] w-full border-0 border-t-[0.5px] border-border bg-transparent"
+                    sandbox="allow-scripts"
+                    title={
+                      props.surface.parts.length > 1
+                        ? `${props.surface.title} (part ${i + 1})`
+                        : props.surface.title
+                    }
+                    {...(exportDoc !== undefined
+                      ? { srcDoc: exportDoc }
+                      : {
+                          src: appPath(
+                            `/s/${surfaceId}?part=${i}&ver=${props.surface.version}&cb=${props.surface.version}&theme=${surfaceTheme}&mode=${mode}`,
+                          ),
+                        })}
+                  ></iframe>
+                );
+              }
+              case "markdown":
+                return <MarkdownPart key={i} part={part as MarkdownPartData} />;
+              case "mermaid":
+                return <MermaidPart key={i} part={part as MermaidPartData} />;
+              case "diff":
+                return <DiffPart key={i} part={part as DiffPartData} />;
+              case "image":
+                return <ImagePart key={i} part={part as ImagePartData} />;
+              case "trace":
+                return <TracePart key={i} part={part as TracePartData} />;
+              case "terminal":
+                return <TerminalPart key={i} part={part as TerminalPartData} />;
+              case "json":
+                return <JsonPart key={i} part={part as JsonPartData} />;
+              case "code":
+                return <CodePart key={i} part={part as CodePartData} />;
+              case "chart":
+                return <ChartPart key={i} part={part as ChartPartData} />;
+              default:
+                return (
+                  <div
+                    className="border-t-[0.5px] border-border px-3.5 py-2.5 text-xs text-faint"
+                    key={i}
+                  >
+                    Can&rsquo;t show this part — refresh showcase to update the viewer.
+                  </div>
+                );
             }
-            case "markdown":
-              return <MarkdownPart key={i} part={part as MarkdownPartData} />;
-            case "mermaid":
-              return <MermaidPart key={i} part={part as MermaidPartData} />;
-            case "diff":
-              return <DiffPart key={i} part={part as DiffPartData} />;
-            case "image":
-              return <ImagePart key={i} part={part as ImagePartData} />;
-            case "trace":
-              return <TracePart key={i} part={part as TracePartData} />;
-            case "terminal":
-              return <TerminalPart key={i} part={part as TerminalPartData} />;
-            case "json":
-              return <JsonPart key={i} part={part as JsonPartData} />;
-            case "code":
-              return <CodePart key={i} part={part as CodePartData} />;
-            case "chart":
-              return <ChartPart key={i} part={part as ChartPartData} />;
-            default:
-              return (
-                <div
-                  className="border-t-[0.5px] border-border px-3.5 py-2.5 text-xs text-faint"
-                  key={i}
-                >
-                  Can&rsquo;t show this part — refresh showcase to update the viewer.
-                </div>
-              );
-          }
-        })}
+          })}
+        </div>
+        {/* Footer toolbar: per-surface utilities. Interactive chrome — hidden when
+          the board is printed/saved as PDF. There is no inline composer: to
+          discuss a surface with the agent, copy its card id (the header chip) and
+          mention it in your terminal. */}
+        <div
+          data-print-hide
+          className="flex min-h-[34px] items-center gap-0.5 border-t-[0.5px] border-border px-2.5 py-2"
+        >
+          <TooltipProvider delayDuration={300}>
+            <span className="flex-1" />
+            {surfaceActions}
+          </TooltipProvider>
+        </div>
       </div>
-      {/* Footer toolbar: review verdict actions (Approve / Dismiss, on finding
-          cards) plus per-surface utilities. Interactive chrome — hidden when the
-          board is printed/saved as PDF. There is no inline composer: to discuss a
-          surface with the agent, copy its card id (the header chip) and mention
-          it in your terminal. */}
-      <div
-        data-print-hide
-        className="flex min-h-[34px] items-center gap-0.5 border-t-[0.5px] border-border px-2.5 py-2"
-      >
-        <TooltipProvider delayDuration={300}>
-          {approveAction}
-          {dismissAction}
-          <span className="flex-1" />
-          {surfaceActions}
-        </TooltipProvider>
-      </div>
-    </div>
+    </SurfaceThemeContext.Provider>
   );
 }

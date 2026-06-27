@@ -6,6 +6,7 @@
 // tokens). activeTheme is constant; prefersDark tracks the OS light/dark flip,
 // and both live in the zustand store so components re-render. The functions
 // below are non-reactive snapshots; components use useActiveTheme/useResolvedMode.
+import { createContext, useContext } from "react";
 import { useBoard } from "./state.ts";
 import { DEFAULT_THEME_ID, type Mode, themeById, viewerThemeCss } from "../../server/themes.ts";
 
@@ -28,6 +29,18 @@ export const resolvedMode = (): Mode => (get().prefersDark ? "dark" : "light");
 // Reactive subscriptions for components.
 export const useActiveTheme = (): string => useBoard((s) => s.activeTheme);
 export const useResolvedMode = (): Mode => useBoard((s) => (s.prefersDark ? "dark" : "light"));
+
+// A surface can render under its own theme (see Surface.theme). Card provides
+// its surface's theme id here; parts NOT under a card (e.g. ReviewView evidence)
+// see `undefined` and fall back to the global board theme. Part renderers read
+// useSurfaceTheme() instead of useActiveTheme() so per-surface theming is
+// transparent to them.
+export const SurfaceThemeContext = createContext<string | undefined>(undefined);
+export const useSurfaceTheme = (): string => {
+  const override = useContext(SurfaceThemeContext);
+  const global = useActiveTheme();
+  return override ?? global;
+};
 
 const STYLE_ID = "ss-theme-vars";
 

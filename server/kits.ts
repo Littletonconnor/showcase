@@ -273,6 +273,38 @@ const REVIEW_JS = `
 })();
 `;
 
+// mockup: building blocks for UI / design mockups — framed panels, eyebrow
+// labels, tone callouts, labeled boxes, and stand-in form controls. Everything
+// resolves against the theme tokens, so the same markup re-skins when the
+// surface's theme changes (brand vs neutral vs warm) — the consistency win:
+// author structure once, theme it many ways, instead of hand-rolling a palette
+// into every mockup's <style>.
+const MOCKUP_CSS = `
+.panel{background:var(--color-background-primary);border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-lg);padding:18px 20px}
+.panel.soft{background:var(--color-background-secondary)}
+.label{font:600 11px/1.3 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-tertiary)}
+.eyebrow{font:600 11px/1.3 var(--font-sans);letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-info)}
+.callout{border:1px solid var(--color-border-secondary);border-left:3px solid var(--color-border-info);border-radius:var(--border-radius-md);padding:12px 14px;background:var(--color-background-info)}
+.callout>.label,.callout>.eyebrow{color:var(--color-text-info)}
+.callout.ok{border-left-color:var(--color-border-success);background:var(--color-background-success)}
+.callout.ok>.label,.callout.ok>.eyebrow{color:var(--color-text-success)}
+.callout.warn{border-left-color:var(--color-border-warning);background:var(--color-background-warning)}
+.callout.warn>.label,.callout.warn>.eyebrow{color:var(--color-text-warning)}
+.callout.danger{border-left-color:var(--color-border-danger);background:var(--color-background-danger)}
+.callout.danger>.label,.callout.danger>.eyebrow{color:var(--color-text-danger)}
+.callout.muted{border-left-color:var(--color-border-primary);background:var(--color-background-secondary)}
+.box{border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:10px 12px;background:var(--color-background-primary)}
+.box>.label{margin-bottom:4px}
+.btn{display:inline-flex;align-items:center;gap:6px;font:500 13px/1 var(--font-sans);padding:8px 14px;border-radius:var(--border-radius-md);border:1px solid var(--color-border-primary);background:var(--color-background-primary);color:var(--color-text-primary);cursor:default}
+.btn.primary{background:var(--color-text-info);border-color:var(--color-text-info);color:var(--color-background-primary)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--color-text-secondary)}
+.input{display:block;width:100%;box-sizing:border-box;font:400 13px/1.4 var(--font-sans);padding:8px 11px;border-radius:var(--border-radius-md);border:1px solid var(--color-border-secondary);background:var(--color-background-primary);color:var(--color-text-primary)}
+.input.placeholder{color:var(--color-text-tertiary)}
+.pill{display:inline-flex;align-items:center;gap:5px;font:500 12px/1.4 var(--font-sans);padding:2px 10px;border-radius:999px;border:1px solid var(--color-border-secondary);color:var(--color-text-secondary)}
+.metric{font:600 26px/1.1 var(--font-sans);color:var(--color-text-primary);font-variant-numeric:tabular-nums}
+.swatch{width:16px;height:16px;border-radius:5px;border:1px solid var(--color-border-secondary);flex:none}
+`;
+
 export const KITS: Kit[] = [
   {
     id: "issues",
@@ -304,6 +336,14 @@ export const KITS: Kit[] = [
     classes: "risk · signal · budget · manifest · spark · finding-head",
     css: REVIEW_CSS,
     js: REVIEW_JS,
+  },
+  {
+    id: "mockup",
+    label: "Mockup",
+    summary:
+      "UI / design mockups — framed panels, eyebrow labels, tone callouts, stand-in controls",
+    classes: "panel · label · eyebrow · callout · box · btn · input · pill · metric · swatch",
+    css: MOCKUP_CSS,
   },
 ];
 

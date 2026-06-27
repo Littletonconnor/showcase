@@ -65,12 +65,12 @@ server.registerTool(
     description: MCP_TOOL_DESCRIPTIONS.publishSurfaceStdio,
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.publishSurface,
   },
-  async ({ title, parts, badge, sessionTitle }) => {
+  async ({ title, parts, badge, theme, sessionTitle }) => {
     const session = await ensureSession(sessionTitle);
     const created = JSON.parse(
       await api("/api/surfaces", {
         method: "POST",
-        body: JSON.stringify({ title, parts, badge, session }),
+        body: JSON.stringify({ title, parts, badge, theme, session }),
       }),
     );
     return text({ ...created, url: `${API}/session/${created.sessionId}/s/${created.id}` });
@@ -101,11 +101,11 @@ server.registerTool(
     description: MCP_TOOL_DESCRIPTIONS.updateSurface,
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.updateSurface,
   },
-  async ({ id, parts, title, badge }) => {
+  async ({ id, parts, title, badge, theme }) => {
     const updated = JSON.parse(
       await api(`/api/surfaces/${id}`, {
         method: "PUT",
-        body: JSON.stringify({ parts, title, badge }),
+        body: JSON.stringify({ parts, title, badge, theme }),
       }),
     );
     return text({ ...updated, url: `${API}/session/${updated.sessionId}/s/${updated.id}` });
@@ -118,12 +118,12 @@ server.registerTool(
     description: MCP_TOOL_DESCRIPTIONS.publishSnippet,
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.publishSnippet,
   },
-  async ({ title, html, kits, sessionTitle }) => {
+  async ({ title, html, kits, theme, sessionTitle }) => {
     const session = await ensureSession(sessionTitle);
     const created = JSON.parse(
       await api("/api/surfaces", {
         method: "POST",
-        body: JSON.stringify({ title, parts: [{ kind: "html", html, kits }], session }),
+        body: JSON.stringify({ title, parts: [{ kind: "html", html, kits }], theme, session }),
       }),
     );
     return text({ ...created, url: `${API}/session/${created.sessionId}/s/${created.id}` });
@@ -136,10 +136,13 @@ server.registerTool(
     description: MCP_TOOL_DESCRIPTIONS.updateSnippet,
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.updateSnippet,
   },
-  async ({ id, html, title, kits }) => {
+  async ({ id, html, title, kits, theme }) => {
     const parts = html === undefined ? undefined : [{ kind: "html", html, kits }];
     const updated = JSON.parse(
-      await api(`/api/surfaces/${id}`, { method: "PUT", body: JSON.stringify({ parts, title }) }),
+      await api(`/api/surfaces/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ parts, title, theme }),
+      }),
     );
     return text({ ...updated, url: `${API}/session/${updated.sessionId}/s/${updated.id}` });
   },

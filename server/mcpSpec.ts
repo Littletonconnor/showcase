@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { KIT_IDS } from "./kits.ts";
+import { THEME_IDS } from "./themes.ts";
 
 export const MCP_SERVER_INFO = { name: "showcase", version: "0.1.0" };
 
@@ -59,6 +60,9 @@ const d = {
     '{tone, label}: tone is critical (red, "Bug") | warning (amber, "Nit") | info (blue, ' +
     '"Question") | success (green, "Praise") | neutral (gray); label is one short word. ' +
     "On update_surface, pass null to clear it.",
+  theme: `Optional theme this surface renders under (${THEME_IDS.join(
+    " | ",
+  )}). Sets the palette for the card's parts so themed mockups stay consistent — pick one and reuse it across a set of mockups instead of restyling each. Omit for the board default. On update_surface, pass null to reset.`,
   timeout: "How long to wait, 0-300",
   afterSeq: "explicit cursor override (default: where the agent left off)",
   assetData: "base64-encoded file bytes",
@@ -265,6 +269,7 @@ export const HTTP_MCP_TOOLS = [
         title: { type: "string", description: d.title },
         parts: MCP_PARTS_JSON_SCHEMA,
         badge: MCP_BADGE_JSON_SCHEMA,
+        theme: { type: "string", enum: THEME_IDS, description: d.theme },
         session: { type: "string", description: d.session },
         sessionTitle: { type: "string", description: d.sessionTitle },
         agent: { type: "string", description: d.agent },
@@ -363,6 +368,7 @@ export const HTTP_MCP_TOOLS = [
         parts: MCP_PARTS_JSON_SCHEMA,
         title: { type: "string", description: d.replacementTitle },
         badge: MCP_BADGE_JSON_SCHEMA,
+        theme: { description: d.theme },
       },
       required: ["id"],
     },
@@ -376,6 +382,7 @@ export const HTTP_MCP_TOOLS = [
         title: { type: "string", description: "Short human-readable title" },
         html: { type: "string", description: d.html },
         kits: { type: "array", items: { type: "string" }, description: d.partKits },
+        theme: { type: "string", enum: THEME_IDS, description: d.theme },
         session: { type: "string", description: d.session },
         sessionTitle: { type: "string", description: "Session name (first publish only)" },
         agent: { type: "string", description: d.agent },
@@ -393,6 +400,7 @@ export const HTTP_MCP_TOOLS = [
         html: { type: "string", description: "Replacement HTML body fragment" },
         kits: { type: "array", items: { type: "string" }, description: d.partKits },
         title: { type: "string", description: d.replacementTitle },
+        theme: { description: d.theme },
       },
       required: ["id"],
     },
@@ -515,6 +523,7 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
     title: z.string().describe(d.title),
     parts: z.array(mcpPartSchema).describe(MCP_PARTS_DESCRIPTION),
     badge: badgeStdioSchemas.badge,
+    theme: z.string().optional().describe(d.theme),
     sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
   },
   publishDecisions: {
@@ -564,11 +573,13 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
     parts: z.array(mcpPartSchema).optional().describe(d.replacementParts),
     title: z.string().optional().describe(d.replacementTitle),
     badge: badgeStdioSchemas.updateBadge,
+    theme: z.string().nullable().optional().describe(d.theme),
   },
   publishSnippet: {
     title: z.string().describe("Short human-readable title shown above the snippet"),
     html: z.string().describe(d.html),
     kits: z.array(z.string()).optional().describe(d.partKits),
+    theme: z.string().optional().describe(d.theme),
     sessionTitle: z.string().optional().describe("Session name (first publish only)"),
   },
   updateSnippet: {
@@ -576,6 +587,7 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
     html: z.string().optional().describe("Replacement HTML body fragment"),
     kits: z.array(z.string()).optional().describe(d.partKits),
     title: z.string().optional().describe(d.replacementTitle),
+    theme: z.string().nullable().optional().describe(d.theme),
   },
   deleteSurface: {
     id: z.string().describe(d.surfaceId),

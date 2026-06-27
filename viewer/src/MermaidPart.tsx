@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { MermaidPart as MermaidPartData } from "./api.ts";
 import { SandboxedPart } from "./SandboxedPart.tsx";
-import { useActiveTheme, useResolvedMode } from "./theme.ts";
+import { useSurfaceTheme, useResolvedMode } from "./theme.ts";
 
 // Wrapper styles shipped into the sandbox iframe. Mermaid bakes theme colors
 // into the SVG itself (read from the trusted viewer's vars at render time), so
@@ -116,7 +116,7 @@ function showcaseTheme() {
 }
 
 export function MermaidPart(props: { part: MermaidPartData }) {
-  const activeTheme = useActiveTheme();
+  const activeTheme = useSurfaceTheme();
   const mode = useResolvedMode();
   const [svg, setSvg] = useState("");
   const [error, setError] = useState<string | null>(null);

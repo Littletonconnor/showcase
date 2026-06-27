@@ -35,6 +35,7 @@ export interface McpDeps {
     parts: SurfacePart[];
     title?: string;
     badge?: SurfaceBadge;
+    theme?: string;
     session?: string;
     sessionTitle?: string;
     agent?: string;
@@ -50,7 +51,12 @@ export interface McpDeps {
   }): Promise<{ sessionId: string; decisions: number } | { error: string; status: number }>;
   reviseSurface(
     id: string,
-    patch: { parts?: SurfacePart[]; title?: string; badge?: SurfaceBadge | null },
+    patch: {
+      parts?: SurfacePart[];
+      title?: string;
+      badge?: SurfaceBadge | null;
+      theme?: string | null;
+    },
   ): FlowResult<Surface>;
   deleteSurface(id: string): Promise<{ surface: Surface } | { error: string; status: number }>;
   createComment(input: {
@@ -97,6 +103,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
           parts,
           title: typeof args.title === "string" ? args.title : undefined,
           badge: coerceSurfaceBadge(args.badge) ?? undefined,
+          theme: typeof args.theme === "string" ? args.theme : undefined,
           session: typeof args.session === "string" ? args.session : undefined,
           sessionTitle: typeof args.sessionTitle === "string" ? args.sessionTitle : undefined,
           agent: typeof args.agent === "string" ? args.agent : undefined,
@@ -128,9 +135,24 @@ export function registerMcp(app: Hono, deps: McpDeps) {
       }
       case "update_surface":
       case "update_snippet": {
-        const patch: { parts?: SurfacePart[]; title?: string; badge?: SurfaceBadge | null } = {
+        const patch: {
+          parts?: SurfacePart[];
+          title?: string;
+          badge?: SurfaceBadge | null;
+          theme?: string | null;
+        } = {
           title: typeof args.title === "string" ? args.title : undefined,
           ...("badge" in args ? { badge: coerceSurfaceBadge(args.badge) } : {}),
+          ...("theme" in args
+            ? {
+                theme:
+                  args.theme === null
+                    ? null
+                    : typeof args.theme === "string"
+                      ? args.theme
+                      : undefined,
+              }
+            : {}),
         };
         if (name === "update_snippet") {
           if (typeof args.html === "string")

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { renderSandboxedPart } from "../../server/surfacePage.ts";
 import { themeById } from "../../server/themes.ts";
 import { isFlatten } from "./api.ts";
-import { useActiveTheme, useResolvedMode } from "./theme.ts";
+import { useSurfaceTheme, useResolvedMode } from "./theme.ts";
 
 // location.origin is constant for the page lifetime — read it once, not per
 // srcdoc rebuild.
@@ -35,7 +35,7 @@ function bodyToHost(css: string): string {
 // inherit across the shadow boundary from :root, so colors match the chrome.
 function InlinePart(props: { body: string; css: string; class?: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const activeTheme = useActiveTheme();
+  const activeTheme = useSurfaceTheme();
   const mode = useResolvedMode();
   useEffect(() => {
     const host = hostRef.current;
@@ -78,7 +78,7 @@ export function SandboxedPart(props: SandboxedPartProps) {
 // which keys off message type, not the frame registry.)
 function FramePart(props: SandboxedPartProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const activeTheme = useActiveTheme();
+  const activeTheme = useSurfaceTheme();
   const mode = useResolvedMode();
 
   const doc = useMemo(

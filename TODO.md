@@ -47,52 +47,40 @@ that surfaced. Get the human's intent right; this is UX, not just plumbing.
 - (Also fixed the `code-review` skill to scope depth per-slice so reviews stop
   fanning out 5 specialists over the whole diff — `~/Sites/ai-config`.)
 
-### Phase 1 — Trust & transparency: the complete changed-file manifest
+### Phase 1 — Shipped: the complete changed-file manifest
 
-- **Problem:** the review only surfaces risk-ranked _decisions_, so files the
-  agent deemed unremarkable just vanish — the human distrusts they're seeing the
-  whole change ("gives a false sense; I lost trust that I'm seeing everything").
-- **Approach:** add a **complete changed-file manifest** — every file in the diff,
-  each tagged with its disposition (`has decision` / `reviewed · no comment` /
-  `mechanical · skipped`) + line counts, linking to its decision when it has one.
-  Nothing omitted. Design is open ("not sure how it should look") — propose a
-  clean layout (collapsible "All N files changed" near the Brief, or a side rail).
-- **Acceptance:** you can see every changed file and account for it, even the ones
-  with no comment. Addresses the doc's "trusting the skip set" open question.
+Every changed file is accounted for: `ReviewView`'s collapsible "All N files
+changed" panel (`Manifest`, fed by `Review.manifest` / `ManifestFile`) tags each
+file `has-decision` / `reviewed · no comment` / `mechanical · skipped` with line
+counts, linking to its decision when it has one. Addresses the "trusting the skip
+set" distrust.
 
-### Phase 2 — Interaction redesign: decision IDs + normal chat (the verbs are clunky)
+### Phase 2 — Mostly shipped: decision IDs + normal chat (Disagree button still open)
 
-- **Drop the "Verify" (`V`) verb entirely** — not needed.
-- **Replace the bespoke verb buttons** (which post structured comments) with
-  something lighter: **give each decision a short, stable, copy-pasteable
-  UUID/ref.** The human copies a decision's ref and chats with the agent through
-  the **normal agent-chat flow** (browser chat / editor), pasting the ref so the
-  agent knows exactly which decision — then the agent revises and re-publishes.
-- **Model it on the viz "send to agent" / drill-down relay** (how the
-  visualizations already talk to the agent in the browser). The review's
-  conversation should happen in normal chat, scoped by a copyable id — not a wall
-  of special-purpose buttons.
-- Likely **keep a lightweight local Accept** (burndown); lose Verify/Disagree as
-  buttons. Stable decision IDs also replace content-keying (durability) and make
-  the "trail" just be the normal chat.
+- ✅ Dropped the "Verify" verb. ✅ Each decision carries a stable, copy-pasteable
+  ref (`CopyRef`) the human pastes into normal agent chat to scope a revision.
+- ✅ Kept a lightweight local **Accept** (drives the burndown).
+- ⏳ **Still open:** **Disagree** is still a bespoke button that posts a structured
+  comment (`disagreeText`). The north star is to drop it too in favor of the
+  copy-ref + normal-chat flow — but it's the one verb that auto-threads a
+  defend-or-revise instruction, so it's kept until chat covers that ergonomically.
 
-### Phase 3 — Ledger clarity (the verbiage is confusing)
+### Phase 3 — Shipped: ledger clarity
 
-- The current labels ("High confidence" / "Checked" / "Not yet") read poorly and
-  are unclear. **Reword so anyone instantly gets** what was verified, what wasn't,
-  and how sure the agent is. Plain, unambiguous; propose clearer language.
+The confusing "High confidence / Checked / Not yet" labels are gone. `ReviewView`
+now surfaces one honest signal — "How sure" with plain words (Confident / Fairly
+sure / Not sure); self-reported "what I verified" claims were dropped (nothing
+backed them).
 
-### Phase 4 — Suggested fixes in the diffs
+### Phase 4 — Shipped: suggested fixes in the diffs
 
-- When the agent thinks there should be a fix, the evidence diff should **show the
-  suggested change** (the `Decision.proposal` before→after) clearly. Make the
-  agent populate `proposal` whenever a concrete fix exists, and render it
-  obviously alongside/under the evidence.
+`EvidencePane` renders `Decision.proposal` (before→after) as a clearly-labeled
+"Suggested fix" diff beneath the evidence whenever the agent populates it.
 
 ### Key files
 
-- `server/types.ts` — `Review` / `Decision` / `DecisionProposal` + `Store`. (Add
-  stable decision `id`s and a `manifest`/`files[]` field here.)
+- `server/types.ts` — `Review` / `Decision` / `DecisionProposal` / `ManifestFile`
+  (stable decision `id`s and the `manifest` field) + `Store`.
 - `server/app.ts` — `coerceReview()` validation, `publishDecisions` flow,
   `/api/sessions/:id/review` routes, `/api/sessions` row decoration
   (`kind`, `reviewVerdict`).

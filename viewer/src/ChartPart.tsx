@@ -21,7 +21,7 @@ import {
   YAxis,
 } from "recharts";
 import type { ChartPart as ChartPartData } from "./api.ts";
-import { useActiveTheme, useResolvedMode } from "./theme.ts";
+import { useSurfaceTheme, useResolvedMode } from "./theme.ts";
 
 // Tone → fixed hue for the review charts (treemap cells, scatter points). These
 // match the diff/severity palette (sensitive=red, logic=amber, mechanical=gray)
@@ -70,7 +70,7 @@ function readThemeColors(): ThemeColors {
 }
 
 export function ChartPart(props: { part: ChartPartData }) {
-  const activeTheme = useActiveTheme();
+  const activeTheme = useSurfaceTheme();
   const mode = useResolvedMode();
   // Sanitize useId for SVG fragment ids — React ids carry colons, which break a
   // url(#…) gradient reference.

@@ -2360,3 +2360,39 @@ test("a comment with neither surface nor session is rejected", async () => {
   const res = await app.request("/api/comments", json({ author: "user", text: "orphan" }));
   assert.equal(res.status, 400);
 });
+
+test("a surface carries, updates, and resets its per-surface theme", async () => {
+  const app = makeApp();
+  const created = (await (
+    await app.request(
+      "/api/surfaces",
+      json({ title: "M", parts: [{ kind: "markdown", markdown: "x" }], theme: "brand" }),
+    )
+  ).json()) as any;
+  assert.equal(created.theme, "brand");
+
+  // an unknown theme is ignored, not stored
+  const bogus = (await (
+    await app.request(
+      "/api/surfaces",
+      json({ title: "N", parts: [{ kind: "markdown", markdown: "x" }], theme: "bogus" }),
+    )
+  ).json()) as any;
+  assert.equal(bogus.theme, undefined);
+
+  // a theme-only update re-skins without bumping the content version
+  const reskinned = (await (
+    await app.request(`/api/surfaces/${created.id}`, {
+      ...json({ theme: "neutral" }),
+      method: "PUT",
+    })
+  ).json()) as any;
+  assert.equal(reskinned.theme, "neutral");
+  assert.equal(reskinned.version, created.version);
+
+  // null resets to the board default (theme omitted from the response)
+  const reset = (await (
+    await app.request(`/api/surfaces/${created.id}`, { ...json({ theme: null }), method: "PUT" })
+  ).json()) as any;
+  assert.equal(reset.theme, undefined);
+});

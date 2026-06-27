@@ -188,13 +188,97 @@ export const THEMES: Theme[] = [
       danger: { bg: "rgba(220, 105, 85, 0.16)", text: "#e89080", border: "#bf4634" },
     },
   },
+  {
+    // Brand — the deep-eggplant palette the mockups kept re-deriving inline,
+    // promoted to a first-class theme: indigo ink, a violet accent, and warm
+    // amber / green / red states. The mockup kit's components resolve against
+    // the semantic tokens, so they pick this up automatically.
+    id: "brand",
+    label: "Brand",
+    shiki: { light: "github-light", dark: "github-dark" },
+    light: {
+      bg: "#f4f2fa",
+      panel: "#f7f6fb",
+      surface: "#ffffff",
+      text: "#230b59",
+      muted: "#6b6588",
+      faint: "#9a95b0",
+      border: "rgba(35, 11, 89, 0.10)",
+      border2: "rgba(35, 11, 89, 0.18)",
+      hover: "rgba(35, 11, 89, 0.05)",
+      info: { bg: "#f1effd", text: "#5c46e6", border: "#dad4f7" },
+      success: { bg: "#e7f4ec", text: "#1e7a4d", border: "#bfe3cd" },
+      warning: { bg: "#fbf3e1", text: "#9a6510", border: "#ecdcb4" },
+      danger: { bg: "#fbe9e5", text: "#b83a2b", border: "#eec6bd" },
+    },
+    dark: {
+      bg: "#161229",
+      panel: "#1d1838",
+      surface: "#221d42",
+      text: "#ece9f7",
+      muted: "#a8a1c6",
+      faint: "#746c98",
+      border: "rgba(220, 212, 247, 0.12)",
+      border2: "rgba(220, 212, 247, 0.20)",
+      hover: "rgba(220, 212, 247, 0.06)",
+      info: { bg: "rgba(92, 70, 230, 0.24)", text: "#ab9ef6", border: "#6a55e8" },
+      success: { bg: "rgba(30, 122, 77, 0.22)", text: "#72c79b", border: "#2f7d4f" },
+      warning: { bg: "rgba(154, 101, 16, 0.24)", text: "#dab266", border: "#9a6510" },
+      danger: { bg: "rgba(184, 58, 43, 0.22)", text: "#e9917f", border: "#b83a2b" },
+    },
+  },
+  {
+    // Neutral — a stark grayscale for wireframe/low-fidelity mockups. Accent is
+    // a near-black gray (not a hue), and the semantic states are desaturated so
+    // the surface reads as a sketch, not a finished product.
+    id: "neutral",
+    label: "Neutral",
+    shiki: { light: "github-light", dark: "github-dark" },
+    light: {
+      bg: "#f4f4f5",
+      panel: "#ececee",
+      surface: "#ffffff",
+      text: "#18181b",
+      muted: "#6b6b70",
+      faint: "#9a9aa0",
+      border: "#e4e4e7",
+      border2: "#d1d1d6",
+      hover: "#f0f0f1",
+      info: { bg: "#ececee", text: "#3f3f46", border: "#d1d1d6" },
+      success: { bg: "#eef2ee", text: "#4f6b54", border: "#c8d6c8" },
+      warning: { bg: "#f5efe1", text: "#7c6a3d", border: "#e0d3b2" },
+      danger: { bg: "#f4e9e7", text: "#8c4a3f", border: "#ddc4be" },
+    },
+    dark: {
+      bg: "#111113",
+      panel: "#19191c",
+      surface: "#1e1e21",
+      text: "#ededee",
+      muted: "#a1a1a6",
+      faint: "#6e6e73",
+      border: "#2c2c30",
+      border2: "#3f3f44",
+      hover: "rgba(255, 255, 255, 0.06)",
+      info: { bg: "#2a2a2e", text: "#cfcfd4", border: "#3f3f44" },
+      success: { bg: "rgba(90, 150, 100, 0.18)", text: "#85b58f", border: "#4a6b52" },
+      warning: { bg: "rgba(180, 150, 70, 0.18)", text: "#cbb072", border: "#6e5d30" },
+      danger: { bg: "rgba(180, 90, 75, 0.18)", text: "#d99284", border: "#6e433b" },
+    },
+  },
 ];
 
 export const DEFAULT_THEME_ID = "showcase";
 
-// One fixed theme now (multi-theme was removed). themeById keeps the name +
-// the null/unknown fallback so callers and the `?theme=` query just resolve to
-// it; viewerThemeCss / tokenThemeCss still feed the chrome vars + part tokens.
+// All registered theme ids, in registry order (drives the viewer picker and the
+// MCP/CLI theme allowlist).
+export const THEME_IDS = THEMES.map((t) => t.id);
+
+// Is `id` a known theme? Used to validate the agent-supplied / query `theme`.
+export const isKnownTheme = (id: unknown): id is string =>
+  typeof id === "string" && THEMES.some((t) => t.id === id);
+
+// Resolve a theme by id, falling back to the default for null/unknown — so a
+// stale `?theme=` or a surface authored before a theme was removed still renders.
 export function themeById(id: string | null | undefined): Theme {
   return THEMES.find((t) => t.id === id) ?? THEMES[0];
 }

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { CodePart as CodePartData } from "./api.ts";
 import { themeById } from "../../server/themes.ts";
 import { SandboxedPart } from "./SandboxedPart.tsx";
-import { useActiveTheme, useResolvedMode } from "./theme.ts";
+import { useSurfaceTheme, useResolvedMode } from "./theme.ts";
 import { setCurrentThemes, highlight, loadLangs, shikiSchemeCss } from "./highlight.ts";
 
 // Styles shipped INTO the sandbox iframe. shiki produces <pre class="shiki">
@@ -160,7 +160,7 @@ function buildBody(part: CodePartData): string {
 }
 
 export function CodePart(props: { part: CodePartData }) {
-  const activeTheme = useActiveTheme();
+  const activeTheme = useSurfaceTheme();
   const mode = useResolvedMode();
   const [html, setHtml] = useState(() => {
     setCurrentThemes(themeById(activeTheme).shiki);

@@ -5,7 +5,7 @@ import katex from "katex";
 import type { MarkdownPart as MarkdownPartData } from "./api.ts";
 import { themeById } from "../../server/themes.ts";
 import { SandboxedPart } from "./SandboxedPart.tsx";
-import { useActiveTheme, useResolvedMode } from "./theme.ts";
+import { useSurfaceTheme, useResolvedMode } from "./theme.ts";
 import { setCurrentThemes, highlight, loadLangs, shikiSchemeCss } from "./highlight.ts";
 
 // Prose styles for the rendered markdown — shipped INTO the sandbox iframe (the
@@ -118,7 +118,7 @@ function fenceLangs(src: string): string[] {
 }
 
 export function MarkdownPart(props: { part: MarkdownPartData }) {
-  const activeTheme = useActiveTheme();
+  const activeTheme = useSurfaceTheme();
   const mode = useResolvedMode();
   const [html, setHtml] = useState(() => {
     setCurrentThemes(themeById(activeTheme).shiki);
