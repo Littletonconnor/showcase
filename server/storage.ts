@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
   type Asset,
@@ -124,9 +124,8 @@ export class JsonFileStore implements Store {
   }
 
   private async loadFromDisk() {
-    try {
-      const raw = await readFile(this.filePath, "utf8");
-      const data = JSON.parse(raw) as LegacyShape;
+    const data = await this.readStoredShape();
+    if (data) {
       // agentSeq arrived after 0.2.0 — default it for data files written before
       for (const s of data.sessions ?? []) {
         this.sessions.set(s.id, { ...s, agentSeq: s.agentSeq ?? 0 });
@@ -147,10 +146,32 @@ export class JsonFileStore implements Store {
       }
       for (const r of data.reviews ?? []) this.reviews.set(r.sessionId, r);
       this.lastSeq = data.lastSeq ?? 0;
-    } catch (err: any) {
-      if (err?.code !== "ENOENT") throw err;
     }
     this.loaded = true;
+  }
+
+  // Read the live file, falling back to the .bak mirror if the live one is
+  // missing or has been corrupted/truncated. A missing file (fresh board) is
+  // not an error; only a corrupt .bak is fatal. Returns null when neither
+  // exists, so a brand-new board starts empty.
+  private async readStoredShape(): Promise<LegacyShape | null> {
+    const bak = `${this.filePath}.bak`;
+    for (const path of [this.filePath, bak]) {
+      let raw: string;
+      try {
+        raw = await readFile(path, "utf8");
+      } catch (err: any) {
+        if (err?.code === "ENOENT") continue;
+        throw err;
+      }
+      try {
+        return JSON.parse(raw) as LegacyShape;
+      } catch (err) {
+        if (path === bak) throw err;
+        console.error(`showcase: ${this.filePath} is unreadable, recovering from ${bak}`);
+      }
+    }
+    return null;
   }
 
   private persist() {
@@ -174,6 +195,11 @@ export class JsonFileStore implements Store {
       const tmp = `${this.filePath}.tmp`;
       await writeFile(tmp, data, "utf8");
       await rename(tmp, this.filePath);
+      // Mirror the just-written good state to .bak. We copy AFTER the rename, so
+      // the backup only ever holds validated data and can't be poisoned by a
+      // corrupt live file — readStoredShape recovers from it if the live file is
+      // later lost or truncated.
+      await copyFile(this.filePath, `${this.filePath}.bak`);
     });
     return this.writeQueue;
   }
