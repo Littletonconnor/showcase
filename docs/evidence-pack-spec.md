@@ -7,6 +7,11 @@ doc is the contract; the implementation lives in the skill (Layer 1) — see
 in this repo: per the engine doc's one-way seam, the pack "lands in the skill. None
 touch showcase." This file is the in-repo deliverable that unblocks that build._
 
+> **Status (2026-06-27): built.** The pack ships as the `evidence-pack` tool in the
+> `aic` repo (`src/tools/evidence-pack.ts`, route b), and the `code-review` skill is
+> wired to compute it and apply the conflict rule below. This spec is the contract it
+> was built against; the sections below remain the source of truth for its behavior.
+
 ---
 
 ## Purpose

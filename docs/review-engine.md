@@ -586,23 +586,27 @@ re-check before editing.
   `ReviewInline` for every review session; `ReviewInline` sets `readonly` from
   `exportBundle()`.
 
-**Specced, not built** — the keystone of the skill-side bucket:
+**Built (2026-06-27, in `aic`)** — the keystone of the skill-side bucket:
 
-- **T6 📄 spec written** — see [`docs/evidence-pack-spec.md`](./evidence-pack-spec.md).
-  The pack is fully specified (output schema, conflict rule, time-to-first-card
-  budget, honesty rules, acceptance). The **tool itself is not built** — it lands
-  in the skill, not showcase (see the seam note below).
+- **T6 ✅ built** — `evidence-pack` tool in the `aic` repo (`src/tools/evidence-pack.ts`,
+  route **b**), to the spec in [`docs/evidence-pack-spec.md`](./evidence-pack-spec.md).
+  `evidence-pack pack --base <ref> --head HEAD --json` emits the frozen-diff pack:
+  changed files with churn + hunk `file:line` ranges, hop-1 reach (language-gated,
+  labeled heuristic), change-coupling with the `missingFromDiff` hint, and opt-in
+  shell-out check receipts. Git sections are byte-reproducible for a frozen base.
+  The `code-review` skill is wired to compute it before judging and apply the
+  pack-vs-model conflict rule (`reference/execution.md`). None of it touches
+  showcase — the seam held.
 
-**Not started — needs the skill/aic environment** (absent in the repo where this
-pass ran; see the decision below): **T7, T8, T9, T10**. **Deferred by YAGNI** (do
-not build until a real review demands it): **T11, T12, T13**.
+**Not started — needs the skill/aic environment:** **T7, T8, T9, T10** (T7 and T9
+consume the now-built pack). **Deferred by YAGNI** (do not build until a real
+review demands it): **T11, T12, T13**.
 
-> **Why the skill-side tasks didn't land here.** This pass ran against the
-> `showcase` repo only. The `code-review` skill (`~/.claude/skills/code-review/`)
-> and its `aic` source were **not present**, and the engine doc's seam is explicit
-> that T6–T10 "land in the skill. None touch showcase" (see "How this maps onto the
-> existing code"). So nothing analysis-side was added to showcase. The next agent
-> with the skill/aic checkout picks up from T6's spec.
+> **Cross-repo status.** T6 landed in the `aic` repo, not here — the engine doc's
+> seam is explicit that T6–T10 "land in the skill. None touch showcase" (see "How
+> this maps onto the existing code"). The next agent with the skill/aic checkout
+> picks up at **T7** (cold-set audit), which consumes the evidence pack's
+> `files[].sensitive` / `missingFromDiff` fields.
 
 ### The decision to make first (it gates everything skill-side)
 
@@ -692,17 +696,18 @@ having the skill/aic checkout, which was absent for this pass — so only the
 > ([`evidence-pack-spec.md`](./evidence-pack-spec.md)); the rest await the
 > skill/aic checkout. Start at T6, then T7/T9 (consume the pack), then T8/T10.
 
-- [ ] **T6 · The deterministic evidence pack.** 📄 _Spec written —
-      [`docs/evidence-pack-spec.md`](./evidence-pack-spec.md); tool not built (skill-side)._
-      _Route (b) tool._ Emit, for a
+- [x] **T6 · The deterministic evidence pack.** ✅ _Built in `aic`:
+      `src/tools/evidence-pack.ts` (route b), to [`docs/evidence-pack-spec.md`](./evidence-pack-spec.md)._
+      Emits, for a
       frozen diff: hunk `file:line` ranges, per-file churn, hop-1 callers + their tests,
-      change-coupling (pinned window), shell-out lint/test results — as JSON the skill
-      cites and may not re-derive. Add the **conflict rule** (a Layer-1 fact beats a
+      change-coupling (pinned window), opt-in shell-out lint/test results — as JSON the
+      skill cites and may not re-derive. The **conflict rule** (a Layer-1 fact beats a
       Layer-2 assertion; surface the discrepancy) and the **time-to-first-card budget**
-      (seconds or stream; lint/test opt-in per slice, never a precondition for card 1).
-      _Needs its own spec before coding_ (`docs/evidence-pack-spec.md`). _Done when:_
-      same diff → reproducible pack (flaky tests recorded honestly); findings cite pack
-      `file:line`; a contradicted high-confidence claim is capped + flagged.
+      (git-only sub-second sections first; `--checks` opt-in, never a precondition for
+      card 1) live in the skill wiring (`code-review/reference/execution.md`). _Done:_
+      same range → byte-identical git sections (verified); reach resolves hop-1 callers
+      with `inDiff` flags; coupling surfaces real co-changed-but-untouched files. The
+      pack-vs-model conflict rule is enforced skill-side at review time.
 - [ ] **T7 · Cold-set audit.** _Route (b)._ Re-flag any
       `mechanical-skipped`/`reviewed-no-comment` file with churn over threshold, a
       sensitive path, or coupling to a `has-decision` file → force a decision or an
@@ -734,8 +739,8 @@ having the skill/aic checkout, which was absent for this pass — so only the
 - [ ] **T13 ·** agent-owned, human-editable adjudication-memory ledger — only if it
       proves out `[skill/aic]`.
 
-**Sequencing:** T0–T5 are **done** (in this repo). T6's **spec is written**
-(`evidence-pack-spec.md`); it is the keystone of the "then" bucket — T7/T9 consume
-its pack — so build it first when the skill/aic checkout is available, then T8/T10.
-YAGNI gates T11–T13. See **▶ Status for the next agent** at the top of this appendix
-for the authoritative per-task state.
+**Sequencing:** T0–T5 are **done** (in this repo); **T6 is built** (in `aic`,
+`src/tools/evidence-pack.ts`). It was the keystone of the "then" bucket — T7/T9
+consume its pack — so the next agent with the skill/aic checkout picks up at T7
+(cold-set audit), then T8/T10. YAGNI gates T11–T13. See **▶ Status for the next
+agent** at the top of this appendix for the authoritative per-task state.
