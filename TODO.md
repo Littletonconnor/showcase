@@ -403,32 +403,176 @@ validate` command so theme/kit/blueprint authors (`docs/themable-explainers.md`)
 
 **Developer experience & architecture**
 
-- **Build out a more robust CLI** — `bin/showcase.js` is a single ~1400-line
-  zero-dependency file: hand-rolled `parseArgs` flag handling, ad-hoc `fetch`
-  calls, and inconsistent error/exit-code behavior per subcommand. It works but is
-  hard to extend and easy to break. Rework it into a real CLI: a proper
-  command/subcommand router with per-command help, validated/typed options, shared
-  HTTP-client + error-formatting helpers (one place that maps API failures to exit
-  codes and human messages), `--json` output for scripting, shell-completion, and
-  command-level tests. Keep the publish→render→comment loop the priority and the
-  install story zero-friction — if a dependency is added (e.g. a small arg parser),
-  weigh it against the current zero-dep stance in CLAUDE.md. _Effort: medium._
-- **Modernize into a pnpm-workspace monorepo** — today everything (CLI, HTTP
-  server, stdio MCP, the Vite viewer, guide/skills) lives in one root `package.json`
-  with one dependency tree and the viewer build coupled to the server (`npm run dev`
-  builds the viewer, the server reads `viewer/dist/index.html` at boot). Split into
-  clearly separated workspace packages — e.g. `packages/cli` (`bin/`), `packages/server`
-  (the runtime-agnostic Hono app + Node wiring), `packages/mcp` (`mcp/` stdio +
-  `server/mcpHttp.ts`), `packages/viewer` (the Vite app), and a shared `packages/core`
-  for `types.ts` / `surfacePage.ts` / the data model — wired with pnpm workspaces so
-  each has its own deps, build, and test, with explicit internal dependencies between
-  them. Goals: faster installs, independent typecheck/lint/test per package, a
-  publishable CLI that doesn't pull the viewer's React/Vite tree, and an enforced
-  boundary that keeps the runtime-agnostic invariant (no `node:` imports in the
-  shared/server-core packages) a package constraint rather than a convention.
-  Preserve the no-build-step type-stripping story for the server/CLI and the single
-  self-contained `viewer/dist/index.html` artifact. _Effort: large; do as its own
-  track — it touches every import path, `tsconfig`, the dev/build scripts, and CI._
+- **🏗️ Platform split — pnpm monorepo + best-in-class CLI / MCP / viewer.** This is
+  a dedicated track of its own; the two stubs that used to live here ("robust CLI",
+  "pnpm monorepo") are folded into it. The full plan — target package layout, the
+  per-surface designs, the migration sequencing, and the open decisions — lives in
+  **[§6.A below](#6a--platform-split-track-pnpm-monorepo--best-in-class-cli--mcp--viewer)**.
+  _Effort: large; do the monorepo split first, then the three surfaces on top of it._
+
+#### 6.A — Platform-split track: pnpm monorepo + best-in-class CLI / MCP / viewer
+
+> **One track, four moves.** Today everything — the zero-dep CLI (`bin/`), the
+> runtime-agnostic Hono server + Node wiring (`server/`), the stdio MCP (`mcp/`),
+> and the Vite viewer (`viewer/`) — lives in **one root `package.json`** with one
+> dependency tree, and the viewer build is coupled to the server (the server reads
+> `viewer/dist/index.html` at boot). The goal is to (0) split that into a **pnpm
+> workspace** so each surface owns its deps/build/test behind an enforced boundary,
+> then make each of the three external surfaces — (1) **CLI**, (2) **MCP**, (3)
+> **viewer** — best-in-class on its own. **Do move 0 first**; it's the substrate the
+> other three sit on, and it touches every import path, `tsconfig`, and dev/build
+> script. Sequence and open decisions are at the end.
+>
+> **Reference implementation:** the **curly** repo (`~/curly`, the user's HTTP CLI)
+> is the template for the CLI shape — `src/commands/<name>/index.ts` per command,
+> `src/core/*` for domain logic, `src/lib/cli/{parser,help,validation}.ts`,
+> `src/lib/output/*`, `src/lib/utils/*`, an Ink/React TUI under
+> `commands/load-test/tui/`, and a separate `website/` (Next.js). Curly is a single
+> package, not a monorepo — borrow its **command layout**, not its packaging.
+
+##### Move 0 — pnpm workspace split (do this first)
+
+Target layout (names illustrative; `@showcase/*` scope):
+
+```
+showcase/
+  pnpm-workspace.yaml          # packages: ['packages/*']
+  package.json                 # root: workspace orchestration only, shared devDeps
+  tsconfig.base.json           # shared compiler options; per-pkg tsconfig extends it
+  packages/
+    core/      @showcase/core    — runtime-agnostic, NO node: imports. The data model
+                                   + the string-builder renderers + the MCP spec:
+                                   types.ts, events.ts, surfaceParts.ts, surfacePage.ts,
+                                   themes.ts, themeDerive.ts, theme-tokens.ts, kits.ts,
+                                   blueprints.ts, base64.ts, mcpSpec.ts. Pure ESM,
+                                   type-stripping-friendly. The runtime-agnostic
+                                   invariant becomes a *package constraint* here.
+    server/    @showcase/server  — Node HTTP runtime. Hono app.ts (routes, SSE,
+                                   /s/:id), mcpHttp.ts (streamable-HTTP MCP at /mcp),
+                                   storage.ts (JsonFileStore), index.ts (Node wiring),
+                                   export.ts, userConfig.ts, presetRenders.ts,
+                                   public.ts. → depends on @showcase/core.
+    mcp/       @showcase/mcp     — stdio MCP (mcp/server.ts): a thin client over the
+                                   HTTP API that imports the shared schema from core.
+                                   → depends on @showcase/core.
+    cli/       @showcase/cli     — the publishable `showcase` bin (the reworked
+                                   bin/showcase.js). Talks to the server over HTTP;
+                                   imports *types only* from core. Must NOT pull the
+                                   viewer's React/Vite tree.
+    viewer/    @showcase/viewer  — the Vite app → one self-contained dist/index.html.
+                                   Imports surface/part *types* from core so the wire
+                                   contract is enforced at the type level.
+```
+
+Dependency arrows: `core` ← everything; `server` ← (cli at runtime via HTTP, not an
+import); `viewer` build output ← consumed by `server` at boot. **The boundary is the
+point:** `@showcase/core` and the runtime-agnostic half of `@showcase/server` get a
+package that forbids `node:` imports, turning today's convention into something CI
+can enforce (an `oxlint`/dependency-cruiser rule per package).
+
+Things that must survive the split:
+- **No-build-step type stripping** for `core` / `server` / `mcp` / `cli` — keep
+  erasable-syntax-only TS, `.ts` extensions in relative imports, run on Node ≥22.18.
+  The viewer stays the one Vite-built exception.
+- **The single self-contained `viewer/dist/index.html`** artifact, and the server
+  reading it at boot. In a workspace the server resolves it from
+  `@showcase/viewer`'s build output (a resolved package path) rather than a sibling
+  `../viewer/dist`. Decide: read from `node_modules/@showcase/viewer/dist` vs. a
+  small `@showcase/viewer` entry that exports the html string/path.
+- **`npm run dev`** ergonomics (build viewer → watch both halves → restart on save →
+  clean shutdown). Re-express as a root pnpm script that orchestrates the per-package
+  dev tasks; evaluate `turbo`/`pnpm -r --parallel` for task graph + caching, but
+  don't let it become a hard dep if a few root scripts suffice.
+- **Validation gates** (`typecheck` / `test` / `lint` / `format:check`) run per
+  package *and* aggregated at the root; the Playwright oracle (`e2e/`) stays at the
+  root since it drives the whole system end-to-end.
+- The **guide/**, **skills/**, **docs/**, and **e2e/** trees stay repo-level (they
+  describe the product, not one package).
+
+##### Move 1 — best-in-class CLI (`packages/cli`)
+
+Today `bin/showcase.js` is a single ~1400-line zero-dep file: hand-rolled
+`parseArgs`, ad-hoc `fetch` per subcommand, inconsistent error/exit-code behavior.
+It works but is hard to extend. Rework it into a real CLI, modeled on curly:
+
+- **Command router** — `src/index.ts` (version check + dispatch) → one folder per
+  command, `src/commands/<name>/index.ts` (serve, service, publish, mermaid, diff,
+  markdown, code, image, trace, decisions, export, gc, demo, validate, blueprints,
+  kits, themes, upload, asset-url …). Each command owns its own `--help`.
+- **Shared infra** — `src/lib/http.ts` (one HTTP client + **one place** that maps API
+  failures → exit codes + human messages), `src/lib/args.ts` (typed/validated option
+  parsing), `src/lib/output.ts` (human + `--json` for scripting, color, tables),
+  `src/lib/exit.ts` (the exit-code map).
+- **Best-in-class affordances** — per-command help, `--json` everywhere for
+  scripting, **shell completions** (curly ships a `completions` command — copy the
+  pattern), consistent exit codes, clear actionable errors, and **command-level
+  tests** (currently the CLI has none).
+- **Keep the loop the priority** and the **install story zero-friction**. The current
+  zero-dep stance (CLAUDE.md) is a real constraint: a publishable CLI shouldn't drag
+  a heavy arg-parser/framework. If a small dep is added, weigh it explicitly — see
+  open decisions.
+
+##### Move 2 — best-in-class MCP (`packages/mcp` + the server's HTTP transport)
+
+The MCP already has two transports (stdio in `mcp/`, streamable-HTTP at `/mcp`) and
+already advertises **resources** (`showcase://surface/<id>`) and **prompts**
+(`review_pr`, `explainer`). Best-in-class means tightening, not rebuilding:
+
+- **One schema, two transports** — `mcpSpec.ts` moves to `@showcase/core` as the
+  single source of truth for tool schemas + field docs + prompt text; both the stdio
+  server and `mcpHttp.ts` import it. (Partly true today — make it total.)
+- **Typed + validated** — every tool input/output backed by a `zod` schema with
+  structured, actionable error responses (not stringly-typed failures).
+- **Round-trip completeness** — `get_surface` (content read-back) is shipped; extend
+  resources to **sessions** and **assets**, and confirm `update_surface` in-place
+  revision stays the iterate path. Keep tool descriptions excellent — the agent's
+  behavior is downstream of them.
+- **Per-tool tests** on both transports (extend `test/api.test.ts`'s "mcp read-back"
+  to cover each tool + resource + prompt), so the spec can't drift from either
+  transport.
+- Consider, only if a need shows up: **elicitation/sampling** for the comment→agent
+  loop, and an MCP-level health/capability probe.
+
+##### Move 3 — best-in-class viewer (`packages/viewer`)
+
+Already React 19 + zustand + Tailwind v4 + vendored shadcn, Vite → one self-contained
+`index.html`. Best-in-class here is about isolation, contract, and quality:
+
+- **Isolated dep tree** — the React/Vite/shadcn stack lives only in `@showcase/viewer`
+  so the CLI and stdio MCP stay lean and publishable without it.
+- **Typed wire contract** — import surface/part types from `@showcase/core` instead of
+  re-declaring them, so a server-side model change breaks the viewer build (good).
+- **Keep the single-file artifact** — it's a feature (the server serves one file); do
+  *not* code-split. Note the tension with bundle growth and revisit only if it bites.
+- **Component/unit tests** — add `vitest` + Testing Library for the part renderers
+  (`*Part.tsx`) and the review views; the Playwright oracle stays the integration
+  gate but per-component tests are missing today.
+- Folds in two existing roadmap items as viewer-package work: the **accessibility
+  pass** (iframe titles, focus order, contrast, SR labels on the decision queue) and
+  a **part gallery / Storybook-like** harness for the renderers.
+
+##### Sequencing & open decisions
+
+**Order:** (0) workspace split with packages 1:1 to today's folders and *no behavior
+change* — get green on `typecheck`/`test`/`lint`/oracle first; **then** (1) CLI, (2)
+MCP, (3) viewer independently, each its own series of small commits. Don't combine
+the structural move with a surface rework — land the split boringly first.
+
+**Open decisions to flag before starting** (see also §7):
+- **`pnpm` migration itself** — replaces `npm` + the root `package-lock.json`;
+  confirm the user wants `pnpm` (vs. `npm` workspaces) before converting CLAUDE.md's
+  `npm run …` muscle-memory and the dev scripts.
+- **`turbo` (or not)** — task-graph + caching vs. keeping a few plain root scripts.
+  Lean "not yet" unless the per-package task graph genuinely hurts.
+- **CLI zero-dep stance** — keep it strictly zero-dep, or allow one small vetted
+  arg-parser/output helper now that it's a standalone publishable package? Weigh
+  against the install-friction goal.
+- **Viewer-artifact resolution** — how `@showcase/server` locates the built
+  `index.html` across the workspace boundary (resolved `node_modules` path vs. a
+  viewer-exported entry).
+
+_Effort: large. Treat move 0 as a self-contained PR; moves 1–3 as independent
+follow-ups that can land in any order once the workspace exists._
 
 _Deferred / punted (revisit later):_ a **durable searchable store** (SQLite +
 FTS5) for referencing old mockups/reviews — `JsonFileStore` is fine at personal
