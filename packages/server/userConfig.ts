@@ -19,6 +19,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Blueprint } from "@showcase/core/blueprints";
+import { type ConfigIssue, type ConfigKind, validateConfig } from "@showcase/core/configSchema";
 import type { Kit } from "@showcase/core/kits";
 import type { Theme } from "@showcase/core/themes";
 
@@ -39,6 +40,19 @@ export interface BoardDefaults {
 const isStr = (v: unknown): v is string => typeof v === "string" && v.length > 0;
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
+
+// One-line, schema-validate-or-warn. Returns true when `raw` passes the kind's
+// schema; otherwise warns each issue (path: message) against `file` and skips.
+function passesSchema(kind: ConfigKind, raw: unknown, file: string): boolean {
+  const result = validateConfig(kind, raw);
+  if (result.ok) return true;
+  console.warn(`showcase: skipping ${file} — invalid ${kind}:`);
+  for (const issue of result.issues) console.warn(`  ${formatIssue(issue)}`);
+  return false;
+}
+
+const formatIssue = (issue: ConfigIssue): string =>
+  issue.path ? `${issue.path}: ${issue.message}` : issue.message;
 
 // Read every *.json under <dir>/<sub>, parse each, and keep the ones a validator
 // accepts. A missing dir yields []; a malformed or rejected file is warned and
@@ -71,51 +85,40 @@ async function loadDir<T>(
   return out;
 }
 
-// A theme needs an id/label and a light + dark palette object; shiki defaults to
-// the github themes when omitted. The palette fields are passed through as-is —
-// a missing color just yields an empty CSS var, never a crash.
+// Each validator gates on the shared schema (configSchema.ts), then applies the
+// same field defaulting it always has. The schema is the single source of truth
+// for what `showcase validate` reports too, so boot and the preflight agree.
 function validateTheme(raw: unknown, file: string): Theme | null {
-  if (!isObj(raw) || !isStr(raw.id) || !isStr(raw.label)) {
-    console.warn(`showcase: skipping ${file} — theme needs string id + label`);
-    return null;
-  }
-  if (!isObj(raw.light) || !isObj(raw.dark)) {
-    console.warn(`showcase: skipping ${file} — theme needs light + dark palette objects`);
-    return null;
-  }
-  const shiki = isObj(raw.shiki) ? raw.shiki : {};
+  if (!passesSchema("theme", raw, file)) return null;
+  const theme = raw as Theme & { shiki?: { light?: string; dark?: string } };
   return {
-    ...raw,
+    ...theme,
+    // shiki is optional in the schema; default to the github themes.
     shiki: {
-      light: isStr(shiki.light) ? shiki.light : "github-light",
-      dark: isStr(shiki.dark) ? shiki.dark : "github-dark",
+      light: theme.shiki?.light ?? "github-light",
+      dark: theme.shiki?.dark ?? "github-dark",
     },
-  } as Theme;
+  };
 }
 
 function validateKit(raw: unknown, file: string): Kit | null {
-  if (!isObj(raw) || !isStr(raw.id) || !isStr(raw.label) || !isStr(raw.css)) {
-    console.warn(`showcase: skipping ${file} — kit needs string id, label, css`);
-    return null;
-  }
+  if (!passesSchema("kit", raw, file)) return null;
+  const kit = raw as Kit;
   return {
-    id: raw.id,
-    label: raw.label,
-    summary: isStr(raw.summary) ? raw.summary : raw.label,
-    classes: isStr(raw.classes) ? raw.classes : "",
-    css: raw.css,
-    ...(isStr(raw.js) ? { js: raw.js } : {}),
+    id: kit.id,
+    label: kit.label,
+    summary: isStr(kit.summary) ? kit.summary : kit.label,
+    classes: isStr(kit.classes) ? kit.classes : "",
+    css: kit.css,
+    ...(isStr(kit.js) ? { js: kit.js } : {}),
   };
 }
 
 function validateBlueprint(raw: unknown, file: string): Blueprint | null {
-  if (!isObj(raw) || !isStr(raw.id) || !isStr(raw.label) || !isStr(raw.summary)) {
-    console.warn(`showcase: skipping ${file} — blueprint needs string id, label, summary`);
-    return null;
-  }
+  if (!passesSchema("blueprint", raw, file)) return null;
   // Pass structure/brand/defaults/kits/theme/extends through verbatim; the
   // registry validates kit/theme ids against the merged set at resolution.
-  return raw as unknown as Blueprint;
+  return raw as Blueprint;
 }
 
 // Load all three kinds from a config dir. Returns empty arrays when the dir is

@@ -370,10 +370,14 @@ deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
 
 **Housekeeping**
 
-- **Asset lifecycle / GC** — eviction only runs eagerly on upload; orphaned assets
-  (referenced by no live or historical surface) accumulate until the board budget
-  forces LRU. Add a lazy GC pass (`isAssetReferenced` already exists), a
-  `showcase gc` command, and a board-size status line. _Effort: low._
+- **✅ Shipped — Asset lifecycle / GC.** Eager upload eviction only fires under
+  budget pressure, so orphaned assets (referenced by no live or historical
+  surface) used to sit resident until then. Now `Store.gcAssets()` (a lazy sweep
+  reusing `referencedAssetIds`) + `Store.boardStats()` back two routes —
+  `POST /api/board/gc` and `GET /api/board` — surfaced as **`showcase gc`**
+  (`--dry-run` previews, `--json` for scripting) and **`showcase board`** (the
+  one-line size tally: sessions · surfaces · comments · reviews · assets
+  (bytes / budget) · orphaned). Covered by store-contract, API, and CLI tests.
 
 **Quality & trust**
 
@@ -395,11 +399,21 @@ deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
 
 **Extensibility ergonomics**
 
-- **Schema validation + `showcase validate`** — `userConfig.ts` validates only
-  rough shape; a malformed palette color or blueprint section is skipped with a
-  boot warning and no author-facing error. Ship JSON schemas + a `showcase
-validate` command so theme/kit/blueprint authors (`docs/themable-explainers.md`)
-  get real errors before publishing. _Effort: low._
+- **✅ Shipped — Schema validation + `showcase validate`.** `userConfig.ts` used
+  to validate only rough shape, so a malformed palette color or misspelled slot
+  was skipped (or rendered as a silent empty CSS var) with no author-facing
+  error. Now `@showcase/core/configSchema.ts` holds **zod schemas** for all four
+  config kinds (theme / kit / blueprint / config.json) — one source of truth used
+  in two places: boot loading (`userConfig.ts` warns each `path: message` issue
+  and skips) and `POST /api/config/validate`, surfaced as **`showcase validate`**
+  (`--json` for CI; non-zero exit on any invalid file). It reads the same
+  user (`~/.showcase`) + repo (`<cwd>/.showcase`) dirs the server loads, posts
+  each file's content, and reports per-file ✓/✗ with located errors. The CSS-color
+  refinement accepts hex / functional notations / `var()` / named colors and
+  rejects garbage; palette + accent objects are `.strict()` so a typo'd slot is
+  flagged. _Note: this tightened boot validation — a partial-palette theme that
+  previously loaded with gaps is now skipped with a clear warning._ Covered by
+  core-schema, API, and CLI tests.
 - **✅ Shipped — expose board state to the agent via MCP resources/prompts.** Both
   transports now advertise `resources` + `prompts` capabilities. Surfaces are
   browsable/attachable as `showcase://surface/<id>` resources (`resources/list` +

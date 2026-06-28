@@ -2288,6 +2288,51 @@ test("uploads an asset via base64 JSON and serves the exact bytes", async () => 
   assert.deepEqual([...new Uint8Array(await served.arrayBuffer())], [137, 80, 78, 71, 0, 255]);
 });
 
+test("GET /api/board tallies the board and POST /api/board/gc reclaims orphans", async () => {
+  const app = makeApp();
+  // An uploaded-but-never-referenced asset is an orphan (no surface points at it).
+  const up = await app.request(
+    "/api/assets",
+    json({ data: b64([1, 2, 3, 4]), contentType: "image/png" }),
+  );
+  assert.equal(up.status, 201);
+
+  const before = (await (await app.request("/api/board")).json()) as any;
+  assert.equal(before.assets.count, 1);
+  assert.equal(before.assets.orphaned, 1);
+  assert.equal(before.assets.orphanedBytes, 4);
+  assert.equal(before.assetBudgetBytes, 2 * 1024 * 1024 * 1024);
+
+  const gc = (await (await app.request("/api/board/gc", { method: "POST" })).json()) as any;
+  assert.equal(gc.removed, 1);
+  assert.equal(gc.bytesFreed, 4);
+  assert.equal(gc.stats.assets.count, 0);
+  assert.equal(gc.stats.assets.orphaned, 0);
+
+  // Idempotent: a second sweep finds nothing.
+  const again = (await (await app.request("/api/board/gc", { method: "POST" })).json()) as any;
+  assert.equal(again.removed, 0);
+});
+
+test("POST /api/config/validate runs the schema; ok pass-through and located issues", async () => {
+  const app = makeApp();
+  const kit = { id: "k", label: "K", css: ".x{}" };
+  const ok = await app.request("/api/config/validate", json({ kind: "kit", value: kit }));
+  assert.equal(ok.status, 200);
+  assert.deepEqual(await ok.json(), { ok: true });
+
+  const bad = await app.request(
+    "/api/config/validate",
+    json({ kind: "kit", value: { id: "k", label: "K" } }), // missing css
+  );
+  const body = (await bad.json()) as any;
+  assert.equal(body.ok, false);
+  assert.ok(body.issues.some((i: any) => i.path === "css"));
+
+  const badKind = await app.request("/api/config/validate", json({ kind: "nope", value: {} }));
+  assert.equal(badKind.status, 400);
+});
+
 test("uploads raw bytes with metadata from the query string", async () => {
   const app = makeApp();
   const res = await app.request("/api/assets?filename=trace.json&kind=trace", {
