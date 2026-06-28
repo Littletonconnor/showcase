@@ -3,16 +3,21 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import {
+  ASSET_RESOURCE_TEMPLATE,
+  ASSET_RESOURCE_URI,
   FEEDBACK_REPLY_NOTE,
   MCP_INSTRUCTIONS,
   MCP_PROMPT_DEFS,
   MCP_SERVER_INFO,
   MCP_TOOL_DESCRIPTIONS,
   promptMessages,
+  SESSION_RESOURCE_TEMPLATE,
+  SESSION_RESOURCE_URI,
   STDIO_MCP_INPUT_SCHEMAS,
   SURFACE_RESOURCE_TEMPLATE,
   SURFACE_RESOURCE_URI,
 } from "@showcase/core/mcpSpec";
+import { encodeBase64 } from "@showcase/core/base64";
 
 // Point at a deployed instance later by setting SHOWCASE_URL.
 const API = process.env.SHOWCASE_URL ?? "http://localhost:8229";
@@ -33,6 +38,25 @@ async function api(path: string, init: RequestInit = {}) {
   const text = await res.text();
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${text}`);
   return text;
+}
+
+// Fetch an asset's raw bytes (for the asset resource's blob). The shared `api()`
+// helper reads text, which would corrupt binary, so this reads an arrayBuffer and
+// base64-encodes it, carrying the same auth header.
+async function fetchAssetBlob(id: string): Promise<{ contentType: string; blob: string }> {
+  const headers: Record<string, string> = {};
+  if (TOKEN) headers.authorization = `Bearer ${TOKEN}`;
+  let res: Response;
+  try {
+    res = await fetch(`${API}/a/${id}`, { headers });
+  } catch {
+    throw new Error(`showcase server not reachable at ${API}`);
+  }
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return {
+    contentType: res.headers.get("content-type") ?? "application/octet-stream",
+    blob: encodeBase64(new Uint8Array(await res.arrayBuffer())),
+  };
 }
 
 const text = (value: unknown) => ({
@@ -392,6 +416,99 @@ server.registerResource(
         },
       ],
     };
+  },
+);
+
+// The session (this conversation's board) browsable as showcase://session/<id>:
+// its metadata + a surface index. list/read both resolve against the HTTP API
+// (this server holds no store), scoped to the current session.
+server.registerResource(
+  "session",
+  new ResourceTemplate(SESSION_RESOURCE_TEMPLATE, {
+    list: async () => {
+      if (!sessionId) return { resources: [] };
+      try {
+        const sessions = JSON.parse(await api("/api/sessions"));
+        const s = sessions.find((x: any) => x.id === sessionId);
+        if (!s) return { resources: [] };
+        return {
+          resources: [
+            {
+              uri: `${SESSION_RESOURCE_URI}${s.id}`,
+              name: s.title ?? s.id,
+              mimeType: "application/json",
+            },
+          ],
+        };
+      } catch (err) {
+        if (!sessionGone(err)) throw err;
+        sessionId = null;
+        return { resources: [] };
+      }
+    },
+  }),
+  { title: "showcase session", description: "A session's metadata and surface index, by id" },
+  async (uri, { id }) => {
+    const sessions = JSON.parse(await api("/api/sessions"));
+    const s = sessions.find((x: any) => x.id === id);
+    if (!s) throw new Error(`no session ${id}`);
+    const surfaces = JSON.parse(await api(`/api/sessions/${id}/surfaces`));
+    return {
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: "application/json",
+          text: JSON.stringify(
+            {
+              id: s.id,
+              title: s.title,
+              agent: s.agent,
+              ...(s.blueprint ? { blueprint: s.blueprint } : {}),
+              ...(s.theme ? { theme: s.theme } : {}),
+              url: `${API}/session/${s.id}`,
+              surfaces: surfaces.map((su: any) => ({
+                id: su.id,
+                title: su.title,
+                version: su.version,
+              })),
+            },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  },
+);
+
+// Uploaded assets browsable as showcase://asset/<id>: list this session's asset
+// metadata; read returns the bytes as a base64 blob (the protocol-native attach).
+server.registerResource(
+  "asset",
+  new ResourceTemplate(ASSET_RESOURCE_TEMPLATE, {
+    list: async () => {
+      if (!sessionId) return { resources: [] };
+      try {
+        const assets = JSON.parse(await api(`/api/sessions/${sessionId}/assets`));
+        return {
+          resources: assets.map((a: any) => ({
+            uri: `${ASSET_RESOURCE_URI}${a.id}`,
+            name: a.id,
+            description: `${a.contentType} · ${a.byteLength} bytes`,
+            mimeType: a.contentType,
+          })),
+        };
+      } catch (err) {
+        if (!sessionGone(err)) throw err;
+        sessionId = null;
+        return { resources: [] };
+      }
+    },
+  }),
+  { title: "showcase asset", description: "An uploaded asset's bytes, by id" },
+  async (uri, { id }) => {
+    const { contentType, blob } = await fetchAssetBlob(String(id));
+    return { contents: [{ uri: uri.href, mimeType: contentType, blob }] };
   },
 );
 

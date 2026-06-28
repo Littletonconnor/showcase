@@ -1892,6 +1892,120 @@ test("mcp read-back: get_surface tool + surface resources + recipe prompts", asy
   assert.ok(badPrompt.error);
 });
 
+test("mcp tools/call validates arguments and returns a structured -32602", async () => {
+  const app = makeApp();
+
+  // Missing required `title`/`parts` is a JSON-RPC params error naming the field,
+  // not a stringly-typed failure deep in the flow.
+  const bad = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(1, "tools/call", { name: "publish_surface", arguments: { parts: [] } }),
+    )
+  ).json()) as any;
+  assert.equal(bad.error.code, -32602);
+  assert.match(bad.error.message, /publish_surface/);
+  assert.match(bad.error.message, /title/);
+
+  // A bad enum (verdict) is caught the same way.
+  const badEnum = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(2, "tools/call", {
+        name: "publish_decisions",
+        arguments: { brief: "x", verdict: "maybe", decisions: [], manifest: [] },
+      }),
+    )
+  ).json()) as any;
+  assert.equal(badEnum.error.code, -32602);
+  assert.match(badEnum.error.message, /verdict/);
+
+  // A part kind beyond the advertised schema (chart) still passes the gate — part
+  // validation is left to the lenient coercion layer, not the input gate.
+  const chart = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(3, "tools/call", {
+        name: "publish_surface",
+        arguments: {
+          title: "Chart",
+          parts: [{ kind: "chart", chartType: "bar", x: "t", y: "v", data: [{ t: "a", v: 1 }] }],
+        },
+      }),
+    )
+  ).json()) as any;
+  assert.equal(chart.result.isError, undefined);
+});
+
+test("mcp session + asset resources: list and read both", async () => {
+  const app = makeApp();
+
+  // A surface (so the session is non-empty) and an uploaded asset.
+  const published = JSON.parse(
+    (
+      (await (
+        await app.request(
+          "/mcp",
+          mcpCall(1, "tools/call", {
+            name: "publish_snippet",
+            arguments: { title: "Board", html: "<p>x</p>" },
+          }),
+        )
+      ).json()) as any
+    ).result.content[0].text,
+  );
+  const sessionId = published.sessionId as string;
+  const asset = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(2, "tools/call", {
+        name: "upload_asset",
+        arguments: { data: b64([1, 2, 3, 4]), contentType: "image/png", session: sessionId },
+      }),
+    )
+  ).json()) as any;
+  const assetId = JSON.parse(asset.result.content[0].text).id as string;
+
+  // resources/list now carries session and asset rows alongside surfaces.
+  const resources = (await (await app.request("/mcp", mcpCall(3, "resources/list"))).json()) as any;
+  const uris = resources.result.resources.map((r: any) => r.uri);
+  assert.ok(uris.includes(`showcase://session/${sessionId}`), "session resource listed");
+  assert.ok(uris.includes(`showcase://asset/${assetId}`), "asset resource listed");
+
+  // templates/list advertises all three kinds.
+  const templates = (await (
+    await app.request("/mcp", mcpCall(4, "resources/templates/list"))
+  ).json()) as any;
+  const tmpls = templates.result.resourceTemplates.map((t: any) => t.uriTemplate);
+  assert.ok(tmpls.includes("showcase://session/{id}"));
+  assert.ok(tmpls.includes("showcase://asset/{id}"));
+
+  // Reading the session returns its metadata + a surface index.
+  const sessionRead = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(5, "resources/read", { uri: `showcase://session/${sessionId}` }),
+    )
+  ).json()) as any;
+  const sessionBody = JSON.parse(sessionRead.result.contents[0].text);
+  assert.equal(sessionBody.id, sessionId);
+  assert.equal(sessionBody.surfaces[0].id, published.id);
+
+  // Reading the asset returns the bytes as a base64 blob with its content type.
+  const assetRead = (await (
+    await app.request("/mcp", mcpCall(6, "resources/read", { uri: `showcase://asset/${assetId}` }))
+  ).json()) as any;
+  const content = assetRead.result.contents[0];
+  assert.equal(content.mimeType, "image/png");
+  assert.equal(content.blob, b64([1, 2, 3, 4]));
+
+  // A missing session/asset id is a clean params error, not a crash.
+  const missing = (await (
+    await app.request("/mcp", mcpCall(7, "resources/read", { uri: "showcase://asset/nope" }))
+  ).json()) as any;
+  assert.ok(missing.error);
+});
+
 test("DELETE /api/surfaces/:id removes the surface", async () => {
   const app = makeApp();
   const created = (await (

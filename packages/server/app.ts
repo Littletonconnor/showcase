@@ -1483,6 +1483,24 @@ export function createApp({
   app.get("/api/sessions/:id/surfaces", listSessionSurfaces);
   app.get("/api/sessions/:id/snippets", listSessionSurfaces); // legacy alias
 
+  // Asset METADATA for a session (never the bytes — those serve at /a/:id). Backs
+  // the stdio MCP asset-resource listing, which can't reach the store directly.
+  // Owner-scoped (asset data), like /api/board.
+  app.get("/api/sessions/:id/assets", async (c) => {
+    const assets = await store.listAssets(c.req.param("id"));
+    return c.json(
+      assets.map((a) => ({
+        id: a.id,
+        sessionId: a.sessionId,
+        kind: a.kind,
+        contentType: a.contentType,
+        byteLength: a.byteLength,
+        filename: a.filename,
+        createdAt: a.createdAt,
+      })),
+    );
+  });
+
   // Static export: a self-contained read-only .html of a whole session (surfaces
   // + comments + assets inlined) that renders with no server. The viewer reads
   // the inlined bundle in place of `/api/*` and runs read-only — so this is how

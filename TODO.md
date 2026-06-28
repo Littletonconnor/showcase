@@ -578,17 +578,33 @@ already advertises **resources** (`showcase://surface/<id>`) and **prompts**
 - **One schema, two transports** ✅ — `mcpSpec.ts` now lives in `@showcase/core`
   as the single source of truth for tool schemas + field docs + prompt text; both
   the stdio server (`packages/mcp`) and `mcpHttp.ts` import it from there.
-- **Typed + validated** — every tool input/output backed by a `zod` schema with
-  structured, actionable error responses (not stringly-typed failures). _(Remaining.)_
-- **Round-trip completeness** — `get_surface` (content read-back) is shipped; extend
-  resources to **sessions** and **assets**, and confirm `update_surface` in-place
-  revision stays the iterate path. Keep tool descriptions excellent — the agent's
-  behavior is downstream of them.
-- **Per-tool tests** on both transports (extend `test/api.test.ts`'s "mcp read-back"
-  to cover each tool + resource + prompt), so the spec can't drift from either
-  transport.
+- **Typed + validated** ✅ — the stdio transport already validated via the SDK;
+  the hand-rolled streamable-HTTP transport now does too. `mcpSpec.ts` exports
+  `HTTP_MCP_TOOL_SCHEMAS` (one zod schema per tool, reusing the stdio shapes +
+  the HTTP routing envelope) and `validateToolInput`/`formatZodIssues`; `mcpHttp.ts`
+  validates each `tools/call` before dispatch and returns a structured
+  **`-32602 invalid arguments for <tool>: <field>: <issue>`** instead of a
+  stringly-typed failure deep in a flow. Part-bearing fields (`parts`,
+  `decisions`, `manifest`, preset bodies) stay LOOSE on purpose — the publish flow
+  and `coerceReview` already coerce/validate them leniently — so the gate checks
+  the envelope + scalar enums without false-rejecting a valid chart/code/json part.
+- **Round-trip completeness** ✅ — resources now cover **sessions**
+  (`showcase://session/<id>` → metadata + surface index) and **assets**
+  (`showcase://asset/<id>` → bytes as a base64 blob) on BOTH transports, alongside
+  the existing surfaces; `resources/templates/list` advertises all three. A new
+  owner-scoped `GET /api/sessions/:id/assets` (metadata only) backs the stdio
+  asset listing (the thin client can't reach the store); stdio asset reads fetch
+  the bytes via an authed binary `fetchAssetBlob`. `get_surface` + `update_surface`
+  remain the read→revise iterate path.
+- _Remaining (optional):_ extend the per-tool test matrix to the stdio transport
+  process directly (the HTTP transport + shared core are covered in
+  `test/api.test.ts`), and keep tool descriptions sharp.
+- **Per-tool tests** ✅ (HTTP) — `test/api.test.ts` covers the input-validation
+  gate (missing field, bad enum, loose-part pass-through) and the session/asset
+  resource list + read; the stdio-process matrix is the optional remainder above.
 - Consider, only if a need shows up: **elicitation/sampling** for the comment→agent
-  loop, and an MCP-level health/capability probe.
+  loop. (An MCP-level health probe is now covered by `/api/health` / `showcase
+  health`.)
 
 ##### Move 3 — best-in-class viewer (`packages/viewer`)
 
