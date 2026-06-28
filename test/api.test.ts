@@ -2314,6 +2314,61 @@ test("GET /api/board tallies the board and POST /api/board/gc reclaims orphans",
   assert.equal(again.removed, 0);
 });
 
+test("GET /api/health reports liveness, the board tally, and version", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "showcase-test-"));
+  const store = new JsonFileStore(join(dir, "data.json"));
+  const app = createApp({
+    store,
+    viewerHtml: "<html>viewer</html>",
+    guideMarkdown: "# guide",
+    setupText: "# setup",
+    playbookText: "# playbook",
+    version: "9.9.9",
+  });
+
+  await app.request("/api/sessions", json({ agent: "test", title: "s" }));
+
+  const h = (await (await app.request("/api/health")).json()) as any;
+  assert.equal(h.status, "ok");
+  assert.equal(h.version, "9.9.9");
+  assert.equal(typeof h.uptimeMs, "number");
+  assert.ok(h.uptimeMs >= 0);
+  assert.equal(h.board.sessions, 1);
+  assert.equal(h.lastError, null);
+});
+
+test("GET /api/health flips to degraded after an unhandled error", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "showcase-test-"));
+  const base = new JsonFileStore(join(dir, "data.json"));
+  // A store whose listSessions throws — so a real route hits onError (which
+  // records lastError) while health's own boardStats path stays healthy.
+  const store = new Proxy(base, {
+    get(target, prop, recv) {
+      if (prop === "listSessions") return async () => Promise.reject(new Error("boom"));
+      const v = Reflect.get(target, prop, recv);
+      return typeof v === "function" ? v.bind(target) : v;
+    },
+  });
+  const app = createApp({
+    store,
+    viewerHtml: "<html>viewer</html>",
+    guideMarkdown: "# guide",
+    setupText: "# setup",
+    playbookText: "# playbook",
+  });
+
+  const healthy = (await (await app.request("/api/health")).json()) as any;
+  assert.equal(healthy.status, "ok");
+
+  const bad = await app.request("/api/sessions");
+  assert.equal(bad.status, 500);
+
+  const h = (await (await app.request("/api/health")).json()) as any;
+  assert.equal(h.status, "degraded");
+  assert.equal(h.lastError.message, "boom");
+  assert.equal(typeof h.lastError.at, "string");
+});
+
 test("POST /api/config/validate runs the schema; ok pass-through and located issues", async () => {
   const app = makeApp();
   const kit = { id: "k", label: "K", css: ".x{}" };

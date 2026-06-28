@@ -83,6 +83,7 @@ for (const cmd of [
   "list",
   "kits",
   "gc",
+  "health",
   "validate",
 ]) {
   test(`${cmd} --help prints usage and exits 0`, async () => {
@@ -214,6 +215,27 @@ test("gc --json emits the structured sweep result", async () => {
     const result = JSON.parse(stdout);
     assert.equal(result.removed, 0);
     assert.ok(result.stats && typeof result.stats.assets.count === "number");
+  } finally {
+    await server.close();
+  }
+});
+
+test("health reports liveness and the board tally", async () => {
+  const server = await serveApp();
+  try {
+    const env = { SHOWCASE_URL: server.url, SHOWCASE_NO_AUTOSTART: "1" };
+
+    const human = await runWith({ env }, "health");
+    assert.equal(human.code, 0);
+    assert.match(human.stdout, /ok · up /);
+    assert.match(human.stdout, /0 sessions/);
+
+    const json = await runWith({ env }, "health", "--json");
+    assert.equal(json.code, 0);
+    const h = JSON.parse(json.stdout);
+    assert.equal(h.status, "ok");
+    assert.equal(typeof h.uptimeMs, "number");
+    assert.equal(h.lastError, null);
   } finally {
     await server.close();
   }

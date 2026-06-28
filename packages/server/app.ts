@@ -180,6 +180,12 @@ export interface AppOptions {
   // reports nothing and the viewer shows no notice.
   version?: string;
   upgradeCommand?: string;
+  // Structured request logging: when set, emit one JSON line per /api (and /mcp)
+  // request — method, path, status, duration. Off by default so the local board
+  // stays quiet and the CLI's auto-start capture isn't polluted; `index.ts` wires
+  // it from SHOWCASE_LOG. The /api/health probe is excluded so a polling monitor
+  // doesn't flood the log with its own heartbeat.
+  requestLog?: boolean;
   // Test seam: replaces the npm-registry/GitHub lookup for the latest release.
   fetchLatestRelease?: () => Promise<LatestRelease | null>;
 }
@@ -552,6 +558,7 @@ export function createApp({
   publicRead,
   version,
   upgradeCommand,
+  requestLog,
   fetchLatestRelease,
 }: AppOptions) {
   // Layer user config over the built-in registries before any route resolves a
@@ -594,12 +601,24 @@ export function createApp({
   const isComposing = (sessionId: string, now: number) =>
     now - (composingAt.get(sessionId) ?? 0) < FEEDBACK_COMPOSING_TTL_MS;
 
+  // When this app was created — the basis for /api/health's uptime. Close enough
+  // to process start: index.ts builds the app immediately before listen().
+  const startedAt = Date.now();
+  // The most recent unhandled error, surfaced (message + when) by /api/health so
+  // a glance at the board status shows whether something has been crashing. The
+  // stack stays server-side (console.error below); only a short message leaks.
+  let lastError: { message: string; at: string } | null = null;
+
   // Last-resort safety net: any handler that throws (rather than returning a
   // status) becomes a clean JSON 500 instead of leaking a stack or a bare crash.
   // Validation rejects bad input with 4xx before this, so reaching here means an
   // unexpected bug — log it so it isn't swallowed silently.
   app.onError((err, c) => {
     console.error("showcase: unhandled error", err);
+    lastError = {
+      message: err instanceof Error ? err.message : String(err),
+      at: new Date().toISOString(),
+    };
     return c.json({ error: "internal error" }, 500);
   });
 
@@ -1067,6 +1086,31 @@ export function createApp({
   const isUnauthenticatedSessionRead = (c: Context): boolean =>
     publicRead === "session" && !isAuthenticated(c);
 
+  // Structured request log (opt-in via requestLog). Outermost so it times the
+  // whole request — auth, body cap, handler — and records the final status even
+  // for a 401/413. One JSON line per /api (and /mcp) request; everything else
+  // (the viewer html, /s/:id renders) is skipped to keep it about the API. The
+  // /api/health probe is excluded so a polling monitor doesn't log its own
+  // heartbeat on every tick.
+  if (requestLog) {
+    app.use("*", async (c, next) => {
+      const path = new URL(c.req.url).pathname;
+      const logged = (path.startsWith("/api") || path === "/mcp") && path !== "/api/health";
+      if (!logged) return next();
+      const start = Date.now();
+      await next();
+      console.log(
+        JSON.stringify({
+          t: new Date().toISOString(),
+          method: c.req.method,
+          path,
+          status: c.res.status,
+          ms: Date.now() - start,
+        }),
+      );
+    });
+  }
+
   // CSRF / forged-feedback guard. The token-less local default authorizes every
   // request, so a malicious web page the user happens to also have open could
   // POST writes to localhost (a "simple" cross-origin request needs no preflight)
@@ -1268,6 +1312,20 @@ export function createApp({
   // Board size + orphaned-asset tally (drives `showcase gc`'s status line and
   // its --dry-run preview). Owner-scoped — not in the publicRead allowlist.
   app.get("/api/board", async (c) => c.json(await store.boardStats()));
+
+  // Liveness + at-a-glance health: uptime, running version, the board tally, and
+  // the last unhandled error (if any). Powers `showcase health` — showcase
+  // dogfooding its own monitoring. Owner-scoped (board counts), so a service
+  // manager probing it carries the token like any other read.
+  app.get("/api/health", async (c) =>
+    c.json({
+      status: lastError ? "degraded" : "ok",
+      uptimeMs: Date.now() - startedAt,
+      version: version || null,
+      board: await store.boardStats(),
+      lastError,
+    }),
+  );
 
   // Reclaim orphaned assets — those no live or historical surface references.
   // Eager upload eviction only fires under budget pressure, so this is the

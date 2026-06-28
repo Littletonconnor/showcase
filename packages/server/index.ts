@@ -103,6 +103,9 @@ const app = createApp({
   publicRead,
   // `npm run dev` sets this; it adds the live-reload endpoint + snippet.
   dev: process.env.SHOWCASE_DEV === "1",
+  // Opt-in structured request log (one JSON line per API request) for a service
+  // install — off by default so the local board stays quiet.
+  requestLog: process.env.SHOWCASE_LOG === "1",
   // Update check is off for this personal fork — there is no published
   // "showcase" package to compare against (the public npm package of that
   // name is unrelated). Set SHOWCASE_VERSION to re-enable for manual testing.

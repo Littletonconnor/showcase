@@ -385,11 +385,19 @@ deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
   sandboxed iframes, there's no a11y story: iframe titles, focus order across
   cards, contrast on the tone chips, screen-reader labels on the decision queue. A
   deliberate WCAG pass is table stakes. _Effort: medium._
-- **Operational observability** — the CLI installs showcase as a launchd/systemd
-  service, but there's no `/api/health`, no structured logging, and update-check
-  failures are silent. Add a health endpoint, structured request logging, and a
-  self-rendered "board status" surface (uptime, surface/asset counts, store size,
-  last error) — showcase dogfooding its own monitoring. _Effort: low–medium._
+- **✅ Shipped — Operational observability.** The CLI installs showcase as a
+  launchd/systemd service but had no liveness signal. Now an owner-scoped
+  **`GET /api/health`** reports `{ status, uptimeMs, version, board, lastError }`
+  — liveness plus the board tally plus the last unhandled error (message + when;
+  `app.onError` records it, `status` flips `ok`→`degraded`), surfaced as
+  **`showcase health`** (human one-liner + `--json`). **Structured request
+  logging** is an opt-in middleware (one JSON line per `/api`/`/mcp` request —
+  method · path · status · ms; `/api/health` excluded so a polling monitor
+  doesn't flood it), wired from `SHOWCASE_LOG=1` in `index.ts` and off by default
+  so the local board stays quiet. Covered by API + CLI tests. _Remaining (cut for
+  now): a self-rendered "board status" surface — `showcase health` covers the
+  need; revisit only if an in-board monitoring card is wanted. Update-check
+  failures staying silent is intentional (this fork has no published release)._
 - **Tighten the html-part CSP + write down the threat model** — the sandbox
   invariant is solid. The CDN allowlist and `connect-src` are now gone (parts run
   inline-only with no external origins), but `img/media` still allow wide
