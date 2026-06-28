@@ -114,6 +114,7 @@ const TOOL_TO_PRESET: Record<string, string> = {
   publish_status: "status",
   publish_architecture: "architecture",
   publish_product_demo: "product-demo",
+  publish_product_direction: "wealthfront-product",
 };
 
 export function registerMcp(app: Hono, deps: McpDeps) {
@@ -373,7 +374,8 @@ export function registerMcp(app: Hono, deps: McpDeps) {
       case "publish_design_doc":
       case "publish_status":
       case "publish_architecture":
-      case "publish_product_demo": {
+      case "publish_product_demo":
+      case "publish_product_direction": {
         const preset = TOOL_TO_PRESET[name];
         const result = await deps.publishPreset({
           preset,

@@ -498,6 +498,125 @@ export function renderProductDemo(input: unknown): RenderedPreset {
   return { title, parts: [htmlPart(html)], badge: { tone: "info", label: "Demo" } };
 }
 
+// --- wealthfront product direction ------------------------------------------
+
+// Tabler icon by short name (with or without the `ti-` prefix); "" → no icon.
+const ti = (name: unknown): string => {
+  const n = esc(name).replace(/^ti-/, "");
+  return n ? `<i class="ti ti-${n}"></i>` : "";
+};
+
+// Option `tag` kind → the kit's tag class. The vocabulary the deck weighs
+// alternatives by: a future direction, an interrupting/shortcut flow, a
+// non-blocking one, or a cost trade-off.
+const PD_TAG: Record<string, string> = {
+  future: "future",
+  interrupts: "intr",
+  shortcut: "intr",
+  "non-blocking": "flow",
+  cost: "cost",
+};
+
+// The Wealthfront product-direction surface: visualize a product and weigh
+// options with pros & cons, ending in the signature "Leaning & why" call. The
+// renderer owns the SPINE (direction → detail → alternatives → comparison →
+// phasing → leaning) so every surface comes out identical; the two freehand
+// slots — `view` (the bespoke product mockup) and each alternative's `mockup` —
+// are raw html the agent authors with the kit's classes, passed straight through
+// into the sandboxed iframe like any html part. Pinned to the wealthfront
+// blueprint (theme + `.wf` kit), so all color/type/spacing resolve from tokens.
+export function renderProductDirection(input: unknown): RenderedPreset {
+  const d = obj(input);
+  const title = s(d.title) || "Product direction";
+  const direction = s(d.direction);
+  const heading = s(d.heading) || title;
+  const sub = s(d.sub);
+  const view = s(d.view); // raw mockup html — the one bespoke slot
+
+  const detail = arr(d.detail)
+    .map((it) => {
+      const o = obj(it);
+      return `<div class="det"><div class="dh">${ti(o.icon) || ti("point")}${esc(o.title)}</div><div class="dd">${fmt(o.body)}</div></div>`;
+    })
+    .join("");
+
+  const alts = arr(d.alternatives)
+    .map((it) => {
+      const o = obj(it);
+      const tag = obj(o.tag);
+      const tagHtml = s(tag.label)
+        ? `<span class="tag ${PD_TAG[s(tag.kind)] ?? "future"}">${esc(tag.label)}</span>`
+        : "";
+      const key = s(o.key) ? `${esc(o.key)} · ` : "";
+      const mockup = s(o.mockup) ? `<div class="ostage">${s(o.mockup)}</div>` : "";
+      const pro = s(o.pro) ? `<div class="pro"><i class="ti ti-check"></i>${fmt(o.pro)}</div>` : "";
+      const con = s(o.con) ? `<div class="con"><i class="ti ti-minus"></i>${fmt(o.con)}</div>` : "";
+      const pc = pro || con ? `<div class="pc">${pro}${con}</div>` : "";
+      return `<div class="opt${o.lean ? " lean" : ""}"><div class="oh">${ti(o.icon)}${key}${esc(o.title)}${tagHtml}</div>${mockup}${pc}</div>`;
+    })
+    .join("");
+
+  // Comparison table — `winner` is the 1-based option column to highlight (the
+  // label column is 0); each row is {label, cells[]} aligned to headers[1..].
+  const cmp = obj(d.comparison);
+  const headers = arr(cmp.headers).map(s);
+  const winner = num(cmp.winner);
+  let table = "";
+  if (headers.length > 1) {
+    const head = headers
+      .map((h, i) => `<th${i === winner ? ' class="win"' : ""}>${esc(h)}</th>`)
+      .join("");
+    const rows = arr(cmp.rows)
+      .map((r) => {
+        const o = obj(r);
+        const cells = arr(o.cells)
+          .map((cell, i) => `<td${i + 1 === winner ? ' class="win"' : ""}>${fmt(cell)}</td>`)
+          .join("");
+        return `<tr><th>${esc(o.label)}</th>${cells}</tr>`;
+      })
+      .join("");
+    table = `<table><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  const PHASE_ICON: Record<string, string> = { now: "bolt", next: "arrow-right", later: "clock" };
+  const phaseLanes = arr(d.phases)
+    .map((p) => {
+      const o = obj(p);
+      const when = s(o.when).toLowerCase();
+      const cls = when === "now" || when === "next" ? when : "later";
+      const label = s(o.title) || cls.charAt(0).toUpperCase() + cls.slice(1);
+      const items = arr(o.items)
+        .map((x) => `<div class="pi"><i class="ti ti-point"></i>${fmt(x)}</div>`)
+        .join("");
+      return `<div class="phase ${cls}"><div class="phh"><i class="ti ti-${PHASE_ICON[cls]}"></i>${esc(label)}</div><div class="phb">${items}</div></div>`;
+    })
+    .join("");
+  const phases = phaseLanes ? `<div class="phases">${phaseLanes}</div>` : "";
+
+  // The payoff — never omitted; degrades to the heading if the agent sends none.
+  const lean = obj(d.leaning);
+  const verdict = s(lean.verdict)
+    ? `<span class="verdict"><i class="ti ti-check"></i>${esc(lean.verdict)}</span> `
+    : "";
+  const rec = s(lean.recommendation) || heading;
+  const why = s(lean.why) ? ` <b>Why:</b> ${fmt(lean.why)}` : "";
+  const leanAlts = s(lean.alternatives) ? ` ${fmt(lean.alternatives)}` : "";
+  const leaning = `<div class="lean"><i class="ti ti-star-filled lic"></i><div class="lt"><div class="lh">Leaning &amp; why</div>${verdict}<b>${fmt(rec)}</b>${why}${leanAlts}</div></div>`;
+
+  const html = `<div class="wf">
+  ${direction ? `<div class="dirlead" data-section="direction"><span class="pchip">Direction</span>${fmt(direction)}</div>` : ""}
+  <h2>${fmt(heading)}</h2>
+  ${sub ? `<p class="sub">${fmt(sub)}</p>` : ""}
+  ${view ? `<div data-section="view">${view}</div>` : ""}
+  ${detail ? `<div class="detgrid" data-section="detail">${detail}</div>` : ""}
+  ${alts ? `<div class="altlead" data-section="alternatives"><i class="ti ti-layout-grid"></i>Alternatives weighed</div><div class="alts">${alts}</div>` : ""}
+  ${table ? `<div data-section="comparison" style="margin-top:14px">${table}</div>` : ""}
+  ${phases}
+  ${leaning}
+</div>`;
+  return { title, parts: [htmlPart(html)], badge: { tone: "info", label: "Direction" } };
+}
+
 // Preset id → renderer. The publish flow (app.ts) pins the matching blueprint,
 // which supplies the theme + kits; the renderer only emits the body.
 export const PRESET_RENDERERS: Record<string, (input: unknown) => RenderedPreset> = {
@@ -507,4 +626,5 @@ export const PRESET_RENDERERS: Record<string, (input: unknown) => RenderedPreset
   status: renderStatus,
   architecture: renderArchitecture,
   "product-demo": renderProductDemo,
+  "wealthfront-product": renderProductDirection,
 };

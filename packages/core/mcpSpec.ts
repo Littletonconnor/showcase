@@ -35,7 +35,8 @@ export const MCP_INSTRUCTIONS =
   "GET /api/blueprints. Several presets also have a TAILORED tool that takes typed fields and renders a " +
   "fixed layout (so every instance looks identical, like publish_decisions does for a review): " +
   "publish_postmortem, publish_dashboard, publish_design_doc, publish_status, publish_architecture, " +
-  "publish_product_demo. Prefer the tailored tool when one fits; fall back to publish_surface for free-form. " +
+  "publish_product_demo, and publish_product_direction (the 'wf product style' — visualize a product and weigh " +
+  "options with pros & cons, ending in a 'Leaning & why' call). Prefer the tailored tool when one fits; fall back to publish_surface for free-form. " +
   "REFERENCING A SURFACE: every card shows a copy-to-clipboard ref in its header. The user copies it — " +
   "it carries the surface id AND title — and pastes it to you in YOUR TERMINAL, where the conversation " +
   "happens. To act on a referenced surface, call get_surface with its id to read its CURRENT full " +
@@ -285,6 +286,8 @@ export const MCP_TOOL_DESCRIPTIONS = {
     "Publish a system ARCHITECTURE overview as a structured surface. Pass: components[]{name,role} (the server auto-draws a pipeline diagram from the names), overview, dataFlow[], decisions, scale. Fixed layout: overview diagram → components + data flow → key decisions → scale & failure.",
   publishProductDemo:
     "Publish a branded PRODUCT DEMO walkthrough as a structured, stepped surface (hook → problem → feature → proof → cta). Pass: hook{headline,sub,stats[]}, problem{text,stats[]}, featureTitle + features[]{title,body}, proof{stats[],quote,quoteBy}, cta{headline,body,actions[],tags[]}. The server renders the animate-kit stepper so the demo plays/scrubs the same way every time.",
+  publishProductDirection:
+    "THE tool for the 'wf product style' — visualize what a product looks like and weigh options with pros & cons, ending in a 'Leaning & why' recommendation. You supply typed fields; the server renders the fixed Wealthfront product-direction layout (branded `.wf` spine: Direction eyebrow → product view → detail → alternatives → comparison → phasing → leaning) so EVERY surface comes out consistent and polished — never hand-roll this in html. Pass: direction (the one-line likely path, shown in the 'Direction' chip), heading (the serif title), sub, view (RAW html of the bespoke product mockup — the ONE freehand slot; author it with the kit's classes: a `.frame` app mockup with `.side`/`.main`/`.body`, or a `.flow` pipeline), detail[]{icon,title,body}, alternatives[]{key,icon,title,tag{label,kind:future|interrupts|non-blocking|shortcut|cost},mockup(optional raw html),pro,con,lean(true on the recommended one)}, comparison{headers[],rows[]{label,cells[]},winner(1-based option column)}, phases[]{when:now|next|later,title,items[]}, and leaning{verdict,recommendation,why,alternatives} (the payoff — always include). Pins the wealthfront theme + kit. For free-form product art that doesn't fit this spine, fall back to publish_surface with blueprint:\"wealthfront-product\".",
 } as const;
 
 const MCP_BADGE_JSON_SCHEMA = {
@@ -865,6 +868,116 @@ export const HTTP_MCP_TOOLS = [
     },
   },
   {
+    name: "publish_product_direction",
+    description: MCP_TOOL_DESCRIPTIONS.publishProductDirection,
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        direction: {
+          type: "string",
+          description: "The one-line likely path, shown in the 'Direction' chip",
+        },
+        heading: { type: "string", description: "The serif-italic title" },
+        sub: { type: "string" },
+        view: {
+          type: "string",
+          description:
+            "RAW html of the bespoke product mockup (the one freehand slot) — author with kit classes: a .frame app mockup (.side/.main/.body) or a .flow pipeline",
+        },
+        detail: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              icon: {
+                type: "string",
+                description: "Tabler icon name (with or without ti- prefix)",
+              },
+              title: { type: "string" },
+              body: { type: "string" },
+            },
+            required: ["title", "body"],
+          },
+        },
+        alternatives: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              key: { type: "string", description: 'Short label, e.g. "A"' },
+              icon: { type: "string" },
+              title: { type: "string" },
+              tag: {
+                type: "object",
+                properties: {
+                  label: { type: "string" },
+                  kind: {
+                    type: "string",
+                    enum: ["future", "interrupts", "non-blocking", "shortcut", "cost"],
+                  },
+                },
+                required: ["label"],
+              },
+              mockup: { type: "string", description: "Optional raw html of a tiny in-card mockup" },
+              pro: { type: "string" },
+              con: { type: "string" },
+              lean: { type: "boolean", description: "true on the recommended option" },
+            },
+            required: ["title"],
+          },
+        },
+        comparison: {
+          type: "object",
+          properties: {
+            headers: { type: "array", items: { type: "string" } },
+            rows: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  label: { type: "string" },
+                  cells: { type: "array", items: { type: "string" } },
+                },
+                required: ["label", "cells"],
+              },
+            },
+            winner: { type: "number", description: "1-based option column to highlight" },
+          },
+        },
+        phases: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              when: { type: "string", enum: ["now", "next", "later"] },
+              title: { type: "string" },
+              items: { type: "array", items: { type: "string" } },
+            },
+            required: ["when", "items"],
+          },
+        },
+        leaning: {
+          type: "object",
+          properties: {
+            verdict: {
+              type: "string",
+              description: "Short pill text, e.g. 'Recommend the Memory tab'",
+            },
+            recommendation: { type: "string" },
+            why: { type: "string" },
+            alternatives: { type: "string", description: "When each alternative would win" },
+          },
+          required: ["recommendation"],
+        },
+        session: { type: "string", description: d.session },
+        sessionTitle: { type: "string", description: d.sessionTitle },
+        agent: { type: "string", description: d.agent },
+      },
+      required: ["title", "leaning"],
+    },
+  },
+  {
     name: "configure_session",
     description: MCP_TOOL_DESCRIPTIONS.configureSession,
     inputSchema: {
@@ -1182,6 +1295,66 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
       body: z.string().optional(),
       actions: z.array(z.string()).optional(),
       tags: z.array(z.string()).optional(),
+    }),
+    sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
+  },
+  publishProductDirection: {
+    title: z.string(),
+    direction: z
+      .string()
+      .optional()
+      .describe("The one-line likely path, shown in the 'Direction' chip"),
+    heading: z.string().optional().describe("The serif-italic title"),
+    sub: z.string().optional(),
+    view: z
+      .string()
+      .optional()
+      .describe(
+        "RAW html of the bespoke product mockup (the one freehand slot) — kit classes: a .frame app mockup (.side/.main/.body) or a .flow pipeline",
+      ),
+    detail: z
+      .array(z.object({ icon: z.string().optional(), title: z.string(), body: z.string() }))
+      .optional(),
+    alternatives: z
+      .array(
+        z.object({
+          key: z.string().optional(),
+          icon: z.string().optional(),
+          title: z.string(),
+          tag: z
+            .object({
+              label: z.string(),
+              kind: z.enum(["future", "interrupts", "non-blocking", "shortcut", "cost"]).optional(),
+            })
+            .optional(),
+          mockup: z.string().optional(),
+          pro: z.string().optional(),
+          con: z.string().optional(),
+          lean: z.boolean().optional(),
+        }),
+      )
+      .optional(),
+    comparison: z
+      .object({
+        headers: z.array(z.string()).optional(),
+        rows: z.array(z.object({ label: z.string(), cells: z.array(z.string()) })).optional(),
+        winner: z.number().optional().describe("1-based option column to highlight"),
+      })
+      .optional(),
+    phases: z
+      .array(
+        z.object({
+          when: z.enum(["now", "next", "later"]),
+          title: z.string().optional(),
+          items: z.array(z.string()),
+        }),
+      )
+      .optional(),
+    leaning: z.object({
+      verdict: z.string().optional(),
+      recommendation: z.string(),
+      why: z.string().optional(),
+      alternatives: z.string().optional(),
     }),
     sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
   },
