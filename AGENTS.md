@@ -57,7 +57,8 @@ behind enforced boundaries. `core` ← everyone; `cli` talks to `server` over HT
   channel. Two safe paths: build a STRING and hand it to a sandbox iframe
   (`SandboxedPart` for viewer-rendered parts, `renderHtmlPage` at `/s/:id` for
   html parts), or keep it as data and render with React text nodes / attributes
-  (image, trace). Never a third way.
+  (image, trace). Never a third way. The full trust model — sandbox attribute,
+  CSP, the host bridge, auth, and the CSRF guard — is `docs/SECURITY.md`.
 - **`@showcase/core` stays runtime-agnostic — no `node:` imports.** This is the
   package boundary the workspace makes checkable: `scripts/check-core-boundary.mjs`
   fails the lint gate on any `node:` import in core. Node wiring lives in

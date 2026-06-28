@@ -2554,7 +2554,9 @@ test("the surface CSP allows the server origin so assets embed by url", async ()
     await app.request("/api/snippets", json({ html: "<img src=/a/x>" }))
   ).json()) as any;
   const page = await (await app.request(`/s/${snip.id}`)).text();
-  assert.match(page, /img-src https: data: blob: http:\/\/localhost/);
+  assert.match(page, /img-src data: blob: http:\/\/localhost/);
+  // The wildcard https: scheme was dropped — external hosts are an exfil channel.
+  assert.ok(!/img-src[^;]*\bhttps:/.test(page), "no wildcard https: in img-src");
 });
 
 test("asset routes require auth when a token is set", async () => {
