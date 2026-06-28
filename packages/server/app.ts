@@ -3,6 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import { getCookie, setCookie } from "hono/cookie";
 import { streamSSE } from "hono/streaming";
 import { decodeBase64 } from "@showcase/core/base64";
+import { type ConfigKind, CONFIG_KINDS, validateConfig } from "@showcase/core/configSchema";
 import { EventBus } from "@showcase/core/events";
 import { buildExportBundle, exportFilename, renderExportHtml } from "@showcase/core/export";
 import {
@@ -1272,6 +1273,19 @@ export function createApp({
   // Eager upload eviction only fires under budget pressure, so this is the
   // on-demand sweep. Returns { removed, bytesFreed, stats } (post-sweep tally).
   app.post("/api/board/gc", async (c) => c.json(await store.gcAssets()));
+
+  // Validate one parsed config object (theme/kit/blueprint/config) against its
+  // schema — the server-side half of `showcase validate`. Stateless: the CLI
+  // reads each local config file and posts its content here, so the same schema
+  // that gates boot loading powers the preflight. Returns { ok } or
+  // { ok: false, issues: [{ path, message }] }.
+  app.post("/api/config/validate", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object" || !CONFIG_KINDS.includes(body.kind)) {
+      return c.json({ error: `kind must be one of: ${CONFIG_KINDS.join(", ")}` }, 400);
+    }
+    return c.json(validateConfig(body.kind as ConfigKind, body.value));
+  });
 
   // Author a brand theme at runtime from a few SEED colors (the "match my
   // product" path — an agent reads a screenshot, names the brand color(s), and

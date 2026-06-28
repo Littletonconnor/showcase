@@ -2314,6 +2314,25 @@ test("GET /api/board tallies the board and POST /api/board/gc reclaims orphans",
   assert.equal(again.removed, 0);
 });
 
+test("POST /api/config/validate runs the schema; ok pass-through and located issues", async () => {
+  const app = makeApp();
+  const kit = { id: "k", label: "K", css: ".x{}" };
+  const ok = await app.request("/api/config/validate", json({ kind: "kit", value: kit }));
+  assert.equal(ok.status, 200);
+  assert.deepEqual(await ok.json(), { ok: true });
+
+  const bad = await app.request(
+    "/api/config/validate",
+    json({ kind: "kit", value: { id: "k", label: "K" } }), // missing css
+  );
+  const body = (await bad.json()) as any;
+  assert.equal(body.ok, false);
+  assert.ok(body.issues.some((i: any) => i.path === "css"));
+
+  const badKind = await app.request("/api/config/validate", json({ kind: "nope", value: {} }));
+  assert.equal(badKind.status, 400);
+});
+
 test("uploads raw bytes with metadata from the query string", async () => {
   const app = makeApp();
   const res = await app.request("/api/assets?filename=trace.json&kind=trace", {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -73,7 +73,18 @@ const post = (url: string, body: unknown) =>
 // None of these reach the network: --help and option errors resolve in
 // parsing, before any request (no server needs to be running).
 
-for (const cmd of ["serve", "publish", "diff", "update", "wait", "watch", "list", "kits", "gc"]) {
+for (const cmd of [
+  "serve",
+  "publish",
+  "diff",
+  "update",
+  "wait",
+  "watch",
+  "list",
+  "kits",
+  "gc",
+  "validate",
+]) {
   test(`${cmd} --help prints usage and exits 0`, async () => {
     const { code, stdout, stderr } = await run(cmd, "--help");
     assert.equal(code, 0);
@@ -203,6 +214,80 @@ test("gc --json emits the structured sweep result", async () => {
     const result = JSON.parse(stdout);
     assert.equal(result.removed, 0);
     assert.ok(result.stats && typeof result.stats.assets.count === "number");
+  } finally {
+    await server.close();
+  }
+});
+
+const fullPalette = {
+  bg: "#fff",
+  panel: "#eee",
+  surface: "#fff",
+  text: "#111",
+  muted: "#666",
+  faint: "#999",
+  border: "#ddd",
+  border2: "#ccc",
+  hover: "#f5f5f5",
+  info: { bg: "#eef", text: "#33c", border: "#aac" },
+  success: { bg: "#efe", text: "#2a2", border: "#9c9" },
+  warning: { bg: "#ffd", text: "#960", border: "#ec6" },
+  danger: { bg: "#fee", text: "#c33", border: "#eaa" },
+};
+
+test("validate reports per-file errors over the config dir and exits non-zero", async () => {
+  const server = await serveApp();
+  try {
+    const cfg = mkdtempSync(join(tmpdir(), "showcase-validate-"));
+    mkdirSync(join(cfg, "themes"), { recursive: true });
+    mkdirSync(join(cfg, "kits"), { recursive: true });
+    writeFileSync(
+      join(cfg, "themes", "good.json"),
+      JSON.stringify({ id: "acme", label: "Acme", light: fullPalette, dark: fullPalette }),
+    );
+    // bad color in the light palette
+    writeFileSync(
+      join(cfg, "themes", "bad.json"),
+      JSON.stringify({
+        id: "x",
+        label: "X",
+        light: { ...fullPalette, bg: "blue-ish" },
+        dark: fullPalette,
+      }),
+    );
+    writeFileSync(join(cfg, "kits", "broken.json"), "{ not json");
+
+    const env = {
+      SHOWCASE_URL: server.url,
+      SHOWCASE_NO_AUTOSTART: "1",
+      SHOWCASE_CONFIG: cfg,
+      SHOWCASE_REPO_CONFIG: cfg, // single combined dir -> deduped, checked once
+    };
+    const { code, stdout } = await runWith({ env }, "validate");
+    assert.equal(code, 1); // any invalid file -> non-zero exit
+    assert.match(stdout, /✓ .*good\.json/);
+    assert.match(stdout, /✗ .*bad\.json/);
+    assert.match(stdout, /light\.bg: must be a CSS color/);
+    assert.match(stdout, /invalid JSON/);
+    assert.match(stdout, /3 files checked · 1 valid · 2 invalid/);
+  } finally {
+    await server.close();
+  }
+});
+
+test("validate on an empty config dir reports nothing to check and exits 0", async () => {
+  const server = await serveApp();
+  try {
+    const cfg = mkdtempSync(join(tmpdir(), "showcase-validate-empty-"));
+    const env = {
+      SHOWCASE_URL: server.url,
+      SHOWCASE_NO_AUTOSTART: "1",
+      SHOWCASE_CONFIG: cfg,
+      SHOWCASE_REPO_CONFIG: cfg,
+    };
+    const { code, stdout } = await runWith({ env }, "validate");
+    assert.equal(code, 0);
+    assert.match(stdout, /No config files found/);
   } finally {
     await server.close();
   }

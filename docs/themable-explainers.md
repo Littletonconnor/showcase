@@ -204,6 +204,15 @@ modes:
 - _Author fresh_ — drop a new JSON file. No rebuild, no source edit. Picked up at
   boot (optionally hot-watched, like the viewer dev loop).
 
+**Validate before you ship.** A malformed file is skipped at boot with a warning,
+but you don't want to discover that by a missing theme. Run **`showcase validate`**
+— it checks every `*.json` under the user (`~/.showcase`) and repo
+(`<cwd>/.showcase`) dirs against the same schema the server loads them with, and
+prints per-file `✓`/`✗` with the exact `path: message` for each error (a bad
+palette color, a misspelled slot, an unknown `config.json` key). It exits non-zero
+on any failure, so it doubles as a pre-commit / CI gate; `--json` emits the
+structured report. The schema lives in `@showcase/core/configSchema.ts`.
+
 ### Trust boundary (why user CSS/JS is safe here)
 
 Kits already inject **JS** into rendered html parts — and that's fine, because the
