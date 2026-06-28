@@ -1,0 +1,19 @@
+{
+  "name": "@showcase/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./*.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.0",
+    "@showcase/core": "workspace:*",
+    "@showcase/viewer": "workspace:*",
+    "hono": "^4.7.0"
+  }
+}

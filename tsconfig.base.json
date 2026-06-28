@@ -1,0 +1,20 @@
+{
+  // Shared compiler options for the type-stripped packages (core/server/mcp/cli).
+  // Each package's tsconfig.json extends this; the viewer is the one Vite-built
+  // exception and carries its own DOM/bundler config.
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2023"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  }
+}

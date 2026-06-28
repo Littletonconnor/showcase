@@ -6,8 +6,8 @@ import {
   escapeHtml,
   renderHtmlPage,
   renderSandboxedPart,
-} from "../server/surfacePage.ts";
-import { themeById } from "../server/themes.ts";
+} from "@showcase/core/surfacePage";
+import { themeById } from "@showcase/core/themes";
 
 const ORIGIN = "http://localhost:4000";
 
@@ -54,6 +54,20 @@ test("the CSP locks down default-src and permits no external host", () => {
     /media-src[^;]*\bhttp:\/\/localhost:4000\b/.test(policy),
     "origin missing from media-src",
   );
+});
+
+test("img/media carry no wildcard scheme — only data:/blob:/origin", () => {
+  const page = renderHtmlPage({ title: "t", html: "<p>x</p>", origin: ORIGIN });
+  const d = cspDirectives(page);
+  for (const key of ["img-src", "media-src"]) {
+    const sources = d[key] ?? [];
+    assert.deepEqual(
+      sources.filter((s) => s.endsWith(":")).sort(),
+      ["blob:", "data:"],
+      `${key} must allow only data:/blob: schemes, not a wildcard https:/http:`,
+    );
+    assert.ok(sources.includes(ORIGIN), `${key} keeps the board origin for uploaded assets`);
+  }
 });
 
 test("the CSP never permits same-origin escapes, eval, or a wildcard host", () => {
@@ -181,6 +195,12 @@ test("renderSandboxedPart locks script-src to the inline bridge and omits connec
   assert.ok(!("connect-src" in d), "no connect-src");
   // uploaded images still embed by absolute origin URL
   assert.ok(d["img-src"]?.includes(ORIGIN), "origin allowed for images");
+  // but not from an arbitrary external host (URL-borne exfil channel)
+  assert.deepEqual(
+    (d["img-src"] ?? []).filter((s) => s.endsWith(":")).sort(),
+    ["blob:", "data:"],
+    "rich img-src allows no wildcard https:/http: scheme",
+  );
 });
 
 test("html and rich parts both lock script-src to the inline bridge — no CDN sources", () => {

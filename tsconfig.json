@@ -1,22 +1,11 @@
 {
+  // Repo-level program for the cross-package test suite (test/). Each package
+  // has its own tsconfig; this one covers the tests that import the @showcase/*
+  // packages by name. The `@/*` alias is mirrored here (inert for tests) so the
+  // shadcn CLI, which reads the default tsconfig, still resolves viewer paths.
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "target": "es2023",
-    "lib": ["es2023"],
-    "module": "nodenext",
-    "moduleResolution": "nodenext",
-    "types": ["node"],
-    "strict": true,
-    "noEmit": true,
-    "allowImportingTsExtensions": true,
-    "erasableSyntaxOnly": true,
-    "verbatimModuleSyntax": true,
-    "resolveJsonModule": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    // Viewer alias mirrored here (inert for server code, which never imports
-    // `@/`) so the shadcn CLI — which reads the default tsconfig — places
-    // generated components under viewer/src instead of a literal `@/` dir.
-    "paths": { "@/*": ["./viewer/src/*"] }
+    "paths": { "@/*": ["./packages/viewer/src/*"] }
   },
-  "include": ["server", "mcp", "test", "cli"]
+  "include": ["test"]
 }

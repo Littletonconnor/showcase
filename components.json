@@ -5,7 +5,7 @@
   "tsx": true,
   "tailwind": {
     "config": "",
-    "css": "viewer/src/index.css",
+    "css": "packages/viewer/src/index.css",
     "baseColor": "neutral",
     "cssVariables": true,
     "prefix": ""

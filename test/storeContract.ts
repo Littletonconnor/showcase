@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { HISTORY_LIMIT, htmlPart, type Store } from "../server/types.ts";
+import { HISTORY_LIMIT, htmlPart, type Store } from "@showcase/core/types";
 
 const bytes = (...values: number[]) => new Uint8Array(values);
 
@@ -613,5 +613,43 @@ export function runStoreContract(name: string, makeStore: () => Store | Promise<
     const got = await store.getAsset(asset.id);
     assert.ok(got, "referenced asset should survive its owning session's deletion");
     assert.deepEqual([...got.data], [7, 7, 7]);
+  });
+
+  contract("gcAssets reclaims orphaned assets and spares referenced ones", async (store) => {
+    const session = await store.createSession({ agent: "gc" });
+    const orphan = await store.putAsset({
+      sessionId: session.id,
+      kind: "image",
+      contentType: "image/png",
+      data: bytes(1, 2, 3, 4),
+    });
+    const kept = await store.putAsset({
+      sessionId: session.id,
+      kind: "image",
+      contentType: "image/png",
+      data: bytes(5, 6),
+    });
+    assert.ok(orphan && kept);
+    await store.createSurface({
+      sessionId: session.id,
+      parts: [{ kind: "image", assetId: kept.id }],
+    });
+
+    // Before: one orphan (the unreferenced 4-byte blob) shows in the tally.
+    const before = await store.boardStats();
+    assert.equal(before.assets.count, 2);
+    assert.equal(before.assets.orphaned, 1);
+    assert.equal(before.assets.orphanedBytes, 4);
+
+    const result = await store.gcAssets();
+    assert.equal(result.removed, 1);
+    assert.equal(result.bytesFreed, 4);
+    assert.equal(result.stats.assets.count, 1);
+    assert.equal(result.stats.assets.orphaned, 0);
+    assert.equal(await store.getAsset(orphan.id), null, "orphan reclaimed");
+    assert.ok(await store.getAsset(kept.id), "referenced asset spared");
+
+    // A second sweep is a no-op once nothing dangles.
+    assert.equal((await store.gcAssets()).removed, 0);
   });
 }

@@ -1,15 +1,22 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
-import { createApp } from "../server/app.ts";
-import { JsonFileStore } from "../server/storage.ts";
+import { createApp } from "@showcase/server/app";
+import { JsonFileStore } from "@showcase/server/storage";
 
-const CLI = join(dirname(fileURLToPath(import.meta.url)), "..", "bin", "showcase.js");
+const CLI = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "packages",
+  "cli",
+  "bin",
+  "showcase.js",
+);
 
 function run(...args: string[]) {
   return runWith({}, ...args);
@@ -66,7 +73,19 @@ const post = (url: string, body: unknown) =>
 // None of these reach the network: --help and option errors resolve in
 // parsing, before any request (no server needs to be running).
 
-for (const cmd of ["serve", "publish", "diff", "update", "wait", "watch", "list", "kits"]) {
+for (const cmd of [
+  "serve",
+  "publish",
+  "diff",
+  "update",
+  "wait",
+  "watch",
+  "list",
+  "kits",
+  "gc",
+  "health",
+  "validate",
+]) {
   test(`${cmd} --help prints usage and exits 0`, async () => {
     const { code, stdout, stderr } = await run(cmd, "--help");
     assert.equal(code, 0);
@@ -148,6 +167,149 @@ test("watch streams each new user comment as one line and re-arms", async () => 
     assert.equal(stdout.match(/tighten the spacing/g)?.length, 1);
 
     child.kill();
+  } finally {
+    await server.close();
+  }
+});
+
+test("gc reclaims orphaned assets and board shows the tally", async () => {
+  const server = await serveApp();
+  try {
+    const env = { SHOWCASE_URL: server.url, SHOWCASE_NO_AUTOSTART: "1" };
+    // Upload an asset referenced by nothing -> an orphan the sweep should drop.
+    await fetch(`${server.url}/api/assets`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        data: Buffer.from(new Uint8Array([1, 2, 3, 4])).toString("base64"),
+        contentType: "image/png",
+      }),
+    });
+
+    const board = await runWith({ env }, "board");
+    assert.equal(board.code, 0);
+    assert.match(board.stdout, /1 asset.*orphaned/);
+
+    const dry = await runWith({ env }, "gc", "--dry-run");
+    assert.equal(dry.code, 0);
+    assert.match(dry.stdout, /Would reclaim 1 orphaned asset/);
+
+    const gc = await runWith({ env }, "gc");
+    assert.equal(gc.code, 0);
+    assert.match(gc.stdout, /Reclaimed 1 orphaned asset/);
+
+    // After the sweep the orphan count is gone and a re-run is a no-op.
+    const again = await runWith({ env }, "gc");
+    assert.match(again.stdout, /Nothing to reclaim/);
+  } finally {
+    await server.close();
+  }
+});
+
+test("gc --json emits the structured sweep result", async () => {
+  const server = await serveApp();
+  try {
+    const env = { SHOWCASE_URL: server.url, SHOWCASE_NO_AUTOSTART: "1" };
+    const { code, stdout } = await runWith({ env }, "gc", "--json");
+    assert.equal(code, 0);
+    const result = JSON.parse(stdout);
+    assert.equal(result.removed, 0);
+    assert.ok(result.stats && typeof result.stats.assets.count === "number");
+  } finally {
+    await server.close();
+  }
+});
+
+test("health reports liveness and the board tally", async () => {
+  const server = await serveApp();
+  try {
+    const env = { SHOWCASE_URL: server.url, SHOWCASE_NO_AUTOSTART: "1" };
+
+    const human = await runWith({ env }, "health");
+    assert.equal(human.code, 0);
+    assert.match(human.stdout, /ok · up /);
+    assert.match(human.stdout, /0 sessions/);
+
+    const json = await runWith({ env }, "health", "--json");
+    assert.equal(json.code, 0);
+    const h = JSON.parse(json.stdout);
+    assert.equal(h.status, "ok");
+    assert.equal(typeof h.uptimeMs, "number");
+    assert.equal(h.lastError, null);
+  } finally {
+    await server.close();
+  }
+});
+
+const fullPalette = {
+  bg: "#fff",
+  panel: "#eee",
+  surface: "#fff",
+  text: "#111",
+  muted: "#666",
+  faint: "#999",
+  border: "#ddd",
+  border2: "#ccc",
+  hover: "#f5f5f5",
+  info: { bg: "#eef", text: "#33c", border: "#aac" },
+  success: { bg: "#efe", text: "#2a2", border: "#9c9" },
+  warning: { bg: "#ffd", text: "#960", border: "#ec6" },
+  danger: { bg: "#fee", text: "#c33", border: "#eaa" },
+};
+
+test("validate reports per-file errors over the config dir and exits non-zero", async () => {
+  const server = await serveApp();
+  try {
+    const cfg = mkdtempSync(join(tmpdir(), "showcase-validate-"));
+    mkdirSync(join(cfg, "themes"), { recursive: true });
+    mkdirSync(join(cfg, "kits"), { recursive: true });
+    writeFileSync(
+      join(cfg, "themes", "good.json"),
+      JSON.stringify({ id: "acme", label: "Acme", light: fullPalette, dark: fullPalette }),
+    );
+    // bad color in the light palette
+    writeFileSync(
+      join(cfg, "themes", "bad.json"),
+      JSON.stringify({
+        id: "x",
+        label: "X",
+        light: { ...fullPalette, bg: "blue-ish" },
+        dark: fullPalette,
+      }),
+    );
+    writeFileSync(join(cfg, "kits", "broken.json"), "{ not json");
+
+    const env = {
+      SHOWCASE_URL: server.url,
+      SHOWCASE_NO_AUTOSTART: "1",
+      SHOWCASE_CONFIG: cfg,
+      SHOWCASE_REPO_CONFIG: cfg, // single combined dir -> deduped, checked once
+    };
+    const { code, stdout } = await runWith({ env }, "validate");
+    assert.equal(code, 1); // any invalid file -> non-zero exit
+    assert.match(stdout, /✓ .*good\.json/);
+    assert.match(stdout, /✗ .*bad\.json/);
+    assert.match(stdout, /light\.bg: must be a CSS color/);
+    assert.match(stdout, /invalid JSON/);
+    assert.match(stdout, /3 files checked · 1 valid · 2 invalid/);
+  } finally {
+    await server.close();
+  }
+});
+
+test("validate on an empty config dir reports nothing to check and exits 0", async () => {
+  const server = await serveApp();
+  try {
+    const cfg = mkdtempSync(join(tmpdir(), "showcase-validate-empty-"));
+    const env = {
+      SHOWCASE_URL: server.url,
+      SHOWCASE_NO_AUTOSTART: "1",
+      SHOWCASE_CONFIG: cfg,
+      SHOWCASE_REPO_CONFIG: cfg,
+    };
+    const { code, stdout } = await runWith({ env }, "validate");
+    assert.equal(code, 0);
+    assert.match(stdout, /No config files found/);
   } finally {
     await server.close();
   }

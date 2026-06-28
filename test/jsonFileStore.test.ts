@@ -3,8 +3,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { JsonFileStore } from "../server/storage.ts";
-import { htmlPart } from "../server/types.ts";
+import { JsonFileStore } from "@showcase/server/storage";
+import { htmlPart } from "@showcase/core/types";
 import { runStoreContract } from "./storeContract.ts";
 
 const freshPath = () => join(mkdtempSync(join(tmpdir(), "showcase-store-")), "data.json");

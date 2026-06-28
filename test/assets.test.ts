@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { coerceSurfaceParts as coerceParts } from "../server/surfaceParts.ts";
+import { coerceSurfaceParts as coerceParts } from "@showcase/core/surfaceParts";
 import {
   collectAssetIds,
   type EvictionCandidate,
   partsByteLength,
   selectEvictions,
   type SurfacePart,
-} from "../server/types.ts";
-import { validateSurfaceParts } from "../server/surfaceParts.ts";
+} from "@showcase/core/types";
+import { validateSurfaceParts } from "@showcase/core/surfaceParts";
 
 // --- selectEvictions ---
 

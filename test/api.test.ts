@@ -3,8 +3,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { createApp } from "../server/app.ts";
-import { JsonFileStore } from "../server/storage.ts";
+import { createApp } from "@showcase/server/app";
+import { JsonFileStore } from "@showcase/server/storage";
 
 function makeApp(authToken?: string, opts?: { publicRead?: "session" | "full" }) {
   const dir = mkdtempSync(join(tmpdir(), "showcase-test-"));
@@ -1892,6 +1892,120 @@ test("mcp read-back: get_surface tool + surface resources + recipe prompts", asy
   assert.ok(badPrompt.error);
 });
 
+test("mcp tools/call validates arguments and returns a structured -32602", async () => {
+  const app = makeApp();
+
+  // Missing required `title`/`parts` is a JSON-RPC params error naming the field,
+  // not a stringly-typed failure deep in the flow.
+  const bad = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(1, "tools/call", { name: "publish_surface", arguments: { parts: [] } }),
+    )
+  ).json()) as any;
+  assert.equal(bad.error.code, -32602);
+  assert.match(bad.error.message, /publish_surface/);
+  assert.match(bad.error.message, /title/);
+
+  // A bad enum (verdict) is caught the same way.
+  const badEnum = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(2, "tools/call", {
+        name: "publish_decisions",
+        arguments: { brief: "x", verdict: "maybe", decisions: [], manifest: [] },
+      }),
+    )
+  ).json()) as any;
+  assert.equal(badEnum.error.code, -32602);
+  assert.match(badEnum.error.message, /verdict/);
+
+  // A part kind beyond the advertised schema (chart) still passes the gate — part
+  // validation is left to the lenient coercion layer, not the input gate.
+  const chart = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(3, "tools/call", {
+        name: "publish_surface",
+        arguments: {
+          title: "Chart",
+          parts: [{ kind: "chart", chartType: "bar", x: "t", y: "v", data: [{ t: "a", v: 1 }] }],
+        },
+      }),
+    )
+  ).json()) as any;
+  assert.equal(chart.result.isError, undefined);
+});
+
+test("mcp session + asset resources: list and read both", async () => {
+  const app = makeApp();
+
+  // A surface (so the session is non-empty) and an uploaded asset.
+  const published = JSON.parse(
+    (
+      (await (
+        await app.request(
+          "/mcp",
+          mcpCall(1, "tools/call", {
+            name: "publish_snippet",
+            arguments: { title: "Board", html: "<p>x</p>" },
+          }),
+        )
+      ).json()) as any
+    ).result.content[0].text,
+  );
+  const sessionId = published.sessionId as string;
+  const asset = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(2, "tools/call", {
+        name: "upload_asset",
+        arguments: { data: b64([1, 2, 3, 4]), contentType: "image/png", session: sessionId },
+      }),
+    )
+  ).json()) as any;
+  const assetId = JSON.parse(asset.result.content[0].text).id as string;
+
+  // resources/list now carries session and asset rows alongside surfaces.
+  const resources = (await (await app.request("/mcp", mcpCall(3, "resources/list"))).json()) as any;
+  const uris = resources.result.resources.map((r: any) => r.uri);
+  assert.ok(uris.includes(`showcase://session/${sessionId}`), "session resource listed");
+  assert.ok(uris.includes(`showcase://asset/${assetId}`), "asset resource listed");
+
+  // templates/list advertises all three kinds.
+  const templates = (await (
+    await app.request("/mcp", mcpCall(4, "resources/templates/list"))
+  ).json()) as any;
+  const tmpls = templates.result.resourceTemplates.map((t: any) => t.uriTemplate);
+  assert.ok(tmpls.includes("showcase://session/{id}"));
+  assert.ok(tmpls.includes("showcase://asset/{id}"));
+
+  // Reading the session returns its metadata + a surface index.
+  const sessionRead = (await (
+    await app.request(
+      "/mcp",
+      mcpCall(5, "resources/read", { uri: `showcase://session/${sessionId}` }),
+    )
+  ).json()) as any;
+  const sessionBody = JSON.parse(sessionRead.result.contents[0].text);
+  assert.equal(sessionBody.id, sessionId);
+  assert.equal(sessionBody.surfaces[0].id, published.id);
+
+  // Reading the asset returns the bytes as a base64 blob with its content type.
+  const assetRead = (await (
+    await app.request("/mcp", mcpCall(6, "resources/read", { uri: `showcase://asset/${assetId}` }))
+  ).json()) as any;
+  const content = assetRead.result.contents[0];
+  assert.equal(content.mimeType, "image/png");
+  assert.equal(content.blob, b64([1, 2, 3, 4]));
+
+  // A missing session/asset id is a clean params error, not a crash.
+  const missing = (await (
+    await app.request("/mcp", mcpCall(7, "resources/read", { uri: "showcase://asset/nope" }))
+  ).json()) as any;
+  assert.ok(missing.error);
+});
+
 test("DELETE /api/surfaces/:id removes the surface", async () => {
   const app = makeApp();
   const created = (await (
@@ -2288,6 +2402,106 @@ test("uploads an asset via base64 JSON and serves the exact bytes", async () => 
   assert.deepEqual([...new Uint8Array(await served.arrayBuffer())], [137, 80, 78, 71, 0, 255]);
 });
 
+test("GET /api/board tallies the board and POST /api/board/gc reclaims orphans", async () => {
+  const app = makeApp();
+  // An uploaded-but-never-referenced asset is an orphan (no surface points at it).
+  const up = await app.request(
+    "/api/assets",
+    json({ data: b64([1, 2, 3, 4]), contentType: "image/png" }),
+  );
+  assert.equal(up.status, 201);
+
+  const before = (await (await app.request("/api/board")).json()) as any;
+  assert.equal(before.assets.count, 1);
+  assert.equal(before.assets.orphaned, 1);
+  assert.equal(before.assets.orphanedBytes, 4);
+  assert.equal(before.assetBudgetBytes, 2 * 1024 * 1024 * 1024);
+
+  const gc = (await (await app.request("/api/board/gc", { method: "POST" })).json()) as any;
+  assert.equal(gc.removed, 1);
+  assert.equal(gc.bytesFreed, 4);
+  assert.equal(gc.stats.assets.count, 0);
+  assert.equal(gc.stats.assets.orphaned, 0);
+
+  // Idempotent: a second sweep finds nothing.
+  const again = (await (await app.request("/api/board/gc", { method: "POST" })).json()) as any;
+  assert.equal(again.removed, 0);
+});
+
+test("GET /api/health reports liveness, the board tally, and version", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "showcase-test-"));
+  const store = new JsonFileStore(join(dir, "data.json"));
+  const app = createApp({
+    store,
+    viewerHtml: "<html>viewer</html>",
+    guideMarkdown: "# guide",
+    setupText: "# setup",
+    playbookText: "# playbook",
+    version: "9.9.9",
+  });
+
+  await app.request("/api/sessions", json({ agent: "test", title: "s" }));
+
+  const h = (await (await app.request("/api/health")).json()) as any;
+  assert.equal(h.status, "ok");
+  assert.equal(h.version, "9.9.9");
+  assert.equal(typeof h.uptimeMs, "number");
+  assert.ok(h.uptimeMs >= 0);
+  assert.equal(h.board.sessions, 1);
+  assert.equal(h.lastError, null);
+});
+
+test("GET /api/health flips to degraded after an unhandled error", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "showcase-test-"));
+  const base = new JsonFileStore(join(dir, "data.json"));
+  // A store whose listSessions throws — so a real route hits onError (which
+  // records lastError) while health's own boardStats path stays healthy.
+  const store = new Proxy(base, {
+    get(target, prop, recv) {
+      if (prop === "listSessions") return async () => Promise.reject(new Error("boom"));
+      const v = Reflect.get(target, prop, recv);
+      return typeof v === "function" ? v.bind(target) : v;
+    },
+  });
+  const app = createApp({
+    store,
+    viewerHtml: "<html>viewer</html>",
+    guideMarkdown: "# guide",
+    setupText: "# setup",
+    playbookText: "# playbook",
+  });
+
+  const healthy = (await (await app.request("/api/health")).json()) as any;
+  assert.equal(healthy.status, "ok");
+
+  const bad = await app.request("/api/sessions");
+  assert.equal(bad.status, 500);
+
+  const h = (await (await app.request("/api/health")).json()) as any;
+  assert.equal(h.status, "degraded");
+  assert.equal(h.lastError.message, "boom");
+  assert.equal(typeof h.lastError.at, "string");
+});
+
+test("POST /api/config/validate runs the schema; ok pass-through and located issues", async () => {
+  const app = makeApp();
+  const kit = { id: "k", label: "K", css: ".x{}" };
+  const ok = await app.request("/api/config/validate", json({ kind: "kit", value: kit }));
+  assert.equal(ok.status, 200);
+  assert.deepEqual(await ok.json(), { ok: true });
+
+  const bad = await app.request(
+    "/api/config/validate",
+    json({ kind: "kit", value: { id: "k", label: "K" } }), // missing css
+  );
+  const body = (await bad.json()) as any;
+  assert.equal(body.ok, false);
+  assert.ok(body.issues.some((i: any) => i.path === "css"));
+
+  const badKind = await app.request("/api/config/validate", json({ kind: "nope", value: {} }));
+  assert.equal(badKind.status, 400);
+});
+
 test("uploads raw bytes with metadata from the query string", async () => {
   const app = makeApp();
   const res = await app.request("/api/assets?filename=trace.json&kind=trace", {
@@ -2454,7 +2668,9 @@ test("the surface CSP allows the server origin so assets embed by url", async ()
     await app.request("/api/snippets", json({ html: "<img src=/a/x>" }))
   ).json()) as any;
   const page = await (await app.request(`/s/${snip.id}`)).text();
-  assert.match(page, /img-src https: data: blob: http:\/\/localhost/);
+  assert.match(page, /img-src data: blob: http:\/\/localhost/);
+  // The wildcard https: scheme was dropped — external hosts are an exfil channel.
+  assert.ok(!/img-src[^;]*\bhttps:/.test(page), "no wildcard https: in img-src");
 });
 
 test("asset routes require auth when a token is set", async () => {
