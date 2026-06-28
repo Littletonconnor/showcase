@@ -1,6 +1,6 @@
 import type { Hono } from "hono";
 import { type CommentWait, type Feedback } from "./app.ts";
-import { decodeBase64 } from "@showcase/core/base64";
+import { decodeBase64, encodeBase64 } from "@showcase/core/base64";
 import {
   type Asset,
   type AssetKind,
@@ -15,15 +15,22 @@ import {
 } from "@showcase/core/types";
 import { blueprintById } from "@showcase/core/blueprints";
 import {
+  ASSET_RESOURCE_TEMPLATE,
+  ASSET_RESOURCE_URI,
   FEEDBACK_REPLY_NOTE,
   HTTP_MCP_TOOLS,
   MCP_INSTRUCTIONS,
   MCP_PROMPT_DEFS,
   MCP_SERVER_INFO,
+  parseAssetUri,
+  parseSessionUri,
   parseSurfaceUri,
   promptMessages,
+  SESSION_RESOURCE_TEMPLATE,
+  SESSION_RESOURCE_URI,
   SURFACE_RESOURCE_TEMPLATE,
   SURFACE_RESOURCE_URI,
+  validateToolInput,
 } from "@showcase/core/mcpSpec";
 import { coerceSurfaceBadge, coerceSurfaceParts } from "@showcase/core/surfaceParts";
 
@@ -145,6 +152,48 @@ export function registerMcp(app: Hono, deps: McpDeps) {
     description: `${s.parts.map((p) => p.kind).join(", ")} · v${s.version} · session ${s.sessionId}`,
     mimeType: "application/json",
   });
+
+  // showcase://session/<id> → the session and its surface index (ids/titles/kinds),
+  // so a client can browse the board's structure, not just individual surfaces.
+  const sessionResource = (s: Session, surfaceCount: number) => ({
+    uri: `${SESSION_RESOURCE_URI}${s.id}`,
+    name: s.title ?? s.id,
+    description: `${surfaceCount} surface${surfaceCount === 1 ? "" : "s"} · ${s.agent}`,
+    mimeType: "application/json",
+  });
+  const sessionReadView = (s: Session, surfaces: Surface[], origin: string) => ({
+    id: s.id,
+    title: s.title,
+    agent: s.agent,
+    createdAt: s.createdAt,
+    lastActiveAt: s.lastActiveAt,
+    ...(s.blueprint ? { blueprint: s.blueprint } : {}),
+    ...(s.theme ? { theme: s.theme } : {}),
+    url: `${origin}/session/${s.id}`,
+    surfaces: surfaces.map((su) => ({
+      id: su.id,
+      title: su.title,
+      kinds: su.parts.map((p) => p.kind),
+      version: su.version,
+    })),
+  });
+
+  // showcase://asset/<id> → an uploaded asset. The descriptor carries the type/
+  // size; resources/read returns the bytes as a base64 `blob` (the protocol-
+  // native way to attach an image/file), addressable at <origin>/a/<id>.
+  const assetResource = (a: { id: string; contentType: string; byteLength: number }) => ({
+    uri: `${ASSET_RESOURCE_URI}${a.id}`,
+    name: a.id,
+    description: `${a.contentType} · ${a.byteLength} bytes`,
+    mimeType: a.contentType,
+  });
+  // Assets list per session; without a scope, gather across every session.
+  const listAllAssets = async (sessionId?: string) => {
+    if (sessionId) return deps.store.listAssets(sessionId);
+    const sessions = await deps.store.listSessions();
+    const groups = await Promise.all(sessions.map((s) => deps.store.listAssets(s.id)));
+    return groups.flat();
+  };
 
   async function callTool(name: string, args: any, origin: string): Promise<string> {
     switch (name) {
@@ -400,10 +449,20 @@ export function registerMcp(app: Hono, deps: McpDeps) {
     if (msg.method === "ping") return rpc(msg.id, {});
     if (msg.method === "tools/list") return rpc(msg.id, { tools: HTTP_MCP_TOOLS });
     if (msg.method === "resources/list") {
-      const surfaces = await deps.store.listSurfaces(
-        typeof msg.params?.session === "string" ? msg.params.session : undefined,
+      const scope = typeof msg.params?.session === "string" ? msg.params.session : undefined;
+      const [surfaces, sessions, assets] = await Promise.all([
+        deps.store.listSurfaces(scope),
+        deps.store.listSessions(),
+        listAllAssets(scope),
+      ]);
+      const counts = new Map<string, number>();
+      for (const s of surfaces) counts.set(s.sessionId, (counts.get(s.sessionId) ?? 0) + 1);
+      const sessionRows = (scope ? sessions.filter((s) => s.id === scope) : sessions).map((s) =>
+        sessionResource(s, counts.get(s.id) ?? 0),
       );
-      return rpc(msg.id, { resources: surfaces.map(surfaceResource) });
+      return rpc(msg.id, {
+        resources: [...surfaces.map(surfaceResource), ...sessionRows, ...assets.map(assetResource)],
+      });
     }
     if (msg.method === "resources/templates/list") {
       return rpc(msg.id, {
@@ -414,26 +473,49 @@ export function registerMcp(app: Hono, deps: McpDeps) {
             description: "A published surface's full current content, by id",
             mimeType: "application/json",
           },
+          {
+            uriTemplate: SESSION_RESOURCE_TEMPLATE,
+            name: "showcase session",
+            description: "A session's metadata and its surface index, by id",
+            mimeType: "application/json",
+          },
+          {
+            uriTemplate: ASSET_RESOURCE_TEMPLATE,
+            name: "showcase asset",
+            description: "An uploaded asset's bytes, by id",
+          },
         ],
       });
     }
     if (msg.method === "resources/read") {
       const uri = String(msg.params?.uri ?? "");
-      const id = parseSurfaceUri(uri);
-      if (!id) return rpcError(msg.id, -32602, `unsupported resource uri: ${uri}`);
-      const surface = await deps.store.getSurface(id);
-      if (!surface) return rpcError(msg.id, -32602, `no surface ${id}`);
       const url = new URL(c.req.url);
       const origin = `${url.origin}${deps.basePath?.(c.req.raw) ?? ""}`;
-      return rpc(msg.id, {
-        contents: [
-          {
-            uri,
-            mimeType: "application/json",
-            text: JSON.stringify(surfaceReadView(surface, origin), null, 2),
-          },
-        ],
-      });
+      const json = (text: string) =>
+        rpc(msg.id, { contents: [{ uri, mimeType: "application/json", text }] });
+
+      const surfaceId = parseSurfaceUri(uri);
+      if (surfaceId) {
+        const surface = await deps.store.getSurface(surfaceId);
+        if (!surface) return rpcError(msg.id, -32602, `no surface ${surfaceId}`);
+        return json(JSON.stringify(surfaceReadView(surface, origin), null, 2));
+      }
+      const sessionId = parseSessionUri(uri);
+      if (sessionId) {
+        const session = await deps.store.getSession(sessionId);
+        if (!session) return rpcError(msg.id, -32602, `no session ${sessionId}`);
+        const surfaces = await deps.store.listSurfaces(sessionId);
+        return json(JSON.stringify(sessionReadView(session, surfaces, origin), null, 2));
+      }
+      const assetId = parseAssetUri(uri);
+      if (assetId) {
+        const asset = await deps.store.getAsset(assetId);
+        if (!asset) return rpcError(msg.id, -32602, `no asset ${assetId}`);
+        return rpc(msg.id, {
+          contents: [{ uri, mimeType: asset.contentType, blob: encodeBase64(asset.data) }],
+        });
+      }
+      return rpcError(msg.id, -32602, `unsupported resource uri: ${uri}`);
     }
     if (msg.method === "prompts/list") return rpc(msg.id, { prompts: MCP_PROMPT_DEFS });
     if (msg.method === "prompts/get") {
@@ -442,10 +524,20 @@ export function registerMcp(app: Hono, deps: McpDeps) {
       return rpc(msg.id, built);
     }
     if (msg.method === "tools/call") {
+      const name = msg.params?.name;
+      const args = msg.params?.arguments ?? {};
+      // Validate against the tool's zod schema before dispatch, so bad input is a
+      // structured -32602 with the exact field issues — not a stringly-typed
+      // failure deep in a flow. (The stdio transport gets this from the SDK.)
+      const check =
+        typeof name === "string" ? validateToolInput(name, args) : { ok: true as const };
+      if (!check.ok) {
+        return rpcError(msg.id, -32602, `invalid arguments for ${name}: ${check.error}`);
+      }
       const url = new URL(c.req.url);
       const baseUrl = `${url.origin}${deps.basePath?.(c.req.raw) ?? ""}`;
       try {
-        const text = await callTool(msg.params?.name, msg.params?.arguments ?? {}, baseUrl);
+        const text = await callTool(name, args, baseUrl);
         return rpc(msg.id, { content: [{ type: "text", text }] });
       } catch (err) {
         return rpc(msg.id, {

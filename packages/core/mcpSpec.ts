@@ -1207,19 +1207,124 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
   },
 } as const;
 
+// Per-tool zod validators for the HTTP transport. The stdio server gets input
+// validation for free — the MCP SDK validates each call against the same shapes
+// in STDIO_MCP_INPUT_SCHEMAS — but the streamable-HTTP transport hand-rolls
+// JSON-RPC, so it must validate tools/call arguments itself and return a
+// structured `-32602 invalid params` instead of letting bad input fail
+// stringly-typed deep inside a flow. These reuse the stdio shapes 1:1 and add the
+// HTTP-only routing envelope (session/agent the stdio server manages internally).
+// `.passthrough()` keeps unknown keys so the preset tools — which forward the raw
+// args as their typed `data` payload to the server, which re-validates — lose
+// nothing.
+const httpEnvelope = {
+  session: z.string().optional().describe(d.session),
+  agent: z.string().optional().describe(d.agent),
+};
+const toolObject = (shape: z.ZodRawShape) => z.object(shape).passthrough();
+// Part-bearing fields stay LOOSE on purpose: the publish flow coerces parts
+// leniently (drops empties, clamps a bad chartType, strips unsafe colors) and
+// supports kinds beyond the advertised schema, so the gate only checks the
+// envelope is shaped right (parts present and an array of part-like objects) and
+// leaves per-part validation to the coercion layer. Likewise decisions/manifest:
+// `coerceReview` already does the rich semantic validation and returns warnings,
+// so the gate just confirms they're arrays.
+const loosePart = z.object({ kind: z.string() }).passthrough();
+const looseObjects = z.array(z.object({}).passthrough());
+export const HTTP_MCP_TOOL_SCHEMAS: Record<string, z.ZodTypeAny> = {
+  publish_surface: toolObject({
+    ...STDIO_MCP_INPUT_SCHEMAS.publishSurface,
+    parts: z.array(loosePart).describe(MCP_PARTS_DESCRIPTION),
+    ...httpEnvelope,
+  }),
+  publish_decisions: toolObject({
+    brief: STDIO_MCP_INPUT_SCHEMAS.publishDecisions.brief,
+    verdict: STDIO_MCP_INPUT_SCHEMAS.publishDecisions.verdict,
+    decisions: looseObjects.describe(d.decisions),
+    manifest: looseObjects.describe(d.decisionManifest),
+    sessionTitle: STDIO_MCP_INPUT_SCHEMAS.publishDecisions.sessionTitle,
+    ...httpEnvelope,
+  }),
+  update_surface: toolObject({
+    ...STDIO_MCP_INPUT_SCHEMAS.updateSurface,
+    parts: z.array(loosePart).optional().describe(d.replacementParts),
+  }),
+  publish_snippet: toolObject({ ...STDIO_MCP_INPUT_SCHEMAS.publishSnippet, ...httpEnvelope }),
+  update_snippet: toolObject({ ...STDIO_MCP_INPUT_SCHEMAS.updateSnippet }),
+  delete_surface: toolObject({ ...STDIO_MCP_INPUT_SCHEMAS.deleteSurface }),
+  wait_for_feedback: toolObject({
+    session: z.string().describe("Session id to watch"),
+    afterSeq: z.number().optional().describe(d.afterSeq),
+    timeoutSeconds: z.number().optional().describe(`${d.timeout} (default 60)`),
+  }),
+  list_surfaces: toolObject({
+    session: z.string().optional().describe("Optional session id to scope the list"),
+  }),
+  get_surface: toolObject({ ...STDIO_MCP_INPUT_SCHEMAS.getSurface }),
+  upload_asset: toolObject({
+    ...STDIO_MCP_INPUT_SCHEMAS.uploadAsset,
+    session: z.string().optional().describe(d.assetSession),
+  }),
+  // Preset payloads are re-validated server-side; the gate only checks the
+  // routing envelope so it never false-rejects a valid preset body.
+  publish_postmortem: toolObject(httpEnvelope),
+  publish_dashboard: toolObject(httpEnvelope),
+  publish_design_doc: toolObject(httpEnvelope),
+  publish_status: toolObject(httpEnvelope),
+  publish_architecture: toolObject(httpEnvelope),
+  publish_product_demo: toolObject(httpEnvelope),
+  configure_session: toolObject({
+    ...STDIO_MCP_INPUT_SCHEMAS.configureSession,
+    session: z.string().describe("Session id to configure"),
+  }),
+  get_design_guide: toolObject({}),
+};
+
+// Format a ZodError into a compact, agent-actionable string: each issue as
+// `path: message`, joined. A root-level issue (empty path) is labeled "(root)".
+export function formatZodIssues(error: z.ZodError): string {
+  return error.issues
+    .map((i) => `${i.path.length ? i.path.join(".") : "(root)"}: ${i.message}`)
+    .join("; ");
+}
+
+// Validate one tool's arguments against its schema. Unknown tool → pass through
+// (callTool rejects it with the existing "unknown tool" path). Returns a
+// structured error string the caller turns into a JSON-RPC -32602.
+export function validateToolInput(
+  name: string,
+  args: unknown,
+): { ok: true } | { ok: false; error: string } {
+  const schema = HTTP_MCP_TOOL_SCHEMAS[name];
+  if (!schema) return { ok: true };
+  const parsed = schema.safeParse(args ?? {});
+  return parsed.success ? { ok: true } : { ok: false, error: formatZodIssues(parsed.error) };
+}
+
 // MCP resources + prompts — the protocol-native read-back/recipe layer, shared
 // by both transports (HTTP in mcpHttp.ts, stdio in mcp/server.ts). Resources let
 // a client browse/attach published surfaces; prompts expose the flagship recipes
 // (review, explainer) as ready-to-run templates.
 export const SURFACE_RESOURCE_URI = "showcase://surface/";
 export const SURFACE_RESOURCE_TEMPLATE = `${SURFACE_RESOURCE_URI}{id}`;
+export const SESSION_RESOURCE_URI = "showcase://session/";
+export const SESSION_RESOURCE_TEMPLATE = `${SESSION_RESOURCE_URI}{id}`;
+export const ASSET_RESOURCE_URI = "showcase://asset/";
+export const ASSET_RESOURCE_TEMPLATE = `${ASSET_RESOURCE_URI}{id}`;
 
-// Parse a surface id out of a showcase://surface/<id> uri (null if it isn't one).
-export function parseSurfaceUri(uri: string): string | null {
-  if (!uri.startsWith(SURFACE_RESOURCE_URI)) return null;
-  const id = uri.slice(SURFACE_RESOURCE_URI.length).trim();
+// Parse the id out of a showcase://<prefix>/<id> uri (null if the prefix doesn't
+// match or the id is empty). One parser per kind keeps the call sites readable.
+function parseResourceUri(prefix: string, uri: string): string | null {
+  if (!uri.startsWith(prefix)) return null;
+  const id = uri.slice(prefix.length).trim();
   return id.length > 0 ? id : null;
 }
+export const parseSurfaceUri = (uri: string): string | null =>
+  parseResourceUri(SURFACE_RESOURCE_URI, uri);
+export const parseSessionUri = (uri: string): string | null =>
+  parseResourceUri(SESSION_RESOURCE_URI, uri);
+export const parseAssetUri = (uri: string): string | null =>
+  parseResourceUri(ASSET_RESOURCE_URI, uri);
 
 // The MCP Prompt descriptors (the prompts/list payload shape).
 export const MCP_PROMPT_DEFS = [

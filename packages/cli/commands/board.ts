@@ -5,7 +5,7 @@ import { fail } from "../errors.ts";
 import { api, BASE } from "../http.ts";
 import { emit } from "../output.ts";
 import { resolveSession } from "../session.ts";
-import { formatBytes } from "../util.ts";
+import { formatBytes, formatDuration } from "../util.ts";
 
 // One-line board tally, shared by `board` and `gc`'s post-sweep summary.
 function statusLine(s: any): string {
@@ -171,6 +171,22 @@ const board: Command = {
   },
 };
 
+const health: Command = {
+  name: "health",
+  group: "Inspect",
+  summary: "liveness check — uptime, version, board tally, last error",
+  usage: "showcase health",
+  async run() {
+    const h = await api("/api/health");
+    emit(h, () => {
+      const head = `${h.status} · up ${formatDuration(h.uptimeMs)}${h.version ? ` · v${h.version}` : ""}`;
+      const lines = [head, statusLine(h.board)];
+      if (h.lastError) lines.push(`last error: ${h.lastError.message} (${h.lastError.at})`);
+      return lines.join("\n");
+    });
+  },
+};
+
 const gc: Command = {
   name: "gc",
   group: "Manage",
@@ -201,4 +217,4 @@ const gc: Command = {
   },
 };
 
-export const boardCommands: Command[] = [list, sessions, kits, blueprints, board, gc, demo];
+export const boardCommands: Command[] = [list, sessions, kits, blueprints, board, health, gc, demo];

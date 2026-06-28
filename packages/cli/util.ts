@@ -20,6 +20,27 @@ export function formatBytes(n: number): string {
   return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
 }
 
+// Human-readable elapsed time from milliseconds: the two largest non-zero
+// units (e.g. "3d 4h", "5m 12s", "800ms"). For the health uptime line.
+export function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  let rem = Math.floor(ms / 1000);
+  const units: [number, string][] = [
+    [86400, "d"],
+    [3600, "h"],
+    [60, "m"],
+    [1, "s"],
+  ];
+  const parts: string[] = [];
+  for (const [size, label] of units) {
+    if (parts.length === 0 && rem < size) continue; // skip leading zero units
+    parts.push(`${Math.floor(rem / size)}${label}`);
+    rem %= size;
+    if (parts.length === 2) break;
+  }
+  return parts.join(" ");
+}
+
 // Read a command's content argument: a path, or "-"/missing for stdin.
 export function readContent(arg: string | undefined): string {
   if (!arg || arg === "-") {
