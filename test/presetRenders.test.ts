@@ -11,6 +11,7 @@ import {
   renderDesignDoc,
   renderPostmortem,
   renderProductDemo,
+  renderProductDirection,
   renderStatus,
 } from "../server/presetRenders.ts";
 import { JsonFileStore } from "../server/storage.ts";
@@ -34,6 +35,7 @@ test("every selected preset has a renderer", () => {
     "status",
     "architecture",
     "product-demo",
+    "wealthfront-product",
   ]) {
     assert.equal(typeof PRESET_RENDERERS[id], "function", `${id} renderer`);
   }
@@ -162,6 +164,79 @@ test("product-demo renders the five animate beats with data-section tags", () =>
     assert.match(html, new RegExp(`data-section="${sectionId}"`), `${sectionId} step`);
   }
   assert.match(html, /class="anim/);
+});
+
+test("product-direction renders the wf spine: direction, alternatives, leaning", () => {
+  const r = renderProductDirection({
+    title: "Memory UX",
+    direction: "Manage memories in the Memory tab",
+    heading: "What I remember about you",
+    alternatives: [
+      {
+        key: "A",
+        title: "Inline breadcrumb",
+        tag: { label: "future", kind: "future" },
+        pro: "edit in place",
+        con: "needs support",
+        lean: true,
+      },
+      { title: "Approve first", tag: { label: "interrupts", kind: "interrupts" } },
+    ],
+    leaning: {
+      verdict: "Recommend the tab",
+      recommendation: "Use the Memory tab",
+      why: "ships first",
+    },
+  });
+  const html = htmlOf(r);
+  // the fixed spine + section anchors
+  assert.match(html, /class="wf"/);
+  for (const sectionId of ["direction", "alternatives"]) {
+    assert.match(html, new RegExp(`data-section="${sectionId}"`), `${sectionId} section`);
+  }
+  assert.match(html, /class="pchip">Direction</);
+  // tag-kind → kit class mapping (non-blocking→flow, interrupts/shortcut→intr)
+  assert.match(html, /class="tag future"/);
+  assert.match(html, /class="tag intr"/);
+  // the recommended option is marked, pro/con render, and the leaning is the payoff
+  assert.match(html, /class="opt lean"/);
+  assert.match(html, /class="pc"/);
+  assert.match(html, /class="lean"/);
+  assert.match(html, /class="verdict"/);
+  assert.equal(r.badge?.label, "Direction");
+});
+
+test("product-direction passes the bespoke view html through raw; winner column tagged", () => {
+  const r = renderProductDirection({
+    title: "T",
+    view: '<div class="frame"><main class="main">mock</main></div>',
+    comparison: {
+      headers: ["Dim", "Option A", "Option B"],
+      rows: [{ label: "Ships first", cells: ["Yes", "No"] }],
+      winner: 1,
+    },
+    leaning: { recommendation: "Go with A" },
+  });
+  const html = htmlOf(r);
+  // view is a freehand slot — its markup is NOT escaped
+  assert.match(html, /<div class="frame"><main class="main">mock<\/main><\/div>/);
+  // winner=1 highlights the first option column (header + the matching cell)
+  assert.match(html, /<th class="win">Option A<\/th>/);
+  assert.match(html, /<td class="win">Yes<\/td>/);
+  assert.doesNotMatch(html, /<td class="win">No<\/td>/);
+});
+
+test("product-direction escapes agent text but keeps the view passthrough", () => {
+  const r = renderProductDirection({
+    title: "T",
+    heading: "<script>x</script> and **bold**",
+    leaning: { recommendation: "safe `code`" },
+  });
+  const html = htmlOf(r);
+  assert.match(html, /&lt;script&gt;/);
+  assert.doesNotMatch(html, /<script>x<\/script>/);
+  assert.match(html, /<b>bold<\/b>/);
+  assert.match(html, /<span class="mono">code<\/span>/);
 });
 
 test("agent strings are escaped; backtick/bold inline fmt is applied", () => {

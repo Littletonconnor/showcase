@@ -269,6 +269,12 @@ presetTool(
   MCP_TOOL_DESCRIPTIONS.publishProductDemo,
   STDIO_MCP_INPUT_SCHEMAS.publishProductDemo,
 );
+presetTool(
+  "publish_product_direction",
+  "wealthfront-product",
+  MCP_TOOL_DESCRIPTIONS.publishProductDirection,
+  STDIO_MCP_INPUT_SCHEMAS.publishProductDirection,
+);
 
 server.registerTool(
   "wait_for_feedback",
