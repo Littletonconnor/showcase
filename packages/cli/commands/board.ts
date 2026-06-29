@@ -4,6 +4,7 @@ import type { Command } from "../command.ts";
 import { fail } from "../errors.ts";
 import { api, BASE } from "../http.ts";
 import { emit } from "../output.ts";
+import { confirm, CONFIRM_OPTS } from "../prompt.ts";
 import { resolveSession } from "../session.ts";
 import { formatBytes, formatDuration } from "../util.ts";
 
@@ -191,20 +192,28 @@ const gc: Command = {
   name: "gc",
   group: "Manage",
   summary: "reclaim orphaned assets no surface references",
-  usage: "showcase gc [--dry-run]",
+  usage: "showcase gc [--dry-run] [--yes]",
   options: {
     "dry-run": { type: "boolean", desc: "report what would be reclaimed without deleting" },
+    ...CONFIRM_OPTS,
   },
   async run({ flags }) {
+    const stats = await api("/api/board");
+    const { orphaned, orphanedBytes } = stats.assets;
     if (flags["dry-run"]) {
-      const stats = await api("/api/board");
-      emit({ ...stats, dryRun: true }, () => {
-        const { orphaned, orphanedBytes } = stats.assets;
-        return orphaned === 0
+      emit({ ...stats, dryRun: true }, () =>
+        orphaned === 0
           ? `Nothing to reclaim — ${statusLine(stats)}`
-          : `Would reclaim ${orphaned} orphaned asset${orphaned === 1 ? "" : "s"} (${formatBytes(orphanedBytes)}).\n${statusLine(stats)}`;
-      });
+          : `Would reclaim ${orphaned} orphaned asset${orphaned === 1 ? "" : "s"} (${formatBytes(orphanedBytes)}).\n${statusLine(stats)}`,
+      );
       return;
+    }
+    // Only a non-empty sweep deletes anything; skip the prompt for a no-op.
+    if (orphaned > 0) {
+      await confirm(
+        `About to reclaim ${orphaned} orphaned asset${orphaned === 1 ? "" : "s"} (${formatBytes(orphanedBytes)}) — this cannot be undone.`,
+        flags,
+      );
     }
     const result = await api("/api/board/gc", { method: "POST" });
     emit(result, () => {

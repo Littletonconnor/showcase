@@ -194,12 +194,19 @@ test("gc reclaims orphaned assets and board shows the tally", async () => {
     assert.equal(dry.code, 0);
     assert.match(dry.stdout, /Would reclaim 1 orphaned asset/);
 
-    const gc = await runWith({ env }, "gc");
+    // A real sweep deletes, so it refuses non-interactively without --yes.
+    const unconfirmed = await runWith({ env }, "gc");
+    assert.equal(unconfirmed.code, 1);
+    assert.match(unconfirmed.stderr, /refusing without confirmation/);
+
+    const gc = await runWith({ env }, "gc", "--yes");
     assert.equal(gc.code, 0);
     assert.match(gc.stdout, /Reclaimed 1 orphaned asset/);
 
-    // After the sweep the orphan count is gone and a re-run is a no-op.
+    // After the sweep the orphan count is gone; a re-run has nothing to delete,
+    // so it needs no confirmation and is a no-op.
     const again = await runWith({ env }, "gc");
+    assert.equal(again.code, 0);
     assert.match(again.stdout, /Nothing to reclaim/);
   } finally {
     await server.close();
@@ -215,6 +222,66 @@ test("gc --json emits the structured sweep result", async () => {
     const result = JSON.parse(stdout);
     assert.equal(result.removed, 0);
     assert.ok(result.stats && typeof result.stats.assets.count === "number");
+  } finally {
+    await server.close();
+  }
+});
+
+test("delete --dry-run names the surface and leaves it on the board", async () => {
+  const server = await serveApp();
+  try {
+    const env = { SHOWCASE_URL: server.url, SHOWCASE_NO_AUTOSTART: "1" };
+    const session = await post(`${server.url}/api/sessions`, { agent: "e2e", title: "Del" });
+    const surface = await post(`${server.url}/api/snippets`, {
+      html: "<p>x</p>",
+      title: "Doomed",
+      session: session.id,
+    });
+
+    const dry = await runWith({ env }, "delete", surface.id, "--dry-run");
+    assert.equal(dry.code, 0);
+    assert.match(dry.stdout, /Would delete surface .*“Doomed”/);
+
+    // Still there — dry-run did not delete.
+    const still = await fetch(`${server.url}/api/surfaces/${surface.id}`);
+    assert.equal(still.status, 200);
+  } finally {
+    await server.close();
+  }
+});
+
+test("delete refuses without --yes non-interactively, deletes with it", async () => {
+  const server = await serveApp();
+  try {
+    const env = { SHOWCASE_URL: server.url, SHOWCASE_NO_AUTOSTART: "1" };
+    const session = await post(`${server.url}/api/sessions`, { agent: "e2e", title: "Del" });
+    const surface = await post(`${server.url}/api/snippets`, {
+      html: "<p>x</p>",
+      title: "Doomed",
+      session: session.id,
+    });
+
+    const refused = await runWith({ env }, "delete", surface.id);
+    assert.equal(refused.code, 1);
+    assert.match(refused.stderr, /refusing without confirmation/);
+    assert.equal((await fetch(`${server.url}/api/surfaces/${surface.id}`)).status, 200);
+
+    const ok = await runWith({ env }, "delete", surface.id, "--yes");
+    assert.equal(ok.code, 0);
+    assert.match(ok.stdout, /deleted surface/);
+    assert.equal((await fetch(`${server.url}/api/surfaces/${surface.id}`)).status, 404);
+  } finally {
+    await server.close();
+  }
+});
+
+test("delete on a missing surface fails cleanly before any prompt", async () => {
+  const server = await serveApp();
+  try {
+    const env = { SHOWCASE_URL: server.url, SHOWCASE_NO_AUTOSTART: "1" };
+    const { code, stderr } = await runWith({ env }, "delete", "nope");
+    assert.equal(code, 1);
+    assert.match(stderr, /surface not found/);
   } finally {
     await server.close();
   }

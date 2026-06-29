@@ -23,6 +23,17 @@ const ENVIRONMENT = `environment:
   SHOWCASE_SESSION  fixed session id (overrides auto-detection)
   SHOWCASE_AGENT    agent name used when creating sessions`;
 
+// Align a list of [left, right] rows into an indented two-column block, sizing
+// the left column to its widest entry. One formatter for every table in the
+// help output (the command index and each command's option list) so they share
+// a layout instead of each hand-rolling padEnd with a guessed width. Pass
+// `width` to align across several blocks (the command index sizes once so every
+// group lines up); omit it to size each block to its own contents.
+function column(rows: [string, string][], width?: number): string {
+  const w = width ?? Math.max(0, ...rows.map(([left]) => left.length));
+  return rows.map(([left, right]) => `  ${left.padEnd(w)}  ${right}`).join("\n");
+}
+
 // `showcase` / `showcase help`: the grouped command index.
 export function renderTopLevelHelp(commands: Command[]): string {
   const visible = commands.filter((c) => !c.hidden);
@@ -33,13 +44,14 @@ export function renderTopLevelHelp(commands: Command[]): string {
   }
   const order = [...GROUP_ORDER, ...[...groups.keys()].filter((g) => !GROUP_ORDER.includes(g))];
 
+  // Size the command column once across every group so all summaries line up.
   const width = Math.max(...visible.map((c) => commandSignature(c).length));
   const sections: string[] = [];
   for (const group of order) {
     const cmds = groups.get(group);
     if (!cmds) continue;
-    const lines = cmds.map((c) => `  ${commandSignature(c).padEnd(width)}  ${c.summary}`);
-    sections.push(`${group.toLowerCase()}:\n${lines.join("\n")}`);
+    const rows = cmds.map((c) => [commandSignature(c), c.summary] as [string, string]);
+    sections.push(`${group.toLowerCase()}:\n${column(rows, width)}`);
   }
 
   return [
@@ -59,10 +71,10 @@ export function renderCommandHelp(cmd: Command, specs: OptionSpecs): string {
   const out: string[] = [`usage: ${cmd.usage ?? `showcase ${commandSignature(cmd)}`}`];
   if (cmd.summary) out.push("", cmd.summary);
 
-  const optionLines = Object.entries(specs)
+  const optionRows = Object.entries(specs)
     .filter(([, spec]) => spec.desc)
-    .map(([name, spec]) => `  ${optionSignature(name, spec).padEnd(28)}  ${spec.desc}`);
-  if (optionLines.length > 0) out.push("", "options:", optionLines.join("\n"));
+    .map(([name, spec]) => [optionSignature(name, spec), spec.desc!] as [string, string]);
+  if (optionRows.length > 0) out.push("", "options:", column(optionRows));
 
   if (cmd.help) out.push("", cmd.help.trim());
   out.push("");

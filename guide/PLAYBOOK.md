@@ -53,7 +53,7 @@ Rules of thumb:
 - On your first publish, set a session title that names the task ("Auth refactor"), not the tool — `--session-title` on the CLI, `sessionTitle` on the MCP tool. It applies only when the session is created; never try to retitle later (the user may have renamed it in the viewer).
 - One concept per surface, with a clear title. A series of small surfaces beats one giant page.
 - **Iterate with `showcase update <id>`** (same card, new version) instead of publishing near-duplicates. Versions are kept; the user can flip between them.
-- **Clean up with `showcase delete <id>`** (`delete_surface` over MCP) when a card is stale, superseded, or a duplicate you'd rather not leave on the board. It removes the card and all its versions — irreversible, so prefer `update` to revise in place.
+- **Clean up with `showcase delete <id> --yes`** (`delete_surface` over MCP) when a card is stale, superseded, or a duplicate you'd rather not leave on the board. It removes the card and all its versions — irreversible, so prefer `update` to revise in place. The CLI confirms first; pass `--yes` to delete non-interactively (or `--dry-run` to preview what would go). Same `--yes`/`--dry-run` guard on `showcase gc`.
 - For html parts, use the built-in kit from the guide (pre-styled form elements, SVG utility classes) before writing CSS; for anything else use the theme CSS variables so surfaces work in dark mode.
 
 ## Header badges

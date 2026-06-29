@@ -8,6 +8,7 @@ import { api, BASE, uploadFile } from "../http.ts";
 import { emit, emitSurface } from "../output.ts";
 import { resolveSession } from "../session.ts";
 import { fail } from "../errors.ts";
+import { confirm, CONFIRM_OPTS } from "../prompt.ts";
 import { inferLang, normalizeKits, readContent } from "../util.ts";
 
 const PUBLISH_OPTS: OptionSpecs = {
@@ -383,11 +384,29 @@ const del: Command = {
   name: "delete",
   group: "Revise",
   summary: "delete a surface (the card + all its versions)",
-  usage: "showcase delete <id>",
+  usage: "showcase delete <id> [--dry-run] [--yes]",
   positionals: true,
-  async run({ positionals }) {
+  options: {
+    "dry-run": { type: "boolean", desc: "report what would be deleted without deleting" },
+    ...CONFIRM_OPTS,
+  },
+  help: "Deleting removes the card and every version — irreversible. Prefer `update` to revise in place. The CLI confirms before deleting; pass --yes to skip the prompt (required when run non-interactively).",
+  async run({ flags, positionals }) {
     const id = positionals[0];
-    if (!id) fail("usage: showcase delete <id>");
+    if (!id) fail("usage: showcase delete <id> [--dry-run] [--yes]");
+    // Fetch first so the preview/prompt can name the card, and so a bad id
+    // fails cleanly (api() turns the 404 into "surface not found") before we
+    // ask to confirm anything.
+    const surface = await api(`/api/surfaces/${id}`);
+    const label =
+      `surface ${id}` +
+      (surface.title ? ` (“${surface.title}”)` : "") +
+      (surface.version > 1 ? `, ${surface.version} versions` : "");
+    if (flags["dry-run"]) {
+      emit({ ...surface, dryRun: true }, () => `Would delete ${label}.`);
+      return;
+    }
+    await confirm(`About to delete ${label} — this cannot be undone.`, flags);
     const result = await api(`/api/surfaces/${id}`, { method: "DELETE" });
     emit(result, `deleted surface ${id}`);
   },
