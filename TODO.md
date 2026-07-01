@@ -604,7 +604,7 @@ already advertises **resources** (`showcase://surface/<id>`) and **prompts**
   resource list + read; the stdio-process matrix is the optional remainder above.
 - Consider, only if a need shows up: **elicitation/sampling** for the comment→agent
   loop. (An MCP-level health probe is now covered by `/api/health` / `showcase
-  health`.)
+health`.)
 
 ##### Move 3 — best-in-class viewer (`packages/viewer`)
 
