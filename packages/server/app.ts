@@ -1042,9 +1042,7 @@ export function createApp({
     session?: string;
     event: unknown;
     sandbox?: boolean;
-  }): Promise<
-    { stored: boolean; event?: TelemetryEvent } | { error: string; status: 400 | 404 }
-  > {
+  }): Promise<{ stored: boolean; event?: TelemetryEvent } | { error: string; status: 400 | 404 }> {
     const event = validateTelemetryEvent(input.event);
     if (!event) return { stored: false };
     if (input.sandbox && !SANDBOX_TELEMETRY_TYPES.includes(event.type)) {
@@ -1057,11 +1055,7 @@ export function createApp({
       author: "user",
     });
     if ("error" in result) return result;
-    if (
-      masteryStore &&
-      event.type === "checkpoint_attempt" &&
-      event.correct !== undefined
-    ) {
+    if (masteryStore && event.type === "checkpoint_attempt" && event.correct !== undefined) {
       const topic = await masteryStore.topicForSession(result.comment.sessionId);
       if (topic) {
         await masteryStore.recordAttempt(topic.topic, event.conceptId, {
@@ -1109,7 +1103,8 @@ export function createApp({
         ? { misconception: input.misconception.trim() }
         : {}),
     });
-    if (!record) return { error: `unknown topic/concept: ${topic}/${input.conceptId}`, status: 404 };
+    if (!record)
+      return { error: `unknown topic/concept: ${topic}/${input.conceptId}`, status: 404 };
     await refreshSyllabus(topic);
     return { record };
   }

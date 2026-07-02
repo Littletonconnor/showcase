@@ -225,7 +225,8 @@ export function coerceLesson(raw: unknown): { lesson: Lesson } | Fail {
   }
   const edges: [string, string][] = [];
   for (const e of Array.isArray(graphRaw.edges) ? graphRaw.edges : []) {
-    if (!Array.isArray(e) || e.length !== 2) return fail('"edges" entries must be [from, to] pairs');
+    if (!Array.isArray(e) || e.length !== 2)
+      return fail('"edges" entries must be [from, to] pairs');
     const [from, to] = [str(e[0]).trim(), str(e[1]).trim()];
     if (!conceptIds.has(from) || !conceptIds.has(to)) {
       return fail(`edge [${from} -> ${to}] references an unknown concept`);
@@ -337,7 +338,11 @@ export function coerceBeat(
 // labels boring anyway: strip the characters that could close a quoted label
 // or read as mermaid syntax.
 const mermaidLabel = (s: string): string =>
-  s.replace(/[[\]{}()"`|<>#;]/g, "").replace(/\s+/g, " ").trim().slice(0, 60);
+  s
+    .replace(/[[\]{}()"`|<>#;]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 60);
 
 const MASTERY_BADGE: Record<string, string> = {
   untouched: "",
@@ -372,7 +377,7 @@ export function renderSyllabusParts(
   const counts = { untouched: 0, shaky: 0, solid: 0, due: 0 };
   for (const c of graph.concepts) counts[states[c.id] ?? "untouched"]++;
   const legend =
-    `**${topic}** — your map. \`*\` solid · \`~\` shaky · \`!\` due for review · plain = not yet touched.\n\n` +
+    `**${topic}**, your map. \`*\` solid · \`~\` shaky · \`!\` due for review · plain = not yet touched.\n\n` +
     `Progress: ${counts.solid} solid · ${counts.shaky} shaky · ${counts.due} due · ${counts.untouched} to go. ` +
     `Mastery moves only on checkpoint answers, never on "feels clear".`;
   return [
@@ -383,7 +388,10 @@ export function renderSyllabusParts(
 
 // A checkpoint as a surface part. Trivial, but kept as the single constructor
 // so every checkpoint enters the parts list one way.
-const checkpointPart = (checkpoint: Checkpoint): SurfacePart => ({ kind: "checkpoint", checkpoint });
+const checkpointPart = (checkpoint: Checkpoint): SurfacePart => ({
+  kind: "checkpoint",
+  checkpoint,
+});
 
 // One beat -> its card's ordered parts. The fixed arc (hook -> model -> worked
 // example -> gated explorable -> checkpoints -> recap) is the layout contract:
@@ -393,7 +401,8 @@ export function renderBeatParts(beat: LessonBeat): SurfacePart[] {
   if (beat.hook) {
     parts.push({
       kind: "markdown",
-      markdown: "**Before I explain — commit to a prediction.** (Being wrong here is the useful part.)",
+      markdown:
+        "**Before I explain, commit to a prediction.** (Being wrong here is the useful part.)",
     });
     parts.push(checkpointPart(beat.hook));
   }
@@ -418,7 +427,7 @@ export function renderBeatParts(beat: LessonBeat): SurfacePart[] {
     parts.push({ kind: "markdown", markdown: "#### Check yourself" });
     for (const cp of beat.checkpoints) parts.push(checkpointPart(cp));
   }
-  parts.push({ kind: "markdown", markdown: `> **Recap** — ${beat.recap}` });
+  parts.push({ kind: "markdown", markdown: `> **Recap:** ${beat.recap}` });
   return parts;
 }
 

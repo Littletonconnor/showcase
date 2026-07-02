@@ -22,7 +22,7 @@ const KIND_LABEL: Record<Checkpoint["kind"], string> = {
 
 // Free-text kinds the agent grades (no options, no expected answer).
 const AGENT_GRADED_NOTE =
-  "Sent to your agent to grade — a substantive reply lands in the session shortly.";
+  "Sent to your agent to grade; a substantive reply lands in the session shortly.";
 
 // Whitespace/case-normalized exact match for client-graded free text (trace).
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
@@ -34,13 +34,14 @@ function calibrationLine(confidence: number, correct: boolean | undefined): stri
   const sure = confidence >= 0.7;
   const unsure = confidence <= 0.3;
   if (sure && !correct) {
-    return "High confidence, incorrect — the most teachable moment. Your sense of knowing this was miscalibrated; the reveal below is worth a slow read.";
+    return "High confidence, incorrect: the most teachable moment. Your sense of knowing this was miscalibrated; the reveal below is worth a slow read.";
   }
-  if (sure && correct) return "High confidence, correct — well calibrated here.";
+  if (sure && correct) return "High confidence, correct: well calibrated here.";
   if (unsure && correct) {
-    return "Low confidence, correct — you know this better than you think.";
+    return "Low confidence, correct: you know this better than you think.";
   }
-  if (unsure && !correct) return "Low confidence, incorrect — accurately calibrated; now close the gap.";
+  if (unsure && !correct)
+    return "Low confidence, incorrect: accurately calibrated; now close the gap.";
   return null;
 }
 
@@ -74,7 +75,11 @@ export function CheckpointPart(props: { surfaceId: string; checkpoint: Checkpoin
   const hasOptions = !!cp.options && cp.options.length > 0;
   const clientGraded = hasOptions || !!cp.expected;
 
-  const commit = (answer: string | string[], correct: boolean | undefined, misconception?: string) => {
+  const commit = (
+    answer: string | string[],
+    correct: boolean | undefined,
+    misconception?: string,
+  ) => {
     const state = {
       answer,
       ...(correct !== undefined ? { correct } : {}),
@@ -183,7 +188,7 @@ export function CheckpointPart(props: { surfaceId: string; checkpoint: Checkpoin
                 rows={cp.kind === "explain" || cp.kind === "apply" ? 4 : 2}
                 placeholder={
                   cp.kind === "explain"
-                    ? "Explain it in your own words — from memory, not by scrolling up…"
+                    ? "Explain it in your own words, from memory, not by scrolling up…"
                     : "Your answer…"
                 }
                 spellCheck={false}
@@ -221,7 +226,7 @@ export function CheckpointPart(props: { surfaceId: string; checkpoint: Checkpoin
               onClick={skip}
               className="text-[11.5px] text-faint underline-offset-2 hover:text-muted-foreground hover:underline"
             >
-              skip (no reveal — skips tell the agent to change approach)
+              skip (no reveal; skips tell the agent to change approach)
             </button>
           </div>
         </div>
@@ -295,7 +300,7 @@ export function ExplorableLock(props: { gateId: string }) {
       className="flex items-center gap-2 border-t-[0.5px] border-border bg-muted/20 px-4 py-6 text-[12.5px] text-muted-foreground"
     >
       <span aria-hidden>🔒</span>
-      Commit a prediction above to unlock this interactive — deciding what you expect first is what
+      Commit a prediction above to unlock this interactive. Deciding what you expect first is what
       makes playing with it stick.
     </div>
   );

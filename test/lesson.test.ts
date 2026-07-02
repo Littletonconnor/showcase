@@ -83,10 +83,7 @@ test("coerceLesson rejects structural problems with precise errors", () => {
     // duplicate checkpoint ids across the lesson
     [(l) => (l.beats[0].checkpoints[0].id = "hook-1"), /duplicate checkpoint id/],
     // html is not a legal model part
-    [
-      (l) => l.beats[0].model.push({ kind: "html", html: "<p>x</p>" }),
-      /not allowed here/,
-    ],
+    [(l) => l.beats[0].model.push({ kind: "html", html: "<p>x</p>" }), /not allowed here/],
   ];
   for (const [mutate, re] of cases) {
     const l = validLesson() as any;
@@ -219,7 +216,12 @@ test("validateTelemetryEvent accepts each closed-union member and strips junk", 
   );
   assert.ok(validateTelemetryEvent({ v: 1, type: "explorable_gate_passed", checkpointId: "g" }));
   assert.ok(
-    validateTelemetryEvent({ v: 1, type: "explorable_interaction", name: "slider.mem", value: "42" }),
+    validateTelemetryEvent({
+      v: 1,
+      type: "explorable_interaction",
+      name: "slider.mem",
+      value: "42",
+    }),
   );
   assert.ok(validateTelemetryEvent({ v: 1, type: "confusion_flag", anchor: "beat 2" }));
 });

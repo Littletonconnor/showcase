@@ -32,7 +32,9 @@ const lesson = defineCommand({
     try {
       plan = JSON.parse(readContent(positionals[0]));
     } catch {
-      fail(`invalid lesson JSON${positionals[0] && positionals[0] !== "-" ? ` in ${positionals[0]}` : ""}`);
+      fail(
+        `invalid lesson JSON${positionals[0] && positionals[0] !== "-" ? ` in ${positionals[0]}` : ""}`,
+      );
     }
     const session = await resolveSession(flags, { create: true });
     const result = await api("/api/lessons", {
@@ -48,7 +50,7 @@ const lesson = defineCommand({
     emit(result, () => {
       const beats = (result.beats ?? []) as { surfaceId: string; conceptId: string }[];
       return [
-        `Published lesson — ${BASE}/session/${result.sessionId}`,
+        `Published lesson: ${BASE}/session/${result.sessionId}`,
         `  syllabus ${result.syllabusId}`,
         ...beats.map((b) => `  beat ${b.surfaceId}  (${b.conceptId})`),
       ].join("\n");
@@ -83,7 +85,7 @@ const reviewDue = defineCommand({
       return due
         .map(
           (d) =>
-            `${d.topic} / ${d.label} (${d.conceptId}) — ${d.state}, ` +
+            `${d.topic} / ${d.label} (${d.conceptId}): ${d.state}, ` +
             `${d.overdueDays === 0 ? "due today" : `${d.overdueDays}d overdue`}` +
             (d.misconceptions.length > 0 ? `, missed on: ${d.misconceptions.join("; ")}` : ""),
         )
@@ -113,7 +115,7 @@ const mastery = defineCommand({
       concepts: { id: string; label: string; state: string; attempts?: number; dueAt?: string }[];
     }[];
     emit(result, () => {
-      if (topics.length === 0) return "No mastery data yet — publish a lesson first.";
+      if (topics.length === 0) return "No mastery data yet; publish a lesson first.";
       return topics
         .map(
           (t) =>

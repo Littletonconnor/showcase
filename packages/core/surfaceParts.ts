@@ -326,9 +326,7 @@ const strictCheckpointPart = z
       conceptId: z.string().regex(checkpointIdRe),
       kind: z.enum(CHECKPOINT_KINDS as unknown as [string, ...string[]]),
       prompt: z.string().min(1).max(4000),
-      code: z
-        .object({ code: z.string().min(1), language: z.string().optional() })
-        .optional(),
+      code: z.object({ code: z.string().min(1), language: z.string().optional() }).optional(),
       options: z.array(checkpointOptionSchema).min(2).max(6).optional(),
       expected: z.string().max(400).optional(),
       askConfidence: z.boolean().optional(),

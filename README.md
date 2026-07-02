@@ -27,7 +27,8 @@ server, and a zero-dependency CLI. It runs entirely on your machine.
 ## What it's for
 
 Two flagship workflows for making an agent's output legible — plus a third for
-deciding before you build.
+deciding before you build, and a fourth for making your own understanding
+legible while it teaches you.
 
 ### 🔍 Review the code it wrote
 
@@ -84,6 +85,35 @@ tracks where you are as the thread grows past a screen. Comment on any card to
 push back, or **Approve** to lock the direction — and the agent revises in place.
 
 ![A design-options session: the session sidebar, a live table of contents down the options, the status roll-up, and a Preferred recommendation card with a sequence diagram](docs/images/design-review.png)
+
+### 🎓 Learn what it's teaching
+
+Ask the agent to _teach_ you a topic or a codebase (not just answer) and it
+publishes a **lesson session**: a syllabus card mapping the 4-9 concepts with
+prerequisite edges, then one card per concept beat. Each beat opens with a
+**prediction you commit before any teaching**, shows one diagram plus tight
+prose and a worked example on real code, optionally an **interactive explorable
+that stays locked until you predict**, and closes with **checkpoints** whose
+resolutions are structurally hidden until you attempt. Wrong answers are
+diagnoses: distractors carry misconception tags, so the agent sees WHICH wrong
+model you hold and inserts a remediation card targeting exactly that. Your
+attempts flow back on the same exactly-once feedback pipe reviews use; a
+mastery store under `~/.showcase/mastery.json` schedules spaced review, and
+`showcase review-due` (or asking the agent "what's due?") resurfaces shaky
+concepts days later with fresh question variants. No streaks, no badges, no
+"mark as learned" button: the only status is what you actually answered.
+
+Paste-ready prompt:
+
+> Use your teach skill and showcase to teach me [topic / this codebase].
+> Check my learner state first, quiz me as we go, and don't reveal answers
+> before I attempt.
+
+Try it now: `showcase demo` seeds three real lessons (Redis eviction policies,
+the Effect-TS error model, and a tour of this codebase). Full form factor:
+[`docs/learn-form-factor.md`](docs/learn-form-factor.md). The pedagogy lives in
+the showcase-agnostic [`teach` skill](skills/teach/) - with no showcase server
+it still teaches the same way in plain chat.
 
 **Plus the everyday uses:** visualize data (native charts), render math (KaTeX),
 sketch UI ideas (sandboxed HTML), or compose a walk-through deck with the
@@ -295,7 +325,41 @@ Restart the editor after changing MCP config. The agent's tools: `publish_surfac
 `publish_decisions`, `wait_for_feedback`, `list_surfaces`, `get_surface`,
 `upload_asset`, `get_design_guide`, and `configure_session` — plus the tailored
 preset tools (`publish_postmortem`, `publish_dashboard`, `publish_design_doc`,
-`publish_status`, `publish_architecture`, `publish_product_demo`, …).
+`publish_status`, `publish_architecture`, `publish_product_demo`, …) and the
+learn-mode tools (`publish_lesson`, `update_lesson`, `get_learner_state`,
+`record_attempt`).
+
+### Install the skills
+
+The repo's skills (`showcase`, `session-presets`, `teach`, `adding-a-skill`)
+follow the standard agent-skills layout, so any of these works:
+
+```sh
+# the skills CLI (Claude Code, Codex, Cursor, OpenCode, Copilot - shared .agents/skills/):
+npx skills@latest add Littletonconnor/showcase --skill teach
+
+# Claude Code plugin marketplace (managed + updatable, namespaced /showcase:* skills):
+/plugin marketplace add Littletonconnor/showcase
+
+# or plain copy:
+cp -r skills/teach ~/.agents/skills/
+```
+
+Each skill's README states when to use it and, just as important, when to skip
+it. For always-on triggering guidance, add this managed block to your
+`CLAUDE.md` / `AGENTS.md` (manual, opt-in):
+
+```markdown
+<!-- showcase-skills:start -->
+
+When I ask to learn, understand deeply, or get onboarded to a topic or
+codebase, use the teach skill (lessons with checkpoints, no answer-dumping).
+When I ask a quick question, answer directly - do not start a lesson.
+When a visual would explain better than text and showcase is running, use the
+showcase skill to publish it there.
+
+<!-- showcase-skills:end -->
+```
 
 Then just ask in plain language:
 

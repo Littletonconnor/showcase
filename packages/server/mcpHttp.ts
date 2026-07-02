@@ -454,8 +454,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
           conceptId: typeof args.conceptId === "string" ? args.conceptId : undefined,
           kind: typeof args.kind === "string" ? args.kind : undefined,
           correct: args.correct,
-          misconception:
-            typeof args.misconception === "string" ? args.misconception : undefined,
+          misconception: typeof args.misconception === "string" ? args.misconception : undefined,
         });
         if ("error" in result) throw new Error(result.error);
         return JSON.stringify(result, null, 2);

@@ -118,7 +118,11 @@ export class MasteryStore {
       topic,
       conceptGraph: clone(graph),
       records: existing?.records ?? {},
-      ...(live?.sessionId ? { sessionId: live.sessionId } : existing?.sessionId ? { sessionId: existing.sessionId } : {}),
+      ...(live?.sessionId
+        ? { sessionId: live.sessionId }
+        : existing?.sessionId
+          ? { sessionId: existing.sessionId }
+          : {}),
       ...(live?.syllabusSurfaceId
         ? { syllabusSurfaceId: live.syllabusSurfaceId }
         : existing?.syllabusSurfaceId

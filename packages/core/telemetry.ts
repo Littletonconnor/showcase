@@ -9,7 +9,6 @@ import { type CheckpointKind, isCheckpointKind } from "./types.ts";
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
-
 // A closed, versioned union. Everything is validated at the edge: the trusted
 // viewer posts these from checkpoint components, and the sandbox bridge
 // forwards ONLY `explorable_interaction` after re-validating (see
@@ -44,8 +43,7 @@ const NAME_RE = /^[\w.-]{1,64}$/;
 // Same short-token grammar checkpoint/concept ids use in lesson.ts.
 const ID_RE = /^[\w.-]{1,80}$/;
 
-const oneLine = (s: string, max: number): string =>
-  s.replace(/[\r\n\t]+/g, " ").slice(0, max);
+const oneLine = (s: string, max: number): string => s.replace(/[\r\n\t]+/g, " ").slice(0, max);
 
 // Strict shape validation into a FRESH object (unknown fields never ride
 // through). Returns null for anything malformed, oversized, or outside the
@@ -143,7 +141,11 @@ export function formatTelemetryComment(e: TelemetryEvent): string {
     case "checkpoint_attempt": {
       const answer = Array.isArray(e.answer) ? e.answer.join(", ") : e.answer;
       const graded =
-        e.correct === undefined ? "ungraded — grade it and reply" : e.correct ? "correct" : "INCORRECT";
+        e.correct === undefined
+          ? "ungraded: grade it and reply"
+          : e.correct
+            ? "correct"
+            : "INCORRECT";
       const bits = [
         `[checkpoint] ${e.checkpointId} (${e.kind}, concept ${e.conceptId}): ${graded}`,
         `answer=${JSON.stringify(answer)}`,
@@ -154,13 +156,13 @@ export function formatTelemetryComment(e: TelemetryEvent): string {
       return bits.join(" ");
     }
     case "checkpoint_skipped":
-      return `[checkpoint] ${e.checkpointId} (concept ${e.conceptId}): skipped — repeated skips mean change the approach, not mastery`;
+      return `[checkpoint] ${e.checkpointId} (concept ${e.conceptId}): skipped (repeated skips mean change the approach, not mastery)`;
     case "explorable_gate_passed":
-      return `[explorable] gate ${e.checkpointId} passed — the explorable is now unlocked`;
+      return `[explorable] gate ${e.checkpointId} passed; the explorable is now unlocked`;
     case "explorable_interaction":
       return `[explorable] ${e.name}=${JSON.stringify(e.value)} (emitted by sandboxed card script, not typed by the user)`;
     case "confusion_flag":
-      return `[confused] the learner flagged confusion${e.anchor ? ` at ${JSON.stringify(e.anchor)}` : ""} — pause and probe before moving on`;
+      return `[confused] the learner flagged confusion${e.anchor ? ` at ${JSON.stringify(e.anchor)}` : ""}; pause and probe before moving on`;
   }
 }
 

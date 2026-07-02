@@ -144,9 +144,7 @@ test("telemetry rides the comment pipe exactly-once and moves mastery + syllabus
   assert.equal(again.comments.length, 0);
 
   // Mastery moved to shaky and the syllabus card re-rendered in place (v2).
-  const mastery = (await (
-    await app.request("/api/mastery?topic=Redis%20eviction")
-  ).json()) as any;
+  const mastery = (await (await app.request("/api/mastery?topic=Redis%20eviction")).json()) as any;
   const lru = mastery.topics[0].concepts.find((c: any) => c.id === "lru");
   assert.equal(lru.state, "shaky");
   assert.deepEqual(lru.misconceptions, ["true LRU"]);
@@ -243,7 +241,9 @@ test("record_attempt grades agent-side and update_lesson revises/appends beats",
       title: "Not a true LRU",
       beat: {
         conceptId: "lru",
-        model: [{ kind: "markdown", markdown: "You picked the true-LRU model. Here is why it fails." }],
+        model: [
+          { kind: "markdown", markdown: "You picked the true-LRU model. Here is why it fails." },
+        ],
         checkpoints: [
           {
             id: "cp-lru-remed",
@@ -312,10 +312,7 @@ test("mastery routes degrade cleanly with no mastery store", async () => {
 test("the MCP transport exposes the learn tools end to end", async () => {
   const { app } = makeApp();
   const rpc = async (method: string, params: unknown, id = 1) => {
-    const res = await app.request(
-      "/mcp",
-      json({ jsonrpc: "2.0", id, method, params }),
-    );
+    const res = await app.request("/mcp", json({ jsonrpc: "2.0", id, method, params }));
     return (await res.json()) as any;
   };
   const tools = await rpc("tools/list", {});

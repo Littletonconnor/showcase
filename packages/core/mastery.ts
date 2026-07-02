@@ -131,7 +131,11 @@ export function applyAttempt(
   if (attempt.correct) {
     ease = Math.min(EASE_MAX, ease + EASE_GAIN);
     intervalDays =
-      record.intervalDays <= 0 ? 1 : record.intervalDays === 1 ? 3 : Math.round(record.intervalDays * ease);
+      record.intervalDays <= 0
+        ? 1
+        : record.intervalDays === 1
+          ? 3
+          : Math.round(record.intervalDays * ease);
     state = isSolid(attempts) ? "solid" : "shaky";
   } else {
     ease = Math.max(EASE_MIN, ease - EASE_LOSS);
