@@ -432,11 +432,30 @@ export function nearBottom() {
   return !!m && m.scrollHeight - m.scrollTop - m.clientHeight < 200;
 }
 
+function sameComment(a: Comment, b: Comment) {
+  const ka = Object.keys(a) as (keyof Comment)[];
+  return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k]);
+}
+
+// Dedupe by id, but also reconcile: an incoming comment whose fields changed
+// server-side replaces the stale entry in place (ordering stays stable);
+// genuinely new ids append.
 function mergeComments(list: Comment[]) {
   set((state) => {
-    const seen = new Set(state.comments.map((c) => c.id));
-    const fresh = list.filter((c) => !seen.has(c.id));
-    return fresh.length > 0 ? { comments: [...state.comments, ...fresh] } : state;
+    const index = new Map(state.comments.map((c, i) => [c.id, i]));
+    let next: Comment[] | null = null;
+    for (const c of list) {
+      const i = index.get(c.id);
+      if (i === undefined) {
+        next ??= state.comments.slice();
+        index.set(c.id, next.length);
+        next.push(c);
+      } else if (!sameComment((next ?? state.comments)[i], c)) {
+        next ??= state.comments.slice();
+        next[i] = c;
+      }
+    }
+    return next ? { comments: next } : state;
   });
 }
 
