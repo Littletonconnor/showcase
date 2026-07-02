@@ -39,6 +39,15 @@ export interface ExportBundle {
   assets: Record<string, string>;
 }
 
+// `/a/:id` references embedded in part content (an `<img src="/a/…">` in an
+// html part, a markdown image) — the viewer's inlineAssetRefs rewrites these
+// against the bundle, so any id it could match must be collected here too, or
+// the export renders them broken. Asset ids are sha256 hex.
+const EMBEDDED_ASSET_RE = /\/a\/([0-9a-f]{64})/g;
+const collectEmbeddedAssetIds = (parts: unknown, ids: Set<string>) => {
+  for (const m of JSON.stringify(parts).matchAll(EMBEDDED_ASSET_RE)) ids.add(m[1]);
+};
+
 // Collect every asset id any version of any surface references, resolve each to
 // a `data:` URI. A surface can reference an asset owned by another session
 // (content-addressed dedup), so we resolve by id via the store, not by owner.
@@ -46,7 +55,11 @@ async function inlineAssets(store: Store, surfaces: Surface[]): Promise<Record<s
   const ids = new Set<string>();
   for (const s of surfaces) {
     collectAssetIds(s.parts, ids);
-    for (const h of s.history) collectAssetIds(h.parts, ids);
+    collectEmbeddedAssetIds(s.parts, ids);
+    for (const h of s.history) {
+      collectAssetIds(h.parts, ids);
+      collectEmbeddedAssetIds(h.parts, ids);
+    }
   }
   const assets: Record<string, string> = {};
   for (const id of ids) {

@@ -110,7 +110,11 @@ const d = {
   terminalText: "terminal part: raw output (ANSI SGR color escapes are rendered)",
   terminalCols: "terminal part: optional render width in columns",
   partChartType: "chart part: bar | line | area | pie | treemap | scatter",
-  partChartData: "chart part: row-oriented data — an array of objects, one per row/category",
+  partChartData:
+    "chart part: row-oriented data — an array of objects, one per row/category. json part: the JSON value to render as a collapsible tree.",
+  partCode: "code part: the source text, shiki-highlighted",
+  partCodeLanguage: "code part: shiki language id (inferred from `title` when omitted)",
+  partCodeLineStart: "code part: 1-based line number the excerpt starts at",
   partChartX: "chart part: the field naming the category (x axis / pie slice label)",
   partChartY: "chart part: the numeric series field, or an array of fields for multiple series",
   partChartStacked: "chart part: stack bars/areas instead of grouping (ignored for line/pie)",
@@ -167,7 +171,9 @@ const MCP_PARTS_DESCRIPTION =
   "chartType:'bar'|'line'|'area'|'pie'|'treemap'|'scatter', data:[{…row}], x:'<categoryField>', " +
   "y:'<numericField>'|['<f1>','<f2>'], stacked?, colors?, xLabel?, yLabel?, caption?} — row-oriented " +
   "numeric data rendered with Recharts (data is an array of objects; x names the category field, y " +
-  "the numeric series — one field or several). Optional diff layout " +
+  "the numeric series — one field or several). json: {kind:'json', data:<any JSON value>} — a " +
+  "collapsible tree. code: {kind:'code', code:'<source>', language?, title?, lineStart?} — a " +
+  "shiki-highlighted source file/excerpt. Optional diff layout " +
   "'unified'|'split'. Combine freely, e.g. [{kind:'html',...},{kind:'image',assetId},{kind:'trace',steps}].";
 
 const MCP_PART_JSON_SCHEMA = {
@@ -175,7 +181,21 @@ const MCP_PART_JSON_SCHEMA = {
   properties: {
     kind: {
       type: "string",
-      enum: ["html", "markdown", "mermaid", "diff", "image", "trace", "terminal", "chart"],
+      // Every kind the server accepts — schema-enforcing clients can otherwise
+      // never emit (or round-trip via get_surface → update_surface) a part the
+      // enum omits.
+      enum: [
+        "html",
+        "markdown",
+        "mermaid",
+        "diff",
+        "image",
+        "trace",
+        "terminal",
+        "chart",
+        "json",
+        "code",
+      ],
     },
     html: { type: "string", description: d.partHtml },
     kits: { type: "array", items: { type: "string" }, description: d.partKits },
@@ -222,7 +242,9 @@ const MCP_PART_JSON_SCHEMA = {
       enum: ["bar", "line", "area", "pie", "treemap", "scatter"],
       description: d.partChartType,
     },
-    data: { type: "array", items: { type: "object" }, description: d.partChartData },
+    // `data` is shared: an array of rows for chart parts, any JSON value for
+    // json parts — so it can't be typed narrower than "anything" here.
+    data: { description: d.partChartData },
     x: { type: "string", description: d.partChartX },
     y: {
       oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
@@ -232,6 +254,9 @@ const MCP_PART_JSON_SCHEMA = {
     colors: { type: "array", items: { type: "string" }, description: d.partChartColors },
     xLabel: { type: "string", description: d.partChartXLabel },
     yLabel: { type: "string", description: d.partChartYLabel },
+    code: { type: "string", description: d.partCode },
+    language: { type: "string", description: d.partCodeLanguage },
+    lineStart: { type: "number", description: d.partCodeLineStart },
   },
   required: ["kind"],
 } as const;
@@ -1013,7 +1038,21 @@ const traceStepSchema = z.object({
 
 const mcpPartSchema = z
   .object({
-    kind: z.enum(["html", "markdown", "mermaid", "diff", "image", "trace", "terminal"]),
+    // Must cover every kind the server accepts: the SDK enforces this schema on
+    // publish AND on the get_surface → update_surface round-trip, so a missing
+    // kind makes any surface carrying it unrevisable over stdio.
+    kind: z.enum([
+      "html",
+      "markdown",
+      "mermaid",
+      "diff",
+      "image",
+      "trace",
+      "terminal",
+      "chart",
+      "json",
+      "code",
+    ]),
     html: z.string().optional().describe(d.partHtml),
     kits: z.array(z.string()).optional().describe(d.partKits),
     markdown: z.string().optional().describe(d.partMarkdown),
@@ -1028,12 +1067,31 @@ const mcpPartSchema = z
     steps: z.array(traceStepSchema).optional().describe(d.traceSteps),
     text: z.string().optional().describe(d.terminalText),
     cols: z.number().optional().describe(d.terminalCols),
+    chartType: z
+      .enum(["bar", "line", "area", "pie", "treemap", "scatter"])
+      .optional()
+      .describe(d.partChartType),
+    data: z.unknown().optional().describe(d.partChartData),
+    x: z.string().optional().describe(d.partChartX),
+    y: z
+      .union([z.string(), z.array(z.string())])
+      .optional()
+      .describe(d.partChartY),
+    stacked: z.boolean().optional().describe(d.partChartStacked),
+    colors: z.array(z.string()).optional().describe(d.partChartColors),
+    xLabel: z.string().optional().describe(d.partChartXLabel),
+    yLabel: z.string().optional().describe(d.partChartYLabel),
+    code: z.string().optional().describe(d.partCode),
+    language: z.string().optional().describe(d.partCodeLanguage),
+    lineStart: z.number().optional().describe(d.partCodeLineStart),
   })
   .describe(
     "A surface part: html {kind:'html',html}; markdown {kind:'markdown',markdown} (prose); mermaid " +
       "{kind:'mermaid',mermaid} (diagram source → SVG); diff {kind:'diff',patch}; image " +
       "{kind:'image',assetId} (from upload_asset); trace {kind:'trace',steps} and/or {kind:'trace',assetId}; " +
-      "terminal {kind:'terminal',text} (monospace output; ANSI SGR colors rendered)",
+      "terminal {kind:'terminal',text} (monospace output; ANSI SGR colors rendered); chart " +
+      "{kind:'chart',chartType,data,x,y} (native chart); json {kind:'json',data} (collapsible tree); " +
+      "code {kind:'code',code,language?} (shiki-highlighted source)",
   );
 
 const badgeStdioSchemas = {
@@ -1446,6 +1504,7 @@ export const HTTP_MCP_TOOL_SCHEMAS: Record<string, z.ZodTypeAny> = {
   publish_status: toolObject(httpEnvelope),
   publish_architecture: toolObject(httpEnvelope),
   publish_product_demo: toolObject(httpEnvelope),
+  publish_product_direction: toolObject(httpEnvelope),
   configure_session: toolObject({
     ...STDIO_MCP_INPUT_SCHEMAS.configureSession,
     session: z.string().describe("Session id to configure"),
