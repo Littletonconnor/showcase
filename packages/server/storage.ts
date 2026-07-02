@@ -191,17 +191,23 @@ export class JsonFileStore implements Store {
       null,
       2,
     );
-    this.writeQueue = this.writeQueue.then(async () => {
-      await mkdir(dirname(this.filePath), { recursive: true });
-      const tmp = `${this.filePath}.tmp`;
-      await writeFile(tmp, data, "utf8");
-      await rename(tmp, this.filePath);
-      // Mirror the just-written good state to .bak. We copy AFTER the rename, so
-      // the backup only ever holds validated data and can't be poisoned by a
-      // corrupt live file — readStoredShape recovers from it if the live file is
-      // later lost or truncated.
-      await copyFile(this.filePath, `${this.filePath}.bak`);
-    });
+    // A rejected write must not poison the chain: without the catch, one
+    // transient failure (ENOSPC, EMFILE) would leave writeQueue permanently
+    // rejected and every later persist would silently never run. The caller
+    // still sees its own failure via the returned promise.
+    this.writeQueue = this.writeQueue
+      .catch(() => {})
+      .then(async () => {
+        await mkdir(dirname(this.filePath), { recursive: true });
+        const tmp = `${this.filePath}.tmp`;
+        await writeFile(tmp, data, "utf8");
+        await rename(tmp, this.filePath);
+        // Mirror the just-written good state to .bak. We copy AFTER the rename, so
+        // the backup only ever holds validated data and can't be poisoned by a
+        // corrupt live file — readStoredShape recovers from it if the live file is
+        // later lost or truncated.
+        await copyFile(this.filePath, `${this.filePath}.bak`);
+      });
     return this.writeQueue;
   }
 
@@ -520,8 +526,13 @@ export class JsonFileStore implements Store {
     await this.load();
     const asset = this.assets.get(id);
     if (!asset) return;
+    const prev = asset.lastAccessedAt;
     asset.lastAccessedAt = new Date().toISOString();
-    await this.persist();
+    // persist() rewrites the whole store — including every asset's bytes — so
+    // flushing on each serve would turn one image view into a full-board disk
+    // write. GC only needs coarse recency: flush at most hourly per asset and
+    // let any other write carry the in-memory bump for free in between.
+    if (Date.now() - Date.parse(prev) > 60 * 60 * 1000) await this.persist();
   }
 
   async listAssets(sessionId: string) {
