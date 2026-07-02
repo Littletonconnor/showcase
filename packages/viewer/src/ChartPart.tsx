@@ -40,11 +40,18 @@ const TONE_HUE: Record<string, string> = {
 };
 const QUADRANT_TICKS = ["", "Low", "Med", "High"];
 
-// Categorical series palette. The first series uses the board accent so a
-// single-series chart matches the chrome; the rest are fixed hues chosen to read
-// well on both light and dark surfaces. A multi-series or pie chart cycles
-// through accent → these.
-const REST_PALETTE = ["#e8590c", "#2f9e44", "#9c36b5", "#1098ad", "#e64980", "#f59f00"];
+// Categorical series palette, assigned in FIXED order (series 2 is always the
+// same blue — identity, never rank). The first series uses the surface theme's
+// accent so a single-series chart matches the chrome. Each mode has its own
+// steps, tuned and machine-validated (OKLCH lightness band, chroma floor,
+// adjacent-pair CVD separation ≥12, ≥3:1 contrast on the mode's surface) — a
+// dark chart is not a flipped light chart. Series beyond the palette fold into
+// a neutral "other" gray rather than cycling hues into false identities.
+const REST_PALETTE: Record<Mode, string[]> = {
+  light: ["#0f7ca8", "#2f9e44", "#9c36b5", "#c2255c", "#a87900", "#0b87a6"],
+  dark: ["#3d97d1", "#3fa457", "#ae6cd6", "#d9548c", "#b38a1d", "#28a0b5"],
+};
+const OVERFLOW_GRAY: Record<Mode, string> = { light: "#8a8578", dark: "#7d786c" };
 
 interface ThemeColors {
   text: string;
@@ -86,9 +93,9 @@ export function ChartPart(props: { part: ChartPartData }) {
   const { part } = props;
   const series = Array.isArray(part.y) ? part.y : [part.y];
   // Explicit per-series/per-slice colors win; otherwise the first series uses the
-  // board accent and the rest cycle the fixed palette.
+  // board accent and the rest take the validated fixed-order palette.
   const colorFor = (i: number) =>
-    part.colors?.[i] ?? (i === 0 ? c.accent : REST_PALETTE[(i - 1) % REST_PALETTE.length]);
+    part.colors?.[i] ?? (i === 0 ? c.accent : (REST_PALETTE[mode][i - 1] ?? OVERFLOW_GRAY[mode]));
 
   const axisProps = { tick: { fontSize: 11, fill: c.muted }, stroke: c.border, tickLine: false };
   const xLabel = part.xLabel
@@ -229,7 +236,8 @@ export function ChartPart(props: { part: ChartPartData }) {
                 stroke={colorFor(i)}
                 strokeWidth={2}
                 dot={false}
-                activeDot={{ r: 4 }}
+                // A surface ring lifts the hovered point off crossing lines.
+                activeDot={{ r: 4, stroke: c.surface, strokeWidth: 2 }}
               />
             ))}
           </LineChart>
@@ -361,9 +369,12 @@ export function ChartPart(props: { part: ChartPartData }) {
                 key={s}
                 dataKey={s}
                 fill={colorFor(i)}
-                radius={[4, 4, 0, 0]}
+                // Only the top of the column rounds; stacked segments get a
+                // surface-colored seam so adjacent fills never touch.
+                radius={part.stacked && i < series.length - 1 ? 0 : [4, 4, 0, 0]}
                 maxBarSize={48}
                 stackId={part.stacked ? "s" : undefined}
+                {...(part.stacked ? { stroke: c.surface, strokeWidth: 1 } : {})}
               />
             ))}
           </BarChart>
