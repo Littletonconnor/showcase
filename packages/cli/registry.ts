@@ -7,6 +7,7 @@ import { feedbackCommands } from "./commands/feedback.ts";
 import { boardCommands } from "./commands/board.ts";
 import { configCommands } from "./commands/config.ts";
 import { doctorCommands } from "./commands/doctor.ts";
+import { inspectCommands } from "./commands/inspect.ts";
 import { shareCommands } from "./commands/share.ts";
 import { docsCommands } from "./commands/docs.ts";
 import { completionsCommands } from "./commands/completions.ts";
@@ -18,6 +19,7 @@ export const commands: Command[] = [
   ...boardCommands,
   ...configCommands,
   ...doctorCommands,
+  ...inspectCommands,
   ...shareCommands,
   ...docsCommands,
   ...completionsCommands,

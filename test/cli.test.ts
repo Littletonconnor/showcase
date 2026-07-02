@@ -82,6 +82,8 @@ for (const cmd of [
   "watch",
   "list",
   "kits",
+  "logs",
+  "open",
   "gc",
   "health",
   "validate",
@@ -613,6 +615,58 @@ test("themes lists the built-in theme ids", async () => {
     assert.equal(code, 0);
     assert.match(stdout, /showcase/);
     assert.match(stdout, /ocean/);
+  } finally {
+    await server.close();
+  }
+});
+
+test("logs prints the tail of the server log and honors --lines/--json", async () => {
+  // SERVICE_LOG lives under homedir(), which honors $HOME on posix.
+  const home = mkdtempSync(join(tmpdir(), "showcase-logs-"));
+  mkdirSync(join(home, ".showcase"), { recursive: true });
+  const file = join(home, ".showcase", "server.log");
+  writeFileSync(file, Array.from({ length: 60 }, (_, i) => `line ${i + 1}`).join("\n") + "\n");
+  const env = { HOME: home };
+
+  const tail = await runWith({ env }, "logs", "--lines", "3");
+  assert.equal(tail.code, 0);
+  assert.equal(tail.stdout, "line 58\nline 59\nline 60\n");
+
+  const json = await runWith({ env }, "logs", "--json");
+  assert.equal(json.code, 0);
+  const out = JSON.parse(json.stdout);
+  assert.equal(out.file, file);
+  assert.equal(out.lines.length, 50); // the default tail
+  assert.equal(out.lines.at(-1), "line 60");
+});
+
+test("logs without a log file explains how one gets created and exits 0", async () => {
+  const home = mkdtempSync(join(tmpdir(), "showcase-logs-none-"));
+  const { code, stdout } = await runWith({ env: { HOME: home } }, "logs");
+  assert.equal(code, 0);
+  assert.match(stdout, /no log yet/);
+  assert.match(stdout, /showcase service install/);
+});
+
+test("a non-numeric --lines fails fast instead of an empty tail", async () => {
+  const { code, stderr } = await run("logs", "--lines", "abc");
+  assert.equal(code, 1);
+  assert.match(stderr, /--lines must be a number/);
+});
+
+test("open prints the session URL (board root without one), no browser under SHOWCASE_NO_OPEN", async () => {
+  const server = await serveApp();
+  try {
+    const env = { SHOWCASE_URL: server.url, SHOWCASE_NO_AUTOSTART: "1", SHOWCASE_NO_OPEN: "1" };
+
+    const scoped = await runWith({ env: { ...env, SHOWCASE_SESSION: "s123" } }, "open", "--json");
+    assert.equal(scoped.code, 0);
+    assert.equal(JSON.parse(scoped.stdout).url, `${server.url}/session/s123`);
+
+    // no resolvable session -> the board root is still a useful destination
+    const root = await runWith({ env }, "open", "--json");
+    assert.equal(root.code, 0);
+    assert.equal(JSON.parse(root.stdout).url, server.url);
   } finally {
     await server.close();
   }

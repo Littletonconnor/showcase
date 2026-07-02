@@ -5,6 +5,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { openBrowser } from "../browser.ts";
 import { defineCommand } from "../command.ts";
 import type { Command } from "../command.ts";
 import { fail } from "../errors.ts";
@@ -33,13 +34,7 @@ const serve = defineCommand({
     });
     if (flags.open) {
       const url = `http://localhost:${port}`;
-      const { opener, openerArgs } =
-        process.platform === "darwin"
-          ? { opener: "open", openerArgs: [url] }
-          : process.platform === "win32"
-            ? { opener: "cmd", openerArgs: ["/c", "start", url] }
-            : { opener: "xdg-open", openerArgs: [url] };
-      setTimeout(() => spawn(opener, openerArgs, { stdio: "ignore" }), 700);
+      setTimeout(() => openBrowser(url), 700);
     }
     child.on("exit", (code) => process.exit(code ?? 0));
   },
