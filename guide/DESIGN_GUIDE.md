@@ -26,12 +26,15 @@ a `kind`:
 - **`mermaid`** — diagram source you hand over as _text_; the viewer renders it
   to an SVG (flowcharts, sequence diagrams, ERDs, gantt, state, …). Reach for it
   when the _shape_ of a system is the point and you'd rather describe it than
-  draw SVG by hand. Renders as data, not sandboxed markup (securityLevel
-  `strict`); for bespoke vector art hand-write inline `<svg>` in an `html` part
+  draw SVG by hand. Renders as data inside mermaid's sandbox (securityLevel
+  `sandbox`); for bespoke vector art hand-write inline `<svg>` in an `html` part
   instead. The viewer themes the diagram (light and dark) automatically — **don't
   set your own colors**. Highlight flowchart nodes with `:::accent` (or
   `class A,B accent`) and edges with `accentLine` (pair with `linkStyle`);
-  sequence diagrams style actors globally only.
+  sequence diagrams style actors globally only. Write flowchart edge labels as
+  `A -->|label| B` (or `A -- label --> B` with spaces): the squeezed form
+  `A--no-->B` parses `o--` as mermaid's circle-arrow token and silently eats
+  part of your label.
 - **`diff`** — a patch you hand over as _data_; the trusted viewer renders it
   natively as a syntax-highlighted code review (split or unified) with
   **word-level** intra-line highlighting. A multi-file diff leads with a
