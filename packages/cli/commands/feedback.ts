@@ -5,7 +5,7 @@
 import type { Command } from "../command.ts";
 import { fail } from "../errors.ts";
 import { api, BASE, TOKEN } from "../http.ts";
-import { emit } from "../output.ts";
+import { emit, isJson } from "../output.ts";
 import { resolveSession, resolveSessionByCwd } from "../session.ts";
 import { sleep, watchLine } from "../util.ts";
 
@@ -89,7 +89,11 @@ const watch: Command = {
         continue;
       }
       firstAfter = undefined;
-      for (const c of result.comments ?? []) console.log(watchLine(c));
+      // --json is the global scripting contract: one JSON object per line
+      // (JSONL) so a monitor can pipe into jq instead of parsing prose.
+      for (const c of result.comments ?? []) {
+        console.log(isJson() ? JSON.stringify(c) : watchLine(c));
+      }
     }
   },
 };

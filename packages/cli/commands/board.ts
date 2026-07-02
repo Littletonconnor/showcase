@@ -93,6 +93,17 @@ const kits: Command = {
   },
 };
 
+const themes: Command = {
+  name: "themes",
+  group: "Inspect",
+  summary: "list the theme ids this board offers (--theme on any publish)",
+  usage: "showcase themes",
+  async run() {
+    const all = await api("/api/themes");
+    emit(all, () => all.join("\n"));
+  },
+};
+
 const blueprints: Command = {
   name: "blueprints",
   group: "Inspect",
@@ -226,4 +237,14 @@ const gc: Command = {
   },
 };
 
-export const boardCommands: Command[] = [list, sessions, kits, blueprints, board, health, gc, demo];
+export const boardCommands: Command[] = [
+  list,
+  sessions,
+  kits,
+  themes,
+  blueprints,
+  board,
+  health,
+  gc,
+  demo,
+];

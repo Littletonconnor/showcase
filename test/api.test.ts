@@ -1043,6 +1043,77 @@ test("piggyback delivery advances the cursor seen by author=user waits", async (
   assert.equal(wait.comments.length, 0);
 });
 
+test("two concurrent author=user waits deliver a comment exactly once between them", async () => {
+  const app = makeApp();
+  const s = (await (await app.request("/api/snippets", json({ html: "<p>x</p>" }))).json()) as any;
+
+  // Both waits park on the session cursor, then one comment lands. The
+  // read+mark critical section is serialized per session, so exactly one of
+  // the two may receive it — a lost race must come back empty, not a copy.
+  const wait = async () => {
+    const r = await app.request(`/api/comments?session=${s.sessionId}&author=user&wait=3`);
+    return (await r.json()) as any;
+  };
+  const waits = [wait(), wait()];
+  await new Promise((r) => setTimeout(r, 100));
+  await app.request("/api/comments", json({ snippet: s.id, text: "only once", author: "user" }));
+  const [a, b] = await Promise.all(waits);
+  const delivered = [...a.comments, ...b.comments];
+  assert.equal(delivered.length, 1);
+  assert.equal(delivered[0].text, "only once");
+
+  // and the cursor has advanced — a fresh check re-delivers nothing
+  const after = (await (
+    await app.request(`/api/comments?session=${s.sessionId}&author=user`)
+  ).json()) as any;
+  assert.equal(after.comments.length, 0);
+});
+
+test("a malformed ?after= cursor is rejected, not treated as NaN", async () => {
+  const app = makeApp();
+  const s = (await (await app.request("/api/snippets", json({ html: "<p>x</p>" }))).json()) as any;
+  await app.request("/api/comments", json({ snippet: s.id, text: "hello", author: "user" }));
+  const res = await app.request(`/api/comments?session=${s.sessionId}&after=abc`);
+  assert.equal(res.status, 400);
+  const body = (await res.json()) as any;
+  assert.match(body.error, /after/);
+});
+
+test("registering a malformed full theme is a 400, not a live render bomb", async () => {
+  const app = makeApp();
+  // No palettes at all — resolving this theme would crash tokenThemeCss for
+  // every /s/:id render if it were allowed to shadow a real id.
+  const res = await app.request(
+    "/api/themes",
+    json({ theme: { id: "showcase", label: "broken" } }),
+  );
+  assert.equal(res.status, 400);
+  const body = (await res.json()) as any;
+  assert.ok(Array.isArray(body.issues) && body.issues.length > 0);
+
+  // the built-in theme still renders
+  const snip = (await (
+    await app.request("/api/snippets", json({ html: "<p>ok</p>" }))
+  ).json()) as any;
+  assert.equal((await app.request(`/s/${snip.id}`)).status, 200);
+});
+
+test("an over-long badge label clamps instead of silently dropping the badge", async () => {
+  const app = makeApp();
+  const res = (await (
+    await app.request(
+      "/api/surfaces",
+      json({
+        parts: [{ kind: "markdown", markdown: "x" }],
+        badge: { tone: "info", label: "b".repeat(40) },
+      }),
+    )
+  ).json()) as any;
+  assert.ok(res.badge, "badge must survive");
+  assert.equal(res.badge.label.length, 24);
+  assert.ok(res.badge.label.endsWith("…"));
+});
+
 test("author=user lastSeq reflects the last comment overall, not the last user comment", async () => {
   // When an agent reply lands after the user comment, the cursor returned
   // to the caller (lastSeq) must be the agent comment's seq — otherwise

@@ -562,38 +562,41 @@ export const htmlPart = (html: string, kits?: unknown): HtmlPart => ({
 // The combined byte weight of a surface's parts, for size limits. image/trace
 // parts are tiny (refs + inline steps) — the asset bytes they point at are
 // bounded separately by MAX_ASSET_BYTES, not this surface cap.
+// UTF-8 bytes, not UTF-16 code units: `.length` under-counts CJK/emoji content
+// by up to 3× against what actually lands in the JSON store on disk.
+const utf8 = new TextEncoder();
+const bytes = (s: string | undefined | null): number => (s ? utf8.encode(s).length : 0);
 export function partsByteLength(parts: SurfacePart[]): number {
   let n = 0;
   for (const p of parts) {
-    if (p.kind === "html") n += p.html.length;
+    if (p.kind === "html") n += bytes(p.html);
     else if (p.kind === "diff") {
-      n += p.patch?.length ?? 0;
-      for (const f of p.files ?? []) n += f.before.length + f.after.length;
+      n += bytes(p.patch);
+      for (const f of p.files ?? []) n += bytes(f.before) + bytes(f.after);
     } else if (p.kind === "image") {
-      n += p.assetId.length + (p.alt?.length ?? 0) + (p.caption?.length ?? 0);
+      n += bytes(p.assetId) + bytes(p.alt) + bytes(p.caption);
     } else if (p.kind === "markdown") {
-      n += p.markdown.length;
+      n += bytes(p.markdown);
     } else if (p.kind === "terminal") {
-      n += p.text.length + (p.title?.length ?? 0);
+      n += bytes(p.text) + bytes(p.title);
     } else if (p.kind === "mermaid") {
-      n += p.mermaid.length;
+      n += bytes(p.mermaid);
     } else if (p.kind === "json") {
-      n += JSON.stringify(p.data).length;
+      n += bytes(JSON.stringify(p.data));
     } else if (p.kind === "code") {
-      n +=
-        p.code.length + (p.language?.length ?? 0) + (p.title?.length ?? 0) + (p.lineStart ? 4 : 0);
+      n += bytes(p.code) + bytes(p.language) + bytes(p.title) + (p.lineStart ? 4 : 0);
     } else if (p.kind === "chart") {
       n +=
-        JSON.stringify(p.data).length +
-        p.x.length +
-        (Array.isArray(p.y) ? p.y.join("").length : p.y.length) +
-        (p.xLabel?.length ?? 0) +
-        (p.yLabel?.length ?? 0) +
-        (p.caption?.length ?? 0);
+        bytes(JSON.stringify(p.data)) +
+        bytes(p.x) +
+        (Array.isArray(p.y) ? p.y.reduce((s, y) => s + bytes(y), 0) : bytes(p.y)) +
+        bytes(p.xLabel) +
+        bytes(p.yLabel) +
+        bytes(p.caption);
     } else {
-      n += (p.assetId?.length ?? 0) + (p.title?.length ?? 0);
+      n += bytes(p.assetId) + bytes(p.title);
       for (const s of p.steps ?? []) {
-        n += s.label.length + (s.kind?.length ?? 0) + (s.detail?.length ?? 0);
+        n += bytes(s.label) + bytes(s.kind) + bytes(s.detail);
       }
     }
   }

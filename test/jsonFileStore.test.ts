@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -71,4 +71,33 @@ test("JsonFileStore: recovers from .bak when the live file is corrupt", async ()
   const recovered = new JsonFileStore(path);
   assert.equal((await recovered.getSession(session.id))?.title, "Backed up");
   assert.equal((await recovered.listSurfaces(session.id)).length, 1);
+});
+
+test("JsonFileStore: touchAsset flushes at most hourly, not per serve", async () => {
+  const path = freshPath();
+  const store = new JsonFileStore(path);
+  const session = await store.createSession({ agent: "pi", title: "Assets" });
+  const asset = await store.putAsset({
+    sessionId: session.id,
+    kind: "image",
+    contentType: "image/png",
+    data: new Uint8Array([1, 2, 3]),
+  });
+
+  // A fresh asset was just persisted; an immediate touch must NOT rewrite the
+  // whole store (that would turn every asset view into a full-board write).
+  const before = readFileSync(path, "utf8");
+  await store.touchAsset(asset!.id);
+  assert.equal(readFileSync(path, "utf8"), before);
+
+  // Age the on-disk record past the flush window; a touch on a cold asset
+  // must persist so GC's recency ordering survives a restart.
+  const stale = JSON.parse(before);
+  const old = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  stale.assets[0].lastAccessedAt = old;
+  writeFileSync(path, JSON.stringify(stale));
+  const cold = new JsonFileStore(path);
+  await cold.touchAsset(asset!.id);
+  const after = JSON.parse(readFileSync(path, "utf8"));
+  assert.ok(after.assets[0].lastAccessedAt > old);
 });

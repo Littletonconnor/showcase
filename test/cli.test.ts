@@ -542,3 +542,103 @@ test("top-level help groups the commands", async () => {
   assert.match(stdout, /feedback:/);
   assert.match(stdout, /usage: showcase <command>/);
 });
+
+test("update preserves the surface's part kind (markdown stays markdown)", async () => {
+  const server = await serveApp();
+  try {
+    const session = await post(`${server.url}/api/sessions`, { agent: "e2e", title: "Kinds" });
+    const surface = await post(`${server.url}/api/surfaces`, {
+      session: session.id,
+      title: "Notes",
+      parts: [{ kind: "markdown", markdown: "# v1" }],
+    });
+
+    const dir = mkdtempSync(join(tmpdir(), "showcase-upd-"));
+    const file = join(dir, "next.md");
+    writeFileSync(file, "# v2 heading");
+    const { code } = await runWith(
+      { env: { SHOWCASE_URL: server.url } },
+      "update",
+      surface.id,
+      file,
+    );
+    assert.equal(code, 0);
+
+    const after = await fetch(`${server.url}/api/surfaces/${surface.id}`).then(
+      (r) => r.json() as Promise<any>,
+    );
+    assert.equal(after.version, 2);
+    assert.equal(after.parts.length, 1);
+    assert.equal(after.parts[0].kind, "markdown");
+    assert.equal(after.parts[0].markdown, "# v2 heading");
+  } finally {
+    await server.close();
+  }
+});
+
+test("update refuses an asset-backed part instead of rewriting it", async () => {
+  const server = await serveApp();
+  try {
+    const session = await post(`${server.url}/api/sessions`, { agent: "e2e", title: "Img" });
+    const asset = await fetch(`${server.url}/api/assets?filename=a.png&session=${session.id}`, {
+      method: "POST",
+      headers: { "content-type": "image/png" },
+      body: new Uint8Array([137, 80, 78, 71]),
+    }).then((r) => r.json() as Promise<any>);
+    const surface = await post(`${server.url}/api/surfaces`, {
+      session: session.id,
+      parts: [{ kind: "image", assetId: asset.id }],
+    });
+
+    const dir = mkdtempSync(join(tmpdir(), "showcase-upd-"));
+    const file = join(dir, "next.txt");
+    writeFileSync(file, "not an image");
+    const { code, stderr } = await runWith(
+      { env: { SHOWCASE_URL: server.url } },
+      "update",
+      surface.id,
+      file,
+    );
+    assert.equal(code, 1);
+    assert.match(stderr, /asset-backed/);
+  } finally {
+    await server.close();
+  }
+});
+
+test("themes lists the built-in theme ids", async () => {
+  const server = await serveApp();
+  try {
+    const { code, stdout } = await runWith({ env: { SHOWCASE_URL: server.url } }, "themes");
+    assert.equal(code, 0);
+    assert.match(stdout, /showcase/);
+    assert.match(stdout, /ocean/);
+  } finally {
+    await server.close();
+  }
+});
+
+test("doctor reports ok against a healthy server and exits 0", async () => {
+  const server = await serveApp();
+  try {
+    const { code, stdout } = await runWith(
+      { env: { SHOWCASE_URL: server.url, SHOWCASE_NO_AUTOSTART: "1" } },
+      "doctor",
+    );
+    assert.equal(code, 0);
+    assert.match(stdout, /✓ node/);
+    assert.match(stdout, /✓ server/);
+  } finally {
+    await server.close();
+  }
+});
+
+test("doctor fails with the fix when the server is down", async () => {
+  const { code, stdout } = await runWith(
+    { env: { SHOWCASE_URL: "http://localhost:1", SHOWCASE_NO_AUTOSTART: "1" } },
+    "doctor",
+  );
+  assert.equal(code, 1);
+  assert.match(stdout, /✗ server/);
+  assert.match(stdout, /showcase serve/);
+});
