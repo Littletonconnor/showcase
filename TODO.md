@@ -98,6 +98,59 @@ The form factor is built and was dogfooded against a real Java PR
 
 ---
 
+## ⭐ Active focus — learn mode (the learning vertical)
+
+Adds a learning vertical (`learn` sessions) to showcase: an agent teaches a
+topic (or a codebase) through evidence-producing checkpoints, observes the
+learner's answers through the same exactly-once feedback pipe reviews use, and
+adapts. Full design + research foundation: `docs/learn-form-factor.md`; recon +
+divergences: `docs/learn-phase0-findings.md`; final report:
+`docs/learn-implementation-report.md`.
+
+Hard constraints (do not violate): C1 sandbox invariant untouched (checkpoints
+are trusted data components; explorables stay sandboxed; telemetry crosses via
+a validated, allowlisted postMessage bridge only). C2 core stays runtime-
+agnostic. C3 the `teach` skill knows nothing about showcase (chat-degradable).
+C4 review mode untouched, additive only. C5 local-only (mastery in
+`~/.showcase/mastery.json`). C6 telemetry rides the comment pipe (exactly-once,
+no second channel). C7 zero CLI runtime deps. C8 `publish_lesson`'s renderer
+owns layout server-side. C9 no em-dashes in authored prose.
+
+### Phase checklist
+
+- [x] **Phase 0 — recon (read-only).** `docs/learn-phase0-findings.md` with the
+  divergence list.
+- [x] **Phase 1 — teach skill + learn blueprint + publish_lesson (static).**
+  `skills/teach/` (SKILL.md, README, reference guides), `core/lesson.ts` wire
+  types + coercion + deterministic renderers, `learn` blueprint, `checkpoint`
+  part kind, `POST /api/lessons` + MCP `publish_lesson`/`update_lesson` + CLI
+  `showcase lesson`, viewer checkpoint components with structural reveal
+  gating, `docs/learn-form-factor.md`, three demo lessons in `showcase demo`.
+- [x] **Phase 2 — telemetry (the loop closes).** `TelemetryEvent` closed union
+  in core, `POST /api/telemetry` persisting onto the comment pipe (piggyback +
+  wait + watch), client-side grading for mcq/choice/exact kinds, sandbox
+  `showcase.emit` helper + validated bridge forward, gate wrapper for
+  explorables, guide section on the wait -> adapt loop.
+- [x] **Phase 3 — mastery + spaced review.** `core/mastery.ts` SM-2-style
+  scheduler (time-injected, unit-tested), `server/masteryStore.ts` on the
+  JsonFileStore pattern (atomic write, .bak, corruption recovery),
+  `get_learner_state` + `record_attempt` MCP tools, `showcase review-due` +
+  `showcase mastery` CLI, review-due HTTP query, syllabus badges updating live
+  through the ordinary surface-update path.
+- [x] **Phase 4 — distribution + docs + hardening.** A1 README packaging for
+  all skills (teach, showcase, session-presets, adding-a-skill),
+  `.claude-plugin/` marketplace manifest (A3), managed instruction block (A5),
+  `skills/adding-a-skill/` meta-skill (A6), README fourth workflow + install
+  section, empty-state/corruption hardening, e2e lesson oracle, final report.
+
+### Anti-goals (unchanged from the plan)
+
+Not a course platform, not an Anki replacement, not gamified, no self-report
+mastery ever, no answer-dumping fast path, not a skill catalog, no new
+rendering engine / transport / storage system.
+
+---
+
 ## 1. What it is
 
 A live visual surface for AI: an agent publishes **surfaces** (cards built from
