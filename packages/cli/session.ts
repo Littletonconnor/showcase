@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
-import { api, BASE, TOKEN } from "./http.ts";
+import { api, BASE, ensureServerUp, TOKEN } from "./http.ts";
 
 export interface SessionFlags {
   session?: string;
@@ -103,13 +103,22 @@ export async function resolveSession(
   if (process.env.SHOWCASE_SESSION) return process.env.SHOWCASE_SESSION;
   const state = readState();
   if (state.session && !flags["new-session"]) {
-    const ok = await fetch(`${BASE}/api/sessions/${state.session}/surfaces`, {
-      headers: TOKEN ? { authorization: `Bearer ${TOKEN}` } : {},
-    }).then(
-      (r) => r.ok,
-      () => false,
-    );
-    if (ok) return state.session;
+    const probe = () =>
+      fetch(`${BASE}/api/sessions/${state.session}/surfaces`, {
+        headers: TOKEN ? { authorization: `Bearer ${TOKEN}` } : {},
+      }).then(
+        (r) => (r.ok ? "live" : "gone"),
+        () => "down",
+      );
+    let status = await probe();
+    // "down" means the server is unreachable — NOT that the session is gone.
+    // The store is persistent, so autostart and re-check before minting a new
+    // session; otherwise every publish after a server stop splinters the
+    // conversation into a duplicate session. If the server still isn't up,
+    // keep the cached id optimistically and let the actual API call fail
+    // with a real network error.
+    if (status === "down" && (await ensureServerUp())) status = await probe();
+    if (status !== "gone") return state.session;
   }
   if (!create) return null;
   const session = await api("/api/sessions", {

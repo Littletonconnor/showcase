@@ -16,7 +16,7 @@ const PUBLISH_OPTS: OptionSpecs = {
   theme: {
     type: "string",
     placeholder: "id",
-    desc: "render under a theme (showcase | brand | neutral)",
+    desc: "render under a theme (showcase | brand | neutral | ocean | forest | dracula | nord | rose)",
   },
   blueprint: { type: "string", placeholder: "id", desc: "apply an explainer blueprint preset" },
   session: { type: "string", placeholder: "id", desc: "target session (default: auto per agent)" },
@@ -81,6 +81,7 @@ const publish: Command = {
   },
   help: "Note: --json is the global raw-output flag; to add a JSON *part*, use --json-part <file>.",
   async run({ flags, positionals }) {
+    if (!positionals[0] && process.stdin.isTTY) fail("usage: showcase publish <file|->");
     const htmlPart: Record<string, unknown> = { kind: "html", html: readContent(positionals[0]) };
     const kits = normalizeKits(flags.kit);
     if (kits) htmlPart.kits = kits;
@@ -350,10 +351,47 @@ const assetUrl: Command = {
   },
 };
 
+// Rebuild a part of the surface's own kind from new text content, carrying
+// non-content fields (language, layout, title, kits, …) over from the old
+// part. Returns null for kinds that can't be authored from text (image/trace
+// are asset-backed).
+function revisedPart(old: Record<string, unknown>, text: string): Record<string, unknown> | null {
+  switch (old.kind) {
+    case "html":
+      return { ...old, html: text };
+    case "markdown":
+      return { ...old, markdown: text };
+    case "mermaid":
+      return { ...old, mermaid: text };
+    case "diff":
+      return { ...old, patch: text };
+    case "terminal":
+      return { ...old, text };
+    case "code":
+      return { ...old, code: text };
+    case "json": {
+      try {
+        return { ...old, data: JSON.parse(text) };
+      } catch {
+        fail("update: the new content must be valid JSON (the surface is a json part)");
+      }
+    }
+    case "chart": {
+      try {
+        return { ...old, ...JSON.parse(text) };
+      } catch {
+        fail("update: the new content must be a JSON chart spec (the surface is a chart part)");
+      }
+    }
+    default:
+      return null;
+  }
+}
+
 const update: Command = {
   name: "update",
   group: "Revise",
-  summary: "revise a surface (new version, same card)",
+  summary: "revise a surface (new version, same card and kind)",
   usage: "showcase update <id> <file|->",
   positionals: true,
   options: {
@@ -365,12 +403,29 @@ const update: Command = {
       desc: "opt the html part into a kit",
     },
   },
+  help: "The new content replaces the surface's existing part in place, keeping its kind — a markdown card stays markdown, a diff stays a diff.",
   async run({ flags, positionals }) {
     const id = positionals[0];
     if (!id) fail("usage: showcase update <id> <file|->");
-    const part: Record<string, unknown> = { kind: "html", html: readContent(positionals[1]) };
+    if (!positionals[1] && process.stdin.isTTY) fail("usage: showcase update <id> <file|->");
+    // Fetch first: the revision must preserve the surface's part kind (a
+    // markdown card must not silently become an html part) and a bad id should
+    // fail before we read stdin.
+    const existing = await api(`/api/surfaces/${id}`);
+    const parts: Record<string, unknown>[] = existing.parts ?? [];
+    if (parts.length !== 1) {
+      fail(
+        `surface ${id} has ${parts.length} parts — the CLI updates single-part surfaces only; use the update_surface MCP tool to revise multi-part surfaces`,
+      );
+    }
+    const part = revisedPart(parts[0], readContent(positionals[1]));
+    if (!part) {
+      fail(
+        `surface ${id} is a ${parts[0].kind} part, which is asset-backed — publish a new surface instead`,
+      );
+    }
     const kits = normalizeKits(flags.kit);
-    if (kits) part.kits = kits;
+    if (kits && part.kind === "html") part.kits = kits;
     emitSurface(
       await api(`/api/surfaces/${id}`, {
         method: "PUT",

@@ -5,6 +5,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Command } from "../command.ts";
+import { fail } from "../errors.ts";
 import { BASE } from "../http.ts";
 import { ROOT } from "../runtime.ts";
 
@@ -13,7 +14,13 @@ async function fetchTextWithFallback(path: string, localFile: string): Promise<s
     const res = await fetch(`${BASE}${path}`);
     if (res.ok) return await res.text();
   } catch {}
-  return readFileSync(localFile, "utf8");
+  try {
+    return readFileSync(localFile, "utf8");
+  } catch {
+    fail(
+      `server not reachable at ${BASE} and no local copy at ${localFile} — start it with: showcase serve`,
+    );
+  }
 }
 
 function docCommand(
@@ -30,7 +37,8 @@ function docCommand(
     usage: `showcase ${name}`,
     hidden,
     async run() {
-      console.log(await fetchTextWithFallback(path, join(ROOT, "guide", localFile)));
+      // ROOT is packages/ in a dev checkout; guide/ lives at the repo root.
+      console.log(await fetchTextWithFallback(path, join(ROOT, "..", "guide", localFile)));
     },
   };
 }

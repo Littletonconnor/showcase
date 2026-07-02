@@ -25,6 +25,11 @@ const wait: Command = {
     if (flags.after !== undefined && !/^\d+$/.test(flags.after)) {
       fail(`--after must be a number (got "${flags.after}")`);
     }
+    // NaN would make the deadline NaN and skip the poll loop entirely — a
+    // false "no feedback" answer without ever asking the server.
+    if (flags.timeout !== undefined && !/^\d+$/.test(flags.timeout)) {
+      fail(`--timeout must be a number of seconds (got "${flags.timeout}")`);
+    }
     const timeout = Math.max(1, Number(flags.timeout ?? 120));
     const deadline = Date.now() + timeout * 1000;
     let cursor = flags.after;
