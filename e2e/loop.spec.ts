@@ -147,7 +147,7 @@ test("a badged card renders its severity badge in the trusted header", async ({
         badge: { tone: "critical", label: "Bug" },
         parts: [
           { kind: "markdown", markdown: "buffers the whole body before the size check" },
-          { kind: "mermaid", mermaid: "flowchart LR\n  A-->B{>5MB?}\n  B--no-->C[store]" },
+          { kind: "mermaid", mermaid: "flowchart LR\n  A-->B{>5MB?}\n  B-->|no|C[store]" },
           { kind: "diff", patch: "@@ -1 +1 @@\n-a\n+b" },
         ],
       },
@@ -406,4 +406,54 @@ test("the card's reply line posts an author=user comment on that surface", async
     .toBe(true);
   // sent → the line clears for the next note
   await expect(input).toHaveValue("");
+});
+
+test("pushing back on a decision posts a ref-scoped user comment", async ({ page, request }) => {
+  const session = await (
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "pushback" } })
+  ).json();
+  await request.post(`/api/sessions/${session.id}/review`, {
+    data: {
+      brief: "Renames the throttle module for clarity.",
+      verdict: "comment",
+      decisions: [
+        {
+          id: "d-rename",
+          call: "decide",
+          kind: "refactor",
+          scope: "whole-file",
+          assertion: "The new module name is clearer.",
+          confidence: "medium",
+        },
+      ],
+      manifest: [
+        {
+          path: "throttle.ts",
+          disposition: "has-decision",
+          decisionId: "d-rename",
+          added: 1,
+          removed: 1,
+        },
+      ],
+    },
+  });
+
+  await page.goto(`/?review=${session.id}`);
+  await page.getByRole("button", { name: "Push back…" }).click();
+  const input = page.getByRole("textbox", { name: "Push back on this decision" });
+  await input.fill("keep the old name, it matches the docs");
+  await input.press("Enter");
+
+  // The pushback lands server-side as an author=user comment carrying the
+  // decision's ref, so the agent can scope the revision.
+  await expect
+    .poll(async () => {
+      const all = await (await request.get(`/api/comments?session=${session.id}`)).json();
+      return all.comments.some(
+        (c: { author: string; text: string }) =>
+          c.author === "user" &&
+          c.text === "revise d-rename: keep the old name, it matches the docs",
+      );
+    })
+    .toBe(true);
 });
