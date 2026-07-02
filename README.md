@@ -208,8 +208,19 @@ pnpm serve               # API + viewer on http://localhost:8229
 Something off? **`showcase doctor`** checks the whole setup — node version,
 server, viewer build, data file — and prints the fix for anything wrong.
 
-> Tip: install the CLI globally (`pnpm --filter @showcase/cli link --global`) so
-> `showcase` is on your PATH; the examples below assume that. Otherwise use
+**Or install it in one command** (no checkout to manage):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Littletonconnor/showcase/main/scripts/install.sh | sh
+```
+
+Clones the engine to `~/.showcase/app`, builds the viewer, and drops a
+`showcase` shim in `~/.local/bin` — re-run the same command to update. Verify
+with `showcase doctor`.
+
+> Tip: in a checkout, install the CLI globally
+> (`pnpm --filter @showcase/cli link --global`) so `showcase` is on your PATH;
+> the examples below assume that. Otherwise use
 > `node packages/cli/bin/showcase.js …`.
 
 ---
