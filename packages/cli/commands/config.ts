@@ -7,6 +7,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { defineCommand } from "../command.ts";
 import type { Command } from "../command.ts";
 import { api } from "../http.ts";
 import { emit } from "../output.ts";
@@ -87,7 +88,7 @@ function collectTargets(): Array<{ path: string; kind: Kind }> {
   return targets;
 }
 
-const validate: Command = {
+const validate = defineCommand({
   name: "validate",
   group: "Manage",
   summary: "check local theme/kit/blueprint config for errors",
@@ -131,6 +132,6 @@ const validate: Command = {
       },
     );
   },
-};
+});
 
 export const configCommands: Command[] = [validate];

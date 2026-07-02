@@ -46,8 +46,10 @@ const s = (v: unknown): string =>
   typeof v === "string" ? v : typeof v === "number" ? String(v) : "";
 const num = (v: unknown): number => (typeof v === "number" && isFinite(v) ? v : 0);
 
+// Quotes too: esc'd values land inside double-quoted attributes (e.g. ti()'s
+// class="ti ti-<n>"), so `"` must not break out of the attribute.
 const esc = (v: unknown): string =>
-  s(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  s(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 // Escape, then re-introduce a tiny safe inline vocabulary: `code` → mono span,
 // **bold** → <b>. Applied to escaped text, so the agent can emphasize without any

@@ -26,12 +26,15 @@ a `kind`:
 - **`mermaid`** — diagram source you hand over as _text_; the viewer renders it
   to an SVG (flowcharts, sequence diagrams, ERDs, gantt, state, …). Reach for it
   when the _shape_ of a system is the point and you'd rather describe it than
-  draw SVG by hand. Renders as data, not sandboxed markup (securityLevel
-  `strict`); for bespoke vector art hand-write inline `<svg>` in an `html` part
+  draw SVG by hand. Renders as data inside mermaid's sandbox (securityLevel
+  `sandbox`); for bespoke vector art hand-write inline `<svg>` in an `html` part
   instead. The viewer themes the diagram (light and dark) automatically — **don't
   set your own colors**. Highlight flowchart nodes with `:::accent` (or
   `class A,B accent`) and edges with `accentLine` (pair with `linkStyle`);
-  sequence diagrams style actors globally only.
+  sequence diagrams style actors globally only. Write flowchart edge labels as
+  `A -->|label| B` (or `A -- label --> B` with spaces): the squeezed form
+  `A--no-->B` parses `o--` as mermaid's circle-arrow token and silently eats
+  part of your label.
 - **`diff`** — a patch you hand over as _data_; the trusted viewer renders it
   natively as a syntax-highlighted code review (split or unified) with
   **word-level** intra-line highlighting. A multi-file diff leads with a
@@ -463,6 +466,11 @@ instead of each re-inventing a look. Themes:
 - **`showcase`** — the warm default (omit `theme` to get it).
 - **`brand`** — deep-indigo ink with a violet accent; the polished product look.
 - **`neutral`** — stark grayscale for wireframe / low-fidelity mockups.
+- **`ocean`** — calm professional blue; cool slate neutrals under an azure accent.
+- **`forest`** — grounded green; sage neutrals with a deep-green accent.
+- **`dracula`** — the high-contrast purple dark classic (with a light companion).
+- **`nord`** — arctic, desaturated slate-blue.
+- **`rose`** — warm, muted mauve (Rosé Pine) with an iris accent.
 
 Set it on publish (`theme` on `publish_surface` / `publish_snippet`, or `--theme`
 on the CLI), change it later with `update_surface` (pass `null` to reset), or let
@@ -472,11 +480,12 @@ the user switch it from the card's ⋯ menu. Because the tokens drive everything
 
 ## External resources
 
-A CSP blocks all external origins — no CDN scripts, styles, or webfonts load
-(anything else silently fails). Keep everything inline: inline `<script>` and
-`<style>`, `data:` fonts, and inline SVG for icons. Images are the one exception:
-they may load from any https URL, a `data:` URI, or an asset you uploaded to this
-server (`<img src="/a/<id>">`).
+A CSP blocks all external origins — nothing loads from an external https URL: no
+CDN scripts, styles, or webfonts, and no external images either (anything remote
+silently fails). Keep everything inline: inline `<script>` and `<style>`, `data:`
+fonts, and inline SVG for icons. For images, either inline them as a `data:` URI
+or upload them with `upload_asset` and reference the returned URL
+(`<img src="/a/<id>">`) — this server's own origin is the only one allowed.
 
 ## Interactivity
 

@@ -5,7 +5,14 @@ import { type SurfaceBadge, SURFACE_BADGE_TONES, type SurfacePart } from "./type
 const MAX_BADGE_LABEL = 24;
 const badgeSchema = z.object({
   tone: z.enum(SURFACE_BADGE_TONES as unknown as [string, ...string[]]),
-  label: z.string().trim().min(1).max(MAX_BADGE_LABEL),
+  // Clamp an over-long label rather than reject: a rejected badge coerces to
+  // undefined = "leave unchanged", so a 25-char label on an update would
+  // silently keep the STALE badge the agent believes it replaced.
+  label: z
+    .string()
+    .trim()
+    .min(1)
+    .transform((l) => (l.length > MAX_BADGE_LABEL ? l.slice(0, MAX_BADGE_LABEL - 1) + "…" : l)),
 });
 
 // A surface's header badge from request/tool input, shared by REST and MCP:

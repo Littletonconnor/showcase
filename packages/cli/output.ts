@@ -30,6 +30,7 @@ export interface Surfaceish {
   sessionId: string;
   title?: string;
   version?: number;
+  userFeedback?: { surfaceId?: string | null; surfaceTitle?: string | null; text: string }[];
 }
 
 export function surfaceUrl(surface: Surfaceish): string {
@@ -38,11 +39,22 @@ export function surfaceUrl(surface: Surfaceish): string {
 
 // Standard "a surface was published/updated" result. Human form leads with the
 // deep link (what you click) and the id (what you paste back to the agent).
+// Piggybacked user feedback MUST be printed: the server advances its cursor
+// when it attaches it, so anything not shown here is delivered nowhere.
 export function emitSurface(surface: Surfaceish): void {
   const url = surfaceUrl(surface);
   emit({ ...surface, url }, () => {
     const label = surface.title ? `“${surface.title}” ` : "";
     const ver = surface.version && surface.version > 1 ? ` (v${surface.version})` : "";
-    return `published ${label}${ver}\n  ${url}\n  surface ${surface.id}`;
+    let out = `published ${label}${ver}\n  ${url}\n  surface ${surface.id}`;
+    const fb = surface.userFeedback;
+    if (fb && fb.length > 0) {
+      out += `\nuser feedback (delivered once — act on it or it is lost):`;
+      for (const f of fb) {
+        const where = f.surfaceTitle ?? f.surfaceId;
+        out += `\n  ${where ? `[${where}] ` : ""}${f.text}`;
+      }
+    }
+    return out;
   });
 }

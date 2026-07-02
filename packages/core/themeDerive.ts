@@ -15,6 +15,7 @@
 // Runtime-agnostic (no `node:` imports): same constraint as themes.ts, so it can
 // run server-side (POST /api/themes), in the CLI, or in a test unchanged.
 
+import { escapeHtml } from "./surfacePage.ts";
 import type { Accent, Palette, Theme } from "./themes.ts";
 
 // The minimal description a person (or the agent reading a screenshot) provides.
@@ -299,7 +300,7 @@ export function themePreviewHtml(theme: Theme): string {
 <div class="panel stack lg">
   <div class="stack sm">
     <span class="eyebrow">Theme preview</span>
-    <span class="title">${theme.label} <span class="faint mono">${theme.id}</span></span>
+    <span class="title">${escapeHtml(theme.label)} <span class="faint mono">${escapeHtml(theme.id)}</span></span>
   </div>
   <div class="pv-grid">${swatches}</div>
   <div class="callout ok stack sm"><span class="label">Success</span><p>A confirming message reads in the success tone.</p></div>

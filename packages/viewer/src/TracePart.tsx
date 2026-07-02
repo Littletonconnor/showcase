@@ -13,10 +13,18 @@ export function TracePart(props: { part: TracePartData }) {
 
   useEffect(() => {
     if ((props.part.steps?.length ?? 0) > 0 || !props.part.assetId) return;
+    let disposed = false;
     void fetch(assetUrl(props.part.assetId))
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
-      .then((text) => setSteps(parseTrace(text)))
-      .catch(() => setNote("Trace file unavailable — it may have been evicted."));
+      .then((text) => {
+        if (!disposed) setSteps(parseTrace(text));
+      })
+      .catch(() => {
+        if (!disposed) setNote("Trace file unavailable — it may have been evicted.");
+      });
+    return () => {
+      disposed = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

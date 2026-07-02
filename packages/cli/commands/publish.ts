@@ -3,7 +3,8 @@
 // the publishSurface() helper.
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import type { Command, OptionSpecs } from "../command.ts";
+import { defineCommand } from "../command.ts";
+import type { Command, FlagsOf, OptionSpecs } from "../command.ts";
 import { api, BASE, uploadFile } from "../http.ts";
 import { emit, emitSurface } from "../output.ts";
 import { resolveSession } from "../session.ts";
@@ -11,21 +12,25 @@ import { fail } from "../errors.ts";
 import { confirm, CONFIRM_OPTS } from "../prompt.ts";
 import { inferLang, normalizeKits, readContent } from "../util.ts";
 
-const PUBLISH_OPTS: OptionSpecs = {
+const PUBLISH_OPTS = {
   title: { type: "string", placeholder: "t", desc: "surface (card) title" },
   theme: {
     type: "string",
     placeholder: "id",
-    desc: "render under a theme (showcase | brand | neutral)",
+    desc: "render under a theme (showcase | brand | neutral | ocean | forest | dracula | nord | rose)",
   },
   blueprint: { type: "string", placeholder: "id", desc: "apply an explainer blueprint preset" },
   session: { type: "string", placeholder: "id", desc: "target session (default: auto per agent)" },
   "session-title": { type: "string", placeholder: "t", desc: "name for a newly created session" },
   agent: { type: "string", placeholder: "name", desc: "agent name for new sessions" },
   "new-session": { type: "boolean", desc: "force a fresh session" },
-};
+} satisfies OptionSpecs;
 
-async function publishSurface(parts: unknown[], flags: Record<string, any>): Promise<any> {
+// `session` may arrive pre-resolved (string | null) when the caller needed it
+// earlier, e.g. to upload an asset into the same session before publishing.
+type PublishFlags = Omit<FlagsOf<typeof PUBLISH_OPTS>, "session"> & { session?: string | null };
+
+async function publishSurface(parts: unknown[], flags: PublishFlags): Promise<any> {
   const session = await resolveSession(flags, { create: true });
   return api("/api/surfaces", {
     method: "POST",
@@ -40,7 +45,7 @@ async function publishSurface(parts: unknown[], flags: Record<string, any>): Pro
   });
 }
 
-const publish: Command = {
+const publish = defineCommand({
   name: "publish",
   group: "Publish",
   summary: "publish an HTML surface (one html part; combine with other parts)",
@@ -81,6 +86,7 @@ const publish: Command = {
   },
   help: "Note: --json is the global raw-output flag; to add a JSON *part*, use --json-part <file>.",
   async run({ flags, positionals }) {
+    if (!positionals[0] && process.stdin.isTTY) fail("usage: showcase publish <file|->");
     const htmlPart: Record<string, unknown> = { kind: "html", html: readContent(positionals[0]) };
     const kits = normalizeKits(flags.kit);
     if (kits) htmlPart.kits = kits;
@@ -125,16 +131,16 @@ const publish: Command = {
     }
     emitSurface(await publishSurface(parts, { ...flags, session }));
   },
-};
+});
 
 // A small publish command that wraps a single part read from a file/stdin.
-function singlePartCommand(
+function singlePartCommand<const E extends OptionSpecs = Record<never, never>>(
   name: string,
   group: string,
   summary: string,
-  build: (text: string, flags: Record<string, any>) => Record<string, unknown>,
-  extraOptions: OptionSpecs = {},
-): Command {
+  build: (text: string, flags: FlagsOf<typeof PUBLISH_OPTS & E>) => Record<string, unknown>,
+  extraOptions: E = {} as E,
+): Command<typeof PUBLISH_OPTS & E> {
   return {
     name,
     group,
@@ -194,7 +200,7 @@ const terminal: Command = singlePartCommand(
   },
 );
 
-const jsonCmd: Command = {
+const jsonCmd = defineCommand({
   name: "json",
   group: "Publish",
   summary: "publish a JSON surface (collapsible tree)",
@@ -211,9 +217,9 @@ const jsonCmd: Command = {
     }
     emitSurface(await publishSurface([{ kind: "json", data }], flags));
   },
-};
+});
 
-const chart: Command = {
+const chart = defineCommand({
   name: "chart",
   group: "Publish",
   summary: "publish a chart surface (native SVG chart)",
@@ -234,9 +240,9 @@ const chart: Command = {
     }
     emitSurface(await publishSurface([{ kind: "chart", ...spec }], flags));
   },
-};
+});
 
-const code: Command = {
+const code = defineCommand({
   name: "code",
   group: "Publish",
   summary: "publish a code surface (shiki-highlighted)",
@@ -273,9 +279,9 @@ const code: Command = {
     if (filename) part.title = filename;
     emitSurface(await publishSurface([part], flags));
   },
-};
+});
 
-const image: Command = {
+const image = defineCommand({
   name: "image",
   group: "Publish",
   summary: "upload an image and publish it as a surface",
@@ -297,9 +303,9 @@ const image: Command = {
     };
     emitSurface(await publishSurface([part], { ...flags, session }));
   },
-};
+});
 
-const trace: Command = {
+const trace = defineCommand({
   name: "trace",
   group: "Publish",
   summary: "upload a trace file and publish it as a surface",
@@ -315,9 +321,9 @@ const trace: Command = {
       await publishSurface([{ kind: "trace", assetId: asset.id }], { ...flags, session }),
     );
   },
-};
+});
 
-const upload: Command = {
+const upload = defineCommand({
   name: "upload",
   group: "Publish",
   summary: "upload an asset, print its id and URL",
@@ -334,9 +340,9 @@ const upload: Command = {
     const asset = await uploadFile(file, { session: session ?? undefined, kind: flags.kind });
     emit(asset, () => `uploaded ${file}\n  ${asset.url}\n  asset ${asset.id}`);
   },
-};
+});
 
-const assetUrl: Command = {
+const assetUrl = defineCommand({
   name: "asset-url",
   group: "Publish",
   summary: "print the URL a file will have (content hash; no upload)",
@@ -348,12 +354,49 @@ const assetUrl: Command = {
     const id = createHash("sha256").update(readFileSync(file)).digest("hex");
     emit({ id, url: `${BASE}/a/${id}` }, `${BASE}/a/${id}`);
   },
-};
+});
 
-const update: Command = {
+// Rebuild a part of the surface's own kind from new text content, carrying
+// non-content fields (language, layout, title, kits, …) over from the old
+// part. Returns null for kinds that can't be authored from text (image/trace
+// are asset-backed).
+function revisedPart(old: Record<string, unknown>, text: string): Record<string, unknown> | null {
+  switch (old.kind) {
+    case "html":
+      return { ...old, html: text };
+    case "markdown":
+      return { ...old, markdown: text };
+    case "mermaid":
+      return { ...old, mermaid: text };
+    case "diff":
+      return { ...old, patch: text };
+    case "terminal":
+      return { ...old, text };
+    case "code":
+      return { ...old, code: text };
+    case "json": {
+      try {
+        return { ...old, data: JSON.parse(text) };
+      } catch {
+        fail("update: the new content must be valid JSON (the surface is a json part)");
+      }
+    }
+    case "chart": {
+      try {
+        return { ...old, ...JSON.parse(text) };
+      } catch {
+        fail("update: the new content must be a JSON chart spec (the surface is a chart part)");
+      }
+    }
+    default:
+      return null;
+  }
+}
+
+const update = defineCommand({
   name: "update",
   group: "Revise",
-  summary: "revise a surface (new version, same card)",
+  summary: "revise a surface (new version, same card and kind)",
   usage: "showcase update <id> <file|->",
   positionals: true,
   options: {
@@ -365,12 +408,29 @@ const update: Command = {
       desc: "opt the html part into a kit",
     },
   },
+  help: "The new content replaces the surface's existing part in place, keeping its kind — a markdown card stays markdown, a diff stays a diff.",
   async run({ flags, positionals }) {
     const id = positionals[0];
     if (!id) fail("usage: showcase update <id> <file|->");
-    const part: Record<string, unknown> = { kind: "html", html: readContent(positionals[1]) };
+    if (!positionals[1] && process.stdin.isTTY) fail("usage: showcase update <id> <file|->");
+    // Fetch first: the revision must preserve the surface's part kind (a
+    // markdown card must not silently become an html part) and a bad id should
+    // fail before we read stdin.
+    const existing = await api(`/api/surfaces/${id}`);
+    const parts: Record<string, unknown>[] = existing.parts ?? [];
+    if (parts.length !== 1) {
+      fail(
+        `surface ${id} has ${parts.length} parts — the CLI updates single-part surfaces only; use the update_surface MCP tool to revise multi-part surfaces`,
+      );
+    }
+    const part = revisedPart(parts[0], readContent(positionals[1]));
+    if (!part) {
+      fail(
+        `surface ${id} is a ${parts[0].kind} part, which is asset-backed — publish a new surface instead`,
+      );
+    }
     const kits = normalizeKits(flags.kit);
-    if (kits) part.kits = kits;
+    if (kits && part.kind === "html") part.kits = kits;
     emitSurface(
       await api(`/api/surfaces/${id}`, {
         method: "PUT",
@@ -378,9 +438,9 @@ const update: Command = {
       }),
     );
   },
-};
+});
 
-const del: Command = {
+const del = defineCommand({
   name: "delete",
   group: "Revise",
   summary: "delete a surface (the card + all its versions)",
@@ -410,7 +470,7 @@ const del: Command = {
     const result = await api(`/api/surfaces/${id}`, { method: "DELETE" });
     emit(result, `deleted surface ${id}`);
   },
-};
+});
 
 export const publishCommands: Command[] = [
   publish,

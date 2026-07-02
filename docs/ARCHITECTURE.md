@@ -44,12 +44,12 @@ viewer. Eating our own dog food: §9.)_
 
 Three moving parts and one file:
 
-| Part        | Lives in                                             | Role                                                                                                                                   |
-| ----------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| **Server**  | `server/app.ts` (+ `server/index.ts` Node wiring)    | A Hono app: REST API, SSE feed, long-poll, the `/s/:id` renderer, asset I/O, and the **shared flow functions** both REST and MCP call. |
-| **Store**   | `server/storage.ts` (`JsonFileStore`)                | The whole board in memory, mirrored to one JSON file per mutation.                                                                     |
-| **Viewer**  | `viewer/` → `viewer/dist/index.html`                 | A React + zustand single-page app, Vite-built into one self-contained HTML file the server reads at boot.                              |
-| **Clients** | `bin/showcase.js` (CLI), `mcp/server.ts` (stdio MCP) | How agents reach the server. The HTTP MCP endpoint lives inside the server (`server/mcpHttp.ts`).                                      |
+| Part        | Lives in                                                                   | Role                                                                                                                                   |
+| ----------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Server**  | `packages/server/app.ts` (+ `packages/server/index.ts` Node wiring)        | A Hono app: REST API, SSE feed, long-poll, the `/s/:id` renderer, asset I/O, and the **shared flow functions** both REST and MCP call. |
+| **Store**   | `packages/server/storage.ts` (`JsonFileStore`)                             | The whole board in memory, mirrored to one JSON file per mutation.                                                                     |
+| **Viewer**  | `packages/viewer/` → `packages/viewer/dist/index.html`                     | A React + zustand single-page app, Vite-built into one self-contained HTML file the server reads at boot.                              |
+| **Clients** | `packages/cli/bin/showcase.js` (CLI), `packages/mcp/server.ts` (stdio MCP) | How agents reach the server. The HTTP MCP endpoint lives inside the server (`packages/server/mcpHttp.ts`).                             |
 
 The agent and the human meet at the server: the agent **writes** surfaces, the
 human **reads** them in the viewer and **writes** comments, and the agent reads
@@ -65,16 +65,16 @@ shell over one core.
 
 ### 3.1 stdio MCP (the default for Claude Code)
 
-`mcp/server.ts` is a **stdio MCP server** that is a thin HTTP client over the
-showcase API. The agent host (e.g. Claude Code) spawns `showcase mcp` (or
-`node mcp/server.ts`) as a subprocess and speaks MCP over stdin/stdout. Each tool
-call turns into a `fetch` against the running server:
+`packages/mcp/server.ts` is a **stdio MCP server** that is a thin HTTP client over
+the showcase API. The agent host (e.g. Claude Code) spawns `showcase mcp` (or
+`node packages/mcp/server.ts`) as a subprocess and speaks MCP over stdin/stdout.
+Each tool call turns into a `fetch` against the running server:
 
 ```
-Claude Code  ──MCP/stdio──▶  mcp/server.ts  ──HTTP──▶  http://localhost:8229/api/*
+Claude Code  ──MCP/stdio──▶  packages/mcp/server.ts  ──HTTP──▶  http://localhost:8229/api/*
 ```
 
-It reads three env vars (`mcp/server.ts:13`):
+It reads three env vars:
 
 - `SHOWCASE_URL` — where the server is (default `http://localhost:8229`). Point
   this at a deployed instance to use the same tools remotely.
@@ -84,21 +84,22 @@ It reads three env vars (`mcp/server.ts:13`):
 
 One MCP process lives as long as one agent conversation, so it lazily creates
 **one session** on first publish and reuses it for every later tool call
-(`ensureSession`, `mcp/server.ts:48`). `SHOWCASE_SESSION` can pin an existing
-session id.
+(`ensureSession` in `packages/mcp/server.ts`). `SHOWCASE_SESSION` can pin an
+existing session id.
 
 ### 3.2 streamable-HTTP MCP (in-process, works deployed)
 
 The server **also** exposes MCP directly at `POST /mcp` via
-`server/mcpHttp.ts` (registered at the bottom of `createApp`, `app.ts:2347`). No
+`packages/server/mcpHttp.ts` (registered at the bottom of `createApp`). No
 subprocess — an MCP-over-HTTP client connects straight to the board. Same tools,
 same shared flows. This is the path that survives when the board is deployed
 behind a URL rather than run as a local subprocess.
 
 ### 3.3 The CLI
 
-`bin/showcase.js` is a **zero-dependency** Node CLI (it shells out to
-`server/index.ts` / `mcp/server.ts` and otherwise just `fetch`es the API). It's
+`packages/cli/bin/showcase.js` is a **zero-dependency** Node CLI (it shells out to
+`packages/server/index.ts` / `packages/mcp/server.ts` and otherwise just `fetch`es
+the API). It's
 how a human starts the board and how an agent can publish without MCP wiring:
 
 ```sh
@@ -131,19 +132,19 @@ SHOWCASE_URL=http://localhost:8229 showcase playbook   # → GET /playbook
 SHOWCASE_URL=http://localhost:8229 showcase guide      # → GET /guide  (design contract)
 ```
 
-So `guide/PLAYBOOK.md` and `guide/DESIGN_GUIDE.md` are served live (`app.ts:1756`)
+So `guide/PLAYBOOK.md` and `guide/DESIGN_GUIDE.md` are served live (from `app.ts`)
 and can improve without re-installing anything on the agent side.
 
 ---
 
 ## 4. The data model
 
-Defined in `server/types.ts` (deliberately free of any `node:` import so it's
-safe on any runtime). Five entities, all owned by a **session**.
+Defined in `packages/core/types.ts` (deliberately free of any `node:` import so
+it's safe on any runtime). Five entities, all owned by a **session**.
 
 ### 4.1 Session
 
-A session is one agent conversation / task (`types.ts:3`). It carries the agent
+A session is one agent conversation / task (`types.ts`). It carries the agent
 name, an optional title (the user can rename it in the viewer), the cwd, and
 `agentSeq` — **the high-water mark of comments already delivered to the agent**.
 That cursor is the backbone of exactly-once feedback delivery (§5.3).
@@ -151,31 +152,31 @@ That cursor is the backbone of exactly-once feedback delivery (§5.3).
 ### 4.2 Surface — an ordered list of parts
 
 A **surface** is a card: an ordered list of **parts**, each declaring its own
-`kind` (`types.ts:21`). The surface is kind-agnostic; a part is the unit of
+`kind` (`types.ts`). The surface is kind-agnostic; a part is the unit of
 rendering. Ten kinds:
 
-| Kind       | Rendered by                              | Sandboxed?     | Notes                                                                 |
-| ---------- | ---------------------------------------- | -------------- | --------------------------------------------------------------------- |
-| `html`     | `/s/:id` in an iframe                    | **yes**        | Arbitrary agent markup. Opt-in style/JS **kits** (`server/kits.ts`).  |
-| `code`     | viewer (shiki) → iframe                  | **yes**        | Highlighted source; the HTML string is built by shiki then sandboxed. |
-| `markdown` | viewer (markdown-it)                     | no — escaped   | Prose. Embedded raw HTML is escaped, not executed.                    |
-| `mermaid`  | viewer (mermaid, `securityLevel:strict`) | no — sanitized | Diagram source → SVG.                                                 |
-| `diff`     | viewer (`@pierre/diffs`)                 | no — data      | Unified patch and/or before/after file pairs.                         |
-| `image`    | viewer `<img>`                           | no — data      | References an uploaded asset by id.                                   |
-| `trace`    | viewer                                   | no — data      | A step timeline; inline steps and/or an asset file.                   |
-| `terminal` | viewer (ansi_up)                         | no — data      | Monospace output; ANSI SGR → styled spans, everything else escaped.   |
-| `json`     | viewer (text nodes)                      | no — data      | Collapsible tree; escapes by construction.                            |
-| `chart`    | viewer (Recharts)                        | no — data      | bar/line/area/pie/treemap/scatter, themed from live tokens.           |
+| Kind       | Rendered by                              | Sandboxed?     | Notes                                                                       |
+| ---------- | ---------------------------------------- | -------------- | --------------------------------------------------------------------------- |
+| `html`     | `/s/:id` in an iframe                    | **yes**        | Arbitrary agent markup. Opt-in style/JS **kits** (`packages/core/kits.ts`). |
+| `code`     | viewer (shiki) → iframe                  | **yes**        | Highlighted source; the HTML string is built by shiki then sandboxed.       |
+| `markdown` | viewer (markdown-it)                     | no — escaped   | Prose. Embedded raw HTML is escaped, not executed.                          |
+| `mermaid`  | viewer (mermaid, `securityLevel:strict`) | no — sanitized | Diagram source → SVG.                                                       |
+| `diff`     | viewer (`@pierre/diffs`)                 | no — data      | Unified patch and/or before/after file pairs.                               |
+| `image`    | viewer `<img>`                           | no — data      | References an uploaded asset by id.                                         |
+| `trace`    | viewer                                   | no — data      | A step timeline; inline steps and/or an asset file.                         |
+| `terminal` | viewer (ansi_up)                         | no — data      | Monospace output; ANSI SGR → styled spans, everything else escaped.         |
+| `json`     | viewer (text nodes)                      | no — data      | Collapsible tree; escapes by construction.                                  |
+| `chart`    | viewer (Recharts)                        | no — data      | bar/line/area/pie/treemap/scatter, themed from live tokens.                 |
 
 A surface is **versioned**: every revise pushes the prior version onto `history`
-(capped at `HISTORY_LIMIT = 20`, `storage.ts:300`) and bumps `version`. It can
+(capped at `HISTORY_LIMIT = 20`, `storage.ts`) and bumps `version`. It can
 carry a scannable **badge** (`SurfaceBadge` — a tone + a short label like
 "Bug" / "Nit" / "Approve"), versioned with the content. A **snippet** is just
-sugar for a surface with a single `html` part (`htmlPart`, `types.ts:466`).
+sugar for a surface with a single `html` part (`htmlPart`, `types.ts`).
 
 ### 4.3 Comment
 
-A comment (`types.ts:311`) is the human's half of the loop. It attaches to a
+A comment (`types.ts`) is the human's half of the loop. It attaches to a
 **surface** (a remark on a card) or to the **session** (`surfaceId: null`, a
 chat-level message). Each has a monotonic `seq` (the cursor unit) and an `author`:
 `"user"` is the reserved signal the agent listens for, while a sandboxed surface
@@ -184,7 +185,7 @@ delivers to the agent on its own (a human relays it deliberately if they choose)
 
 ### 4.4 Review — the decision-queue form factor
 
-A **review** (`types.ts:280`) is the agent-era PR-review structure: a plain-English
+A **review** (`types.ts`) is the agent-era PR-review structure: a plain-English
 `brief` (≤4 sentences, no code identifiers), a `verdict` (block/approve/comment),
 a risk-ranked array of **decisions** the agent triaged out of the diff for the
 human to adjudicate, and a required **`manifest`** tagging every changed file
@@ -200,19 +201,19 @@ Accept + copy-ref interaction loop.
 
 ### 4.5 Asset
 
-An **asset** (`types.ts:333`) is an uploaded blob (image, trace, file) stored
+An **asset** (`types.ts`) is an uploaded blob (image, trace, file) stored
 **apart** from surfaces so binary never bloats the parts JSON. Its id is the
-**SHA-256 of its bytes** (`hashAssetId`, `types.ts:456`) — content-addressed, so:
+**SHA-256 of its bytes** (`hashAssetId`, `types.ts`) — content-addressed, so:
 
 - identical uploads dedupe to one stored blob;
 - an agent can **derive the `/a/:id` URL from the bytes alone** and reference it
   in a surface _before_ the upload lands (the `/a/:id` route briefly waits for a
-  referenced-but-not-yet-present asset, `app.ts:2264`).
+  referenced-but-not-yet-present asset).
 
 The board keeps assets under a budget (`MAX_BOARD_ASSET_BYTES = 2 GiB`) with a
 **reference-aware LRU eviction**: oldest-accessed first, but a blob a live surface
 still points at is only evicted as a last resort (`selectEvictions`,
-`types.ts:537`). Per-asset cap is `MAX_ASSET_BYTES = 5 MiB`. That eviction only
+`types.ts`). Per-asset cap is `MAX_ASSET_BYTES = 5 MiB`. That eviction only
 fires under budget pressure on upload, so orphaned blobs (referenced by no live or
 historical surface) otherwise sit resident; `store.gcAssets()` is the on-demand
 sweep that reclaims them — `POST /api/board/gc` / `showcase gc` — and
@@ -233,14 +234,14 @@ verb. All land on a **shared flow** function in `app.ts` — `publishSurface`,
 `publishDecisions` — so validation and side effects happen in exactly one place,
 regardless of transport.
 
-`publishSurface` (`app.ts:1175`): validates the parts (`validateSurfaceParts`),
+`publishSurface` (`app.ts`): validates the parts (`validateSurfaceParts`),
 enforces the 2 MiB surface cap, resolves or **auto-creates** the session, writes
 the surface to the store, and **broadcasts** a `surface-created` event on the
-in-process `EventBus` (`server/events.ts`).
+in-process `EventBus` (`packages/core/events.ts`).
 
 ### 5.2 Live render (board → viewer)
 
-The viewer holds an SSE connection to `GET /api/events` (`app.ts:2284`), optionally
+The viewer holds an SSE connection to `GET /api/events` (`app.ts`), optionally
 filtered to one session. When a `surface-created` / `surface-updated` /
 `review-updated` / `comment-created` / `agent-presence` event is broadcast, the
 viewer re-fetches and re-renders — the card appears or updates live, no reload.
@@ -254,13 +255,13 @@ The human types a comment in the viewer → `POST /api/comments` with
 
 1. **Long-poll / blocking wait.** `wait_for_feedback` (MCP) or `showcase wait` or
    `GET /api/comments?session=…&author=user&wait=N` parks the request open until a
-   matching comment lands or `N` seconds elapse (`waitForComments`, `app.ts:1522`;
+   matching comment lands or `N` seconds elapse (`waitForComments` in `app.ts`;
    `MAX_WAIT_SECONDS = 300`). A parked `author=user` wait **is** the signal that
    "an agent is listening" — it increments a per-session waiter count and
    broadcasts `agent-presence`, which the viewer shows live.
 
 2. **Piggyback.** The agent doesn't have to block. Any time it writes (publishes,
-   revises, or replies), `collectFeedback` (`app.ts:1165`) attaches comments the
+   revises, or replies), `collectFeedback` (`app.ts`) attaches comments the
    agent hasn't seen yet to the write's response. So feedback rides along on the
    next publish for free.
 
@@ -275,12 +276,12 @@ message the user is still typing. Instead, once the first comment lands the wait
 stays open through a short quiet window (`FEEDBACK_SETTLE_MS = 800ms`) — extended
 while the viewer sends "composing" heartbeats to `POST /api/composing`
 (`FEEDBACK_COMPOSING_TTL_MS = 3s`), bounded by `FEEDBACK_MAX_BATCH_MS = 25s`. So a
-burst of queued messages comes back together (`app.ts:1551`).
+burst of queued messages comes back together (`app.ts`).
 
 ### 5.4 Revise (agent → board → viewer)
 
 The agent revises **in place** (`update_surface` / `PUT /api/surfaces/:id` →
-`reviseSurface`, `app.ts:1428`): the prior version is archived to `history`, the
+`reviseSurface` in `app.ts`): the prior version is archived to `history`, the
 new parts replace it, `version` bumps, and a `surface-updated` event re-renders
 the open card. Republishing a review (`publishDecisions`) broadcasts
 `review-updated` so an open review page updates the decision in place — the live
@@ -300,7 +301,7 @@ forge the reserved `author:"user"` feedback signal or exfiltrate the token.
 Two safe paths, no third:
 
 1. **Build a string, hand it to a sandbox.** `html` parts render at `GET /s/:id`
-   via `renderHtmlPage` (`server/surfacePage.ts`) — a themed, sandboxed document
+   via `renderHtmlPage` (`packages/core/surfacePage.ts`) — a themed, sandboxed document
    the viewer embeds per part. `code` parts are highlighted to an HTML string by
    shiki, then rendered through the same sandbox (`SandboxedPart`).
 2. **Keep it as data, render with React text nodes / attributes.** `image`,
@@ -310,16 +311,16 @@ Two safe paths, no third:
    mermaid runs `securityLevel: 'strict'`).
 
 Supporting controls: a **CSRF guard** blocks cross-origin state-changing requests
-to `/api` and `/mcp` (`app.ts:1624`) — the token-less local default would
+to `/api` and `/mcp` (`app.ts`) — the token-less local default would
 otherwise let any open web page POST forged feedback to localhost. **Asset
 serving** only sends raster images `inline`; svg/json/text/everything-else go out
 as `attachment` with `X-Content-Type-Options: nosniff`, so a top-level open of
 `/a/:id` can never execute an uploaded document as a same-origin script
-(`assetServeHeaders`, `app.ts:85`). Surface **ids are 64-bit unguessable
-capabilities** (`newId`, `types.ts:445`) — in `publicRead` mode the id is the
+(`assetServeHeaders`, `app.ts`). Surface **ids are 64-bit unguessable
+capabilities** (`newId`, `types.ts`) — in `publicRead` mode the id is the
 share secret.
 
-Theming (`server/themes.ts`) and html **kits** (`server/kits.ts`, opt-in CSS/JS
+Theming (`packages/core/themes.ts`) and html **kits** (`packages/core/kits.ts`, opt-in CSS/JS
 bundles like `issues` / `slides` / `review`) are injected into the sandbox doc,
 never into the trusted origin.
 
@@ -329,7 +330,7 @@ never into the trusted origin.
 
 All three surfaces are the same core; pick by how the agent is wired.
 
-### REST (`server/app.ts`)
+### REST (`packages/server/app.ts`)
 
 | Method · path                                                        | Purpose                                                   |
 | -------------------------------------------------------------------- | --------------------------------------------------------- |
@@ -347,23 +348,25 @@ All three surfaces are the same core; pick by how the agent is wired.
 | `GET /guide` · `/playbook` · `/setup` · `/api/kits` · `/api/version` | Runtime docs & metadata.                                  |
 | `POST /mcp`                                                          | Streamable-HTTP MCP (§3.2).                               |
 
-### MCP tools (`mcp/server.ts` stdio + `server/mcpHttp.ts` http)
+### MCP tools (`packages/mcp/server.ts` stdio + `packages/server/mcpHttp.ts` http)
 
-`publish_surface`, `publish_snippet`, `publish_decisions`, `update_surface`,
-`update_snippet`, `delete_surface`, `wait_for_feedback`, `list_surfaces`,
-`upload_asset`, `comment` (http), `get_design_guide`. `publish_decisions` is
-registered on **both** transports (stdio + streamable-HTTP). Descriptions and
-input schemas are centralized in `server/mcpSpec.ts` so both transports stay in
-sync.
+`publish_surface`, `update_surface`, `publish_snippet`, `update_snippet`,
+`delete_surface`, `publish_decisions`, `wait_for_feedback`, `list_surfaces`,
+`get_surface`, `upload_asset`, `get_design_guide`, `configure_session`, plus the
+tailored preset tools (`publish_postmortem`, `publish_dashboard`,
+`publish_design_doc`, `publish_status`, `publish_architecture`,
+`publish_product_demo`, …). `publish_decisions` is registered on **both**
+transports (stdio + streamable-HTTP). Descriptions and input schemas are
+centralized in `packages/core/mcpSpec.ts` so both transports stay in sync.
 
 ---
 
 ## 8. Storage internals (`JsonFileStore`)
 
 The entire board lives in memory as `Map`s (sessions, surfaces, assets, reviews)
-plus a comments array (`storage.ts:100`). Every mutation calls `persist()`, which
+plus a comments array (`storage.ts`). Every mutation calls `persist()`, which
 serializes the whole board to JSON and writes it through a **serialized write
-queue** with the atomic `write-tmp + rename` pattern (`storage.ts:155`) so a crash
+queue** with the atomic `write-tmp + rename` pattern (`storage.ts`) so a crash
 mid-write never corrupts the file. Default path is `data/showcase.json`, override
 with `SHOWCASE_DATA`.
 
@@ -374,11 +377,11 @@ Consequences worth knowing:
 - **Reads return clones** (`structuredClone`) so callers can't mutate store state.
 - **Content-addressed assets** dedupe and survive across sessions; deleting a
   session only drops its _own_ assets that no surviving surface references
-  (`storage.ts:220`).
+  (`storage.ts`).
 - **Legacy migration on load:** pre-0.5.0 boards stored `snippets` (a single
   `html` field) and `snippetId` comments; `loadFromDisk` lifts those into the
-  parts model transparently (`liftSnippet` / `liftComment`, `storage.ts:67`).
-- **`Store` is an interface** (`types.ts:391`) with a store-contract test, kept
+  parts model transparently (`liftSnippet` / `liftComment`, `storage.ts`).
+- **`Store` is an interface** (`types.ts`) with a store-contract test, kept
   honest so a second implementation could slot in — even though this fork ships
   only `JsonFileStore`.
 
@@ -419,12 +422,12 @@ asset:
 
 ```sh
 # 1. start the board (build the viewer first if needed)
-npm run build:viewer
-SHOWCASE_DATA=/tmp/scratch.json node server/index.ts &     # → http://localhost:8229
+pnpm build:viewer
+SHOWCASE_DATA=/tmp/scratch.json node packages/server/index.ts &     # → http://localhost:8229
 
 # 2. publish a mermaid surface through the real API
 SHOWCASE_URL=http://localhost:8229 \
-  node bin/showcase.js mermaid arch.mmd \
+  node packages/cli/bin/showcase.js mermaid arch.mmd \
   --title "Showcase architecture" --session-title "Architecture doc"
 # → prints { id, sessionId, url }
 
@@ -446,38 +449,41 @@ board theme — because it _is_ a real card.
   directly on **Node ≥ 22.18** via type stripping, so only _erasable_ syntax is
   allowed: no enums, no parameter properties, `.ts` extensions in relative imports.
   The **viewer is the exception** — it's Vite-built into one HTML file.
-- **Runtime-agnostic core.** `server/{app,events,mcpHttp,surfacePage,types}.ts`
-  must not import `node:` anything (they use Web platform globals like `crypto`).
-  Node wiring is confined to `server/index.ts` and `server/storage.ts`.
-- **The viewer is read at boot.** `server/index.ts` reads
-  `viewer/dist/index.html` once at startup, so viewer changes need a rebuild +
-  restart. **`npm run dev`** does the whole dance (build, watch both halves,
-  auto-restart, clean shutdown). `npm run build:viewer` + restart is the manual
+- **Runtime-agnostic core.** `@showcase/core` (`packages/core/`) must not import
+  `node:` anything (it uses Web platform globals like `crypto`; CI-enforced by
+  `scripts/check-core-boundary.mjs`), and `packages/server/{app,mcpHttp}.ts` hold
+  the same rule by convention. Node wiring is confined to
+  `packages/server/index.ts` and `packages/server/storage.ts`.
+- **The viewer is read at boot.** `packages/server/index.ts` reads
+  `packages/viewer/dist/index.html` once at startup (via `@showcase/viewer`'s
+  `server-entry`), so viewer changes need a rebuild +
+  restart. **`pnpm dev`** does the whole dance (build, watch both halves,
+  auto-restart, clean shutdown). `pnpm build:viewer` + restart is the manual
   path.
 - **Port 8229.** (Sideshow's 8228, shifted to avoid collision.)
 - **Env vars are `SHOWCASE_`-prefixed:** `SHOWCASE_URL`, `SHOWCASE_TOKEN`,
   `SHOWCASE_DATA`, `SHOWCASE_AGENT`, `SHOWCASE_SESSION`, `SHOWCASE_PUBLIC_READ`,
   `SHOWCASE_DEV`, `PORT`.
-- **Validation gates:** `npm test` (node --test: unit/API + store contract),
-  `npm run typecheck` (node + viewer tsc programs), `npm run lint` (oxlint,
-  warnings are errors), `npm run format:check` (oxfmt).
+- **Validation gates:** `pnpm test` (node --test: unit/API + store contract),
+  `pnpm typecheck` (node + viewer tsc programs), `pnpm lint` (oxlint,
+  warnings are errors), `pnpm format:check` (oxfmt).
 
 ---
 
 ## 12. Where to look next
 
-| You want to understand…                  | Start at                                                      |
-| ---------------------------------------- | ------------------------------------------------------------- |
-| Every route and the shared flows         | `server/app.ts`                                               |
-| The data model & the `Store` interface   | `server/types.ts`                                             |
-| On-disk persistence, eviction, migration | `server/storage.ts`                                           |
-| Sandboxed html rendering                 | `server/surfacePage.ts`, `server/themes.ts`, `server/kits.ts` |
-| MCP tool schemas (one source of truth)   | `server/mcpSpec.ts`                                           |
-| The stdio MCP client                     | `mcp/server.ts`                                               |
-| The CLI                                  | `bin/showcase.js`                                             |
-| The viewer                               | `viewer/` (zustand store, parts components, shadcn/ui)        |
-| The review UX north star                 | `docs/review-form-factor.md`                                  |
-| Agent-facing runtime instructions        | `guide/PLAYBOOK.md`, `guide/DESIGN_GUIDE.md`                  |
+| You want to understand…                  | Start at                                                                           |
+| ---------------------------------------- | ---------------------------------------------------------------------------------- |
+| Every route and the shared flows         | `packages/server/app.ts`                                                           |
+| The data model & the `Store` interface   | `packages/core/types.ts`                                                           |
+| On-disk persistence, eviction, migration | `packages/server/storage.ts`                                                       |
+| Sandboxed html rendering                 | `packages/core/surfacePage.ts`, `packages/core/themes.ts`, `packages/core/kits.ts` |
+| MCP tool schemas (one source of truth)   | `packages/core/mcpSpec.ts`                                                         |
+| The stdio MCP client                     | `packages/mcp/server.ts`                                                           |
+| The CLI                                  | `packages/cli/` (`bin/showcase.js` is the thin launcher)                           |
+| The viewer                               | `packages/viewer/` (zustand store, parts components, shadcn/ui)                    |
+| The review UX north star                 | `docs/review-form-factor.md`                                                       |
+| Agent-facing runtime instructions        | `guide/PLAYBOOK.md`, `guide/DESIGN_GUIDE.md`                                       |
 
 _Keep this current: if you add a part kind, a transport, a route, or change the
 feedback cursor, update the relevant section here in the same change._

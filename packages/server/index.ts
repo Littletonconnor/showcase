@@ -84,6 +84,16 @@ const defaultTheme = repoCfg.defaultTheme ?? userCfg.defaultTheme;
 const dataPath = process.env.SHOWCASE_DATA ?? join(homedir(), ".showcase", "data", "showcase.json");
 if (!process.env.SHOWCASE_DATA) {
   await migrateLegacyData(join(repoRoot, "data", "showcase.json"), dataPath);
+} else {
+  // Fail at boot, not per-request: a directory here would let the server say
+  // "listening" and then 500 every route with an opaque internal error.
+  const existing = await stat(dataPath).catch(() => null);
+  if (existing?.isDirectory()) {
+    console.error(
+      `showcase: SHOWCASE_DATA must be a JSON file path, not a directory — try SHOWCASE_DATA=${join(dataPath, "showcase.json")}`,
+    );
+    process.exit(1);
+  }
 }
 
 const app = createApp({

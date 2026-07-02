@@ -5,12 +5,13 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rmSync } from "node:fs";
+import { defineCommand } from "../command.ts";
 import type { Command } from "../command.ts";
 import { fail } from "../errors.ts";
 import { api, BASE, TOKEN } from "../http.ts";
 import { emit } from "../output.ts";
 
-const exportCmd: Command = {
+const exportCmd = defineCommand({
   name: "export",
   group: "Share",
   summary: "write a self-contained, shareable .html of a session",
@@ -92,9 +93,9 @@ const exportCmd: Command = {
     if (!existsSync(file)) fail("Chrome ran but produced no PDF");
     emit({ session, file, format: "pdf" }, `wrote ${file}`);
   },
-};
+});
 
-const decisions: Command = {
+const decisions = defineCommand({
   name: "decisions",
   group: "Share",
   summary: "publish a decision-queue review (JSON) for a session",
@@ -121,7 +122,7 @@ const decisions: Command = {
       `published ${review.decisions.length} decisions\n  ${url}`,
     );
   },
-};
+});
 
 // Locate a Chrome/Chromium binary for `export --pdf`. $SHOWCASE_CHROME wins;
 // otherwise probe the usual install paths per platform, then PATH for a bare

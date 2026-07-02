@@ -432,11 +432,30 @@ export function nearBottom() {
   return !!m && m.scrollHeight - m.scrollTop - m.clientHeight < 200;
 }
 
+function sameComment(a: Comment, b: Comment) {
+  const ka = Object.keys(a) as (keyof Comment)[];
+  return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k]);
+}
+
+// Dedupe by id, but also reconcile: an incoming comment whose fields changed
+// server-side replaces the stale entry in place (ordering stays stable);
+// genuinely new ids append.
 function mergeComments(list: Comment[]) {
   set((state) => {
-    const seen = new Set(state.comments.map((c) => c.id));
-    const fresh = list.filter((c) => !seen.has(c.id));
-    return fresh.length > 0 ? { comments: [...state.comments, ...fresh] } : state;
+    const index = new Map(state.comments.map((c, i) => [c.id, i]));
+    let next: Comment[] | null = null;
+    for (const c of list) {
+      const i = index.get(c.id);
+      if (i === undefined) {
+        next ??= state.comments.slice();
+        index.set(c.id, next.length);
+        next.push(c);
+      } else if (!sameComment((next ?? state.comments)[i], c)) {
+        next ??= state.comments.slice();
+        next[i] = c;
+      }
+    }
+    return next ? { comments: next } : state;
   });
 }
 
@@ -520,7 +539,15 @@ export function connect() {
 // reconnect; surfaces reconcile by id and comments dedupe by id.
 async function resyncSelected() {
   const before = selectedNow();
+  // Events that fired during the gap are gone, so away-session unread dots
+  // would silently stay dark: infer them by diffing lastActiveAt across the
+  // refresh — any non-selected session that advanced saw activity we missed.
+  const prevActive = new Map(sessionsNow().map((s) => [s.id, s.lastActiveAt]));
   await refreshSessions();
+  for (const s of sessionsNow()) {
+    const prev = prevActive.get(s.id);
+    if (prev && s.lastActiveAt > prev && s.id !== selectedNow()) markUnread(s.id);
+  }
   if (!before || selectedNow() !== before) return; // select() rebuilt the stream
   const metas = await api<{ id: string }[]>(`/api/sessions/${before}/surfaces`).catch(() => []);
   const ids = new Set(metas.map((m) => m.id));

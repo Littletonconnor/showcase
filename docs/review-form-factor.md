@@ -284,12 +284,12 @@ Decision = {
 
 `confidence` is the **only surfaced honesty signal**: the self-reported
 `coverage`/`gaps` ledger was deliberately cut (nothing backs a "what I verified"
-claim), so it is absent from the shipped `Decision` type (`server/types.ts`) and
+claim), so it is absent from the shipped `Decision` type (`packages/core/types.ts`) and
 the viewer (`ReviewView.tsx`) — see the **Shipped reality** note at the top.
 
-This is additive over the shipped review primitives (`publish_review`, the typed
-parts, the `review` kit) — a reorganization of them into the decision grammar, not
-a rewrite.
+This ships as `publish_decisions`, built over the shipped review primitives (the
+typed parts, the `review` kit) — a reorganization of them into the decision
+grammar, not a rewrite.
 
 ---
 

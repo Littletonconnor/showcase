@@ -94,12 +94,12 @@ test("every card header shows a click-to-copy card id handle", async ({ page, re
   ).toBeVisible();
 });
 
-test("the Approve quick-action posts a user feedback signal", async ({ page, request }) => {
-  // Approve / Dismiss are generic card feedback actions: they render on a badged
-  // card (one carrying a severity-style badge). Seed such a card so the
-  // quick-action is present.
+test("a user comment reaches the agent's long-poll exactly once", async ({ request }) => {
+  // The feedback half of the loop: a comment posted on a surface is delivered
+  // to the agent's author=user session wait, and a second wait does NOT
+  // re-deliver it (the server-side cursor advanced — exactly-once).
   const session = await (
-    await request.post("/api/sessions", { data: { agent: "e2e", title: "approve" } })
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "feedback" } })
   ).json();
   const surface = await (
     await request.post("/api/surfaces", {
@@ -111,23 +111,22 @@ test("the Approve quick-action posts a user feedback signal", async ({ page, req
       },
     })
   ).json();
-  await page.goto(`/?surface=${surface.id}`);
-  const card = page.locator(`.card[data-id="${surface.id}"]`);
-  await expect(card).toBeVisible();
 
-  // One tap on the card's Approve action posts a recognizable author=user signal.
-  await card.getByRole("button", { name: "Approve" }).click();
+  await request.post("/api/comments", {
+    data: { surface: surface.id, text: "please pick a clearer name" },
+  });
 
-  // It lands server-side as a user comment carrying the approval marker, so the
-  // agent reads it as "yes, this is right".
-  await expect
-    .poll(async () => {
-      const all = await (await request.get(`/api/comments?surface=${surface.id}`)).json();
-      return all.comments.some(
-        (c: { author: string; text: string }) => c.author === "user" && c.text.includes("Approved"),
-      );
-    })
-    .toBe(true);
+  const first = await (
+    await request.get(`/api/comments?session=${session.id}&author=user&wait=5`)
+  ).json();
+  expect(first.comments.map((c: { text: string }) => c.text)).toEqual([
+    "please pick a clearer name",
+  ]);
+
+  const second = await (
+    await request.get(`/api/comments?session=${session.id}&author=user&wait=0`)
+  ).json();
+  expect(second.comments).toEqual([]);
 });
 
 test("a badged card renders its severity badge in the trusted header", async ({
@@ -148,7 +147,7 @@ test("a badged card renders its severity badge in the trusted header", async ({
         badge: { tone: "critical", label: "Bug" },
         parts: [
           { kind: "markdown", markdown: "buffers the whole body before the size check" },
-          { kind: "mermaid", mermaid: "flowchart LR\n  A-->B{>5MB?}\n  B--no-->C[store]" },
+          { kind: "mermaid", mermaid: "flowchart LR\n  A-->B{>5MB?}\n  B-->|no|C[store]" },
           { kind: "diff", patch: "@@ -1 +1 @@\n-a\n+b" },
         ],
       },
@@ -381,4 +380,80 @@ test("a decision review renders its brief and burns down on Accept", async ({ pa
   // Accept the active (lead) decision with the keyboard; the burndown advances.
   await page.keyboard.press("a");
   await expect(page.getByText("1 / 2 accepted")).toBeVisible();
+});
+
+test("the card's reply line posts an author=user comment on that surface", async ({
+  page,
+  request,
+}) => {
+  const { surfaceId } = await seedSurface(request);
+  await page.goto(`/?surface=${surfaceId}`);
+  const card = page.locator(`.card[data-id="${surfaceId}"]`);
+  await expect(card).toBeVisible();
+
+  const input = card.getByRole("textbox", { name: "Comment on this surface" });
+  await input.fill("tighten the copy in the header");
+  await input.press("Enter");
+
+  await expect
+    .poll(async () => {
+      const all = await (await request.get(`/api/comments?surface=${surfaceId}`)).json();
+      return all.comments.some(
+        (c: { author: string; text: string }) =>
+          c.author === "user" && c.text === "tighten the copy in the header",
+      );
+    })
+    .toBe(true);
+  // sent → the line clears for the next note
+  await expect(input).toHaveValue("");
+});
+
+test("pushing back on a decision posts a ref-scoped user comment", async ({ page, request }) => {
+  const session = await (
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "pushback" } })
+  ).json();
+  await request.post(`/api/sessions/${session.id}/review`, {
+    data: {
+      brief: "Renames the throttle module for clarity.",
+      verdict: "comment",
+      decisions: [
+        {
+          id: "d-rename",
+          call: "decide",
+          kind: "refactor",
+          scope: "whole-file",
+          assertion: "The new module name is clearer.",
+          confidence: "medium",
+        },
+      ],
+      manifest: [
+        {
+          path: "throttle.ts",
+          disposition: "has-decision",
+          decisionId: "d-rename",
+          added: 1,
+          removed: 1,
+        },
+      ],
+    },
+  });
+
+  await page.goto(`/?review=${session.id}`);
+  await page.getByRole("button", { name: "Push back…" }).click();
+  const input = page.getByRole("textbox", { name: "Push back on this decision" });
+  await input.fill("keep the old name, it matches the docs");
+  await input.press("Enter");
+
+  // The pushback lands server-side as an author=user comment carrying the
+  // decision's ref, so the agent can scope the revision.
+  await expect
+    .poll(async () => {
+      const all = await (await request.get(`/api/comments?session=${session.id}`)).json();
+      return all.comments.some(
+        (c: { author: string; text: string }) =>
+          c.author === "user" &&
+          c.text === "revise d-rename: keep the old name, it matches the docs",
+      );
+    })
+    .toBe(true);
 });

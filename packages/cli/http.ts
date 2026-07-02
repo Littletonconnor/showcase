@@ -96,7 +96,10 @@ export async function ensureServerUp(): Promise<boolean> {
   if (autoStartAttempted) return false;
   autoStartAttempted = true;
   if (!canAutoStart()) return false;
-  const port = new URL(BASE).port || "8229";
+  // The spawned server must listen where BASE points, or the poll below (and
+  // every retry) targets a port nothing was started on.
+  const url = new URL(BASE);
+  const port = url.port || (url.protocol === "https:" ? "443" : "80");
   const entry = entrypoint("server", "index.ts");
   mkdirSync(dirname(SERVICE_LOG), { recursive: true });
   // Detached + unref'd so the server outlives this short-lived CLI process;

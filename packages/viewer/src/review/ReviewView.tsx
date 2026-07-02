@@ -21,13 +21,15 @@ import type {
   ManifestFile,
   Review,
 } from "@showcase/core/types";
-import type {
-  CodePart as CodePartData,
-  DiffPart as DiffPartData,
-  MarkdownPart as MarkdownPartData,
-  MermaidPart as MermaidPartData,
-  SurfacePart,
+import {
+  api,
+  type CodePart as CodePartData,
+  type DiffPart as DiffPartData,
+  type MarkdownPart as MarkdownPartData,
+  type MermaidPart as MermaidPartData,
+  type SurfacePart,
 } from "../api.ts";
+import { toast } from "../state.ts";
 import { cx } from "../cx.ts";
 import { CodePart } from "../CodePart.tsx";
 import { DiffPart } from "../DiffPart.tsx";
@@ -202,6 +204,69 @@ function CopyRef(props: { id: string }) {
   );
 }
 
+// In-queue pushback: expands to one input and posts the disagreement as an
+// author=user session comment carrying the decision's ref ("revise d-…: …") —
+// the same convention as pasting the ref into chat, so the agent scopes the
+// revision without the human leaving the queue. Send-only; the agent's answer
+// is a re-publish that updates the decision in place.
+function PushBack(props: { sessionId: string; decisionId?: string }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const send = async () => {
+    const trimmed = text.trim();
+    if (!trimmed || sending) return;
+    setSending(true);
+    try {
+      await api("/api/comments", {
+        method: "POST",
+        body: JSON.stringify({
+          session: props.sessionId,
+          text: props.decisionId ? `revise ${props.decisionId}: ${trimmed}` : trimmed,
+        }),
+      });
+      setText("");
+      setOpen(false);
+      toast("Sent — the agent revises and re-publishes this decision");
+    } catch {
+      toast("Couldn't send the pushback");
+    } finally {
+      setSending(false);
+    }
+  };
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center rounded-md px-2.5 py-1 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-hover hover:text-foreground"
+      >
+        Push back…
+      </button>
+    );
+  }
+  return (
+    <input
+      autoFocus
+      type="text"
+      value={text}
+      disabled={sending}
+      placeholder="What should change?"
+      aria-label="Push back on this decision"
+      spellCheck={false}
+      className="h-7 min-w-0 flex-1 rounded-md bg-muted/40 px-2 text-[12.5px] text-foreground ring-1 ring-brand/30 placeholder:text-faint focus:outline-none"
+      onChange={(e) => setText(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") void send();
+        else if (e.key === "Escape") setOpen(false);
+      }}
+      onBlur={() => {
+        if (!text.trim()) setOpen(false);
+      }}
+    />
+  );
+}
+
 function Chip(props: { children: ReactNode; className?: string }) {
   return (
     <span
@@ -225,6 +290,7 @@ function DecisionSection(props: {
   accepted: boolean;
   showVerbs: boolean;
   interactive: boolean;
+  sessionId?: string;
   refCb: (el: HTMLLIElement | null) => void;
   onAccept: () => void;
   onUndo: () => void;
@@ -299,9 +365,10 @@ function DecisionSection(props: {
         {/* the pivot (conditional) */}
         {d.pivot ? <p className="text-[12.5px] text-faint italic">⤳ {d.pivot}</p> : null}
 
-        {/* the verb — Accept (one key). To push back, copy the decision's ref
-            (its header chip) and ask in normal agent chat; the agent revises and
-            re-publishes, and the decision updates in place. */}
+        {/* the verbs — Accept (one key) or Push back (an inline note posted as
+            a session comment carrying the decision's ref); the agent revises
+            and re-publishes, and the decision updates in place. The copy-ref
+            chip stays the handle for longer chat-scoped revisions. */}
         {props.showVerbs &&
           (accepted ? (
             <div className="mt-1 flex items-center gap-2 text-[12px] text-faint">
@@ -326,9 +393,13 @@ function DecisionSection(props: {
               >
                 Accept <Kbd>A</Kbd>
               </button>
-              <span className="text-[11px] text-faint">
-                disagree? copy the ref above and tell the agent in chat
-              </span>
+              {props.interactive && props.sessionId ? (
+                <PushBack sessionId={props.sessionId} decisionId={d.id} />
+              ) : (
+                <span className="text-[11px] text-faint">
+                  disagree? copy the ref above and tell the agent in chat
+                </span>
+              )}
             </div>
           ))}
       </div>
@@ -432,12 +503,17 @@ export function ReviewView(props: {
 
   function accept(idx: number) {
     const key = keyOf(r.decisions[idx]);
-    setAccepted((prev) => new Set(prev).add(key));
-    const next = r.decisions.findIndex((d, i) => i > idx && !accepted.has(keyOf(d)));
-    if (next >= 0) {
-      itemRefs.current[next]?.scrollIntoView({ behavior: "smooth", block: "start" });
-      setActive(next);
-    }
+    // Derive the scroll target inside the updater: the closure's `accepted` is
+    // stale under rapid accepts, which would skip or repeat a decision.
+    setAccepted((prev) => {
+      const n = new Set(prev).add(key);
+      const next = r.decisions.findIndex((d, i) => i > idx && !n.has(keyOf(d)));
+      if (next >= 0) {
+        itemRefs.current[next]?.scrollIntoView({ behavior: "smooth", block: "start" });
+        setActive(next);
+      }
+      return n;
+    });
   }
   function jumpToDecision(idx: number) {
     itemRefs.current[idx]?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -476,6 +552,9 @@ export function ReviewView(props: {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      // Keystrokes while a sandboxed part iframe has focus surface here with the
+      // IFRAME as target — those belong to the embedded content, not the review.
+      if (t?.closest("iframe")) return;
       const down = e.key === "j" || e.key === "ArrowDown";
       const up = e.key === "k" || e.key === "ArrowUp";
       if (down || up) {
@@ -490,7 +569,7 @@ export function ReviewView(props: {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, r.decisions.length, interactive, accepted]);
+  }, [active, r.decisions.length, interactive]);
 
   // Burndown toward a reachable "Review complete": every decision Accepted. To
   // push back on one, the human uses its copy-ref in chat — the agent revises and
@@ -613,6 +692,7 @@ export function ReviewView(props: {
                 accepted={accepted.has(keyOf(d))}
                 showVerbs={showVerbs}
                 interactive={interactive}
+                sessionId={props.sessionId}
                 refCb={(el) => (itemRefs.current[i] = el)}
                 onAccept={() => accept(i)}
                 onUndo={() => undo(i)}

@@ -15,6 +15,19 @@ svg { max-width: 100%; height: auto; }
 // per render across the whole document, so a module-level counter, not a uuid.
 let seq = 0;
 
+// In sandbox mode mermaid returns the SVG wrapped in an
+// `<iframe src="data:text/html;...;base64,...">` for its own display; unwrap it
+// back to the SVG markup — our SandboxedPart is the display boundary here, with
+// proper sizing/theming that mermaid's fixed-height wrapper lacks.
+function unwrapSandboxSvg(iframeHtml: string): string {
+  const m = iframeHtml.match(/src="data:text\/html;charset=UTF-8;base64,([^"]+)"/);
+  if (!m) return iframeHtml;
+  const bytes = Uint8Array.from(atob(m[1]), (c) => c.charCodeAt(0));
+  const body = new TextDecoder().decode(bytes);
+  const inner = body.match(/^<body[^>]*>([\s\S]*)<\/body>$/);
+  return inner ? inner[1] : body;
+}
+
 // Mermaid's stock themes ignore our design tokens, so the diagram reads as
 // generic mermaid. Instead drive its `base` theme from the viewer's own CSS
 // custom properties (read live — this part renders in the trusted origin, so
@@ -135,16 +148,18 @@ export function MermaidPart(props: { part: MermaidPartData }) {
         // Lazy-load mermaid (a heavy dep) only when a mermaid part actually
         // mounts. mermaid is the default export.
         const mermaid = (await import("mermaid")).default;
-        // securityLevel 'strict' makes mermaid sanitize the generated SVG with
-        // its bundled DOMPurify and disables inline HTML labels and click
-        // handlers — this part renders in the trusted viewer origin (no
-        // sandbox), so never relax it. suppressErrorRendering keeps a parse
-        // failure from injecting mermaid's "bomb" graphic into document.body;
-        // we render our own error fallback instead.
+        // securityLevel 'sandbox' makes mermaid do ALL its DOM work (parse +
+        // layout) inside a scriptless sandboxed iframe it creates — agent-
+        // authored diagram text never becomes live DOM in the trusted viewer
+        // origin, upholding the CLAUDE.md invariant without leaning on
+        // mermaid's bundled DOMPurify as the only line of defense ('strict'
+        // mode lays out in document.body). Never relax this.
+        // suppressErrorRendering keeps a parse failure from injecting
+        // mermaid's "bomb" graphic; we render our own error fallback instead.
         const { themeVariables, themeCSS } = showcaseTheme();
         mermaid.initialize({
           startOnLoad: false,
-          securityLevel: "strict",
+          securityLevel: "sandbox",
           suppressErrorRendering: true,
           theme: "base",
           themeVariables,
@@ -163,7 +178,7 @@ export function MermaidPart(props: { part: MermaidPartData }) {
         const { svg: out } = await mermaid.render(`mmd-${seq++}`, src);
         if (!disposed) {
           setError(null);
-          setSvg(out);
+          setSvg(unwrapSandboxSvg(out));
         }
       } catch (e) {
         if (!disposed) {

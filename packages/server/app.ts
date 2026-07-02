@@ -676,17 +676,38 @@ export function createApp({
     return { session };
   }
 
+  // The agent cursor (agentSeq) is read-then-advanced by both piggyback
+  // (collectFeedback) and the long-poll (waitForComments). Two overlapping
+  // readers that both read before either marks would deliver the same comments
+  // twice, so the read+mark critical section is serialized per session — that's
+  // what makes the exactly-once guarantee hold under concurrent waits.
+  const cursorLocks = new Map<string, Promise<unknown>>();
+  function withCursorLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = cursorLocks.get(sessionId) ?? Promise.resolve();
+    const run = prev.then(fn);
+    const tail = run.catch(() => {});
+    cursorLocks.set(sessionId, tail);
+    void tail.then(() => {
+      if (cursorLocks.get(sessionId) === tail) cursorLocks.delete(sessionId);
+    });
+    return run;
+  }
+
   // User comments the agent has not seen yet ride along on its next write, so
   // agents hear feedback without blocking on the long-poll. The cursor also
   // advances past the agent's own comments to keep reads cheap.
   async function collectFeedback(sessionId: string): Promise<Feedback[] | undefined> {
     const session = await store.getSession(sessionId);
     if (!session) return undefined;
-    const fresh = await store.listComments({ sessionId, afterSeq: session.agentSeq });
-    if (fresh.length === 0) return undefined;
-    await store.markAgentSeen(sessionId, fresh[fresh.length - 1].seq);
-    const feedback = fresh.filter((cm) => cm.author === "user");
-    return feedback.length > 0 ? feedback.map(feedbackView) : undefined;
+    return withCursorLock(sessionId, async () => {
+      const cur = await store.getSession(sessionId);
+      if (!cur) return undefined;
+      const fresh = await store.listComments({ sessionId, afterSeq: cur.agentSeq });
+      if (fresh.length === 0) return undefined;
+      await store.markAgentSeen(sessionId, fresh[fresh.length - 1].seq);
+      const feedback = fresh.filter((cm) => cm.author === "user");
+      return feedback.length > 0 ? feedback.map(feedbackView) : undefined;
+    });
   }
 
   async function publishSurface(input: {
@@ -1000,16 +1021,35 @@ export function createApp({
     // An author=user session wait with no explicit cursor resumes from the
     // session's agentSeq — "where the agent left off" lives server-side so the
     // CLI, both MCP transports, and piggyback share one exactly-once stream.
+    const usesSessionCursor = q.afterSeq === undefined && q.author === "user" && !!q.sessionId;
     let afterSeq = q.afterSeq;
-    if (afterSeq === undefined && q.author === "user" && q.sessionId) {
-      afterSeq = (await store.getSession(q.sessionId))?.agentSeq;
-    }
-    const query = { sessionId: q.sessionId, surfaceId: q.surfaceId, afterSeq };
     const matches = (list: Comment[]) =>
       q.author ? list.filter((cm) => cm.author === q.author) : list;
     const wait = Math.min(Math.max(q.waitSeconds, 0), MAX_WAIT_SECONDS);
 
-    let all = await store.listComments(query);
+    // Read the window and, for a session-cursor wait, advance the cursor in the
+    // same locked section — a wake-up must re-resolve agentSeq (piggyback may
+    // have consumed the batch while this wait was parked) and no other reader
+    // may interleave between the read and the mark, or comments deliver twice.
+    const readWindow = async () => {
+      if (usesSessionCursor) afterSeq = (await store.getSession(q.sessionId!))?.agentSeq;
+      const all = await store.listComments({
+        sessionId: q.sessionId,
+        surfaceId: q.surfaceId,
+        afterSeq,
+      });
+      // The cursor advances past every comment in the window — not just the
+      // filtered ones — so the next call doesn't re-read the agent's own
+      // comments. collectFeedback already does this; mirror it here.
+      if (q.author === "user" && q.sessionId && all.length > 0) {
+        await store.markAgentSeen(q.sessionId, all[all.length - 1].seq);
+      }
+      return all;
+    };
+    const claimWindow = () =>
+      q.author === "user" && q.sessionId ? withCursorLock(q.sessionId, readWindow) : readWindow();
+
+    let all = await claimWindow();
     let comments = matches(all);
     if (comments.length === 0 && wait > 0) {
       // A parked author=user session wait IS the agent listening — track it as
@@ -1059,18 +1099,10 @@ export function createApp({
       } finally {
         if (presenceSession) removeWaiter(presenceSession);
       }
-      all = await store.listComments(query);
+      all = await claimWindow();
       comments = matches(all);
     }
-    // The cursor advances past every comment in the window — not just the
-    // filtered ones — so the next call doesn't re-read the agent's own
-    // comments. collectFeedback already does this; mirror it here.
     const lastSeq = all.length > 0 ? all[all.length - 1].seq : (afterSeq ?? 0);
-    // An author=user query is the agent listening (the viewer never filters by
-    // author) — what it receives here should not be re-delivered as piggyback.
-    if (q.author === "user" && q.sessionId && all.length > 0) {
-      await store.markAgentSeen(q.sessionId, lastSeq);
-    }
     return { comments, lastSeq };
   }
 
@@ -1363,6 +1395,11 @@ export function createApp({
       }
       theme = deriveTheme(seed);
     } else if (body.theme && typeof body.theme === "object" && body.theme.id) {
+      // A malformed full theme must not register: themeById would return it and
+      // every /s/:id render that resolves this id (including a shadowed default)
+      // would then 500 until restart. Same gate as boot config loading.
+      const check = validateConfig("theme", body.theme);
+      if (!check.ok) return c.json({ error: "invalid theme", issues: check.issues }, 400);
       theme = body.theme as Theme;
     } else {
       return c.json({ error: 'pass a "seed" {id,label,accent,...} or a full "theme"' }, 400);
@@ -1485,8 +1522,10 @@ export function createApp({
 
   // Asset METADATA for a session (never the bytes — those serve at /a/:id). Backs
   // the stdio MCP asset-resource listing, which can't reach the store directly.
-  // Owner-scoped (asset data), like /api/board.
+  // Owner-scoped (asset data), like /api/board — the /api/sessions/ prefix is
+  // otherwise public-readable in `session` mode, so guard explicitly.
   app.get("/api/sessions/:id/assets", async (c) => {
+    if (isUnauthenticatedSessionRead(c)) return c.json({ error: "unauthorized" }, 401);
     const assets = await store.listAssets(c.req.param("id"));
     return c.json(
       assets.map((a) => ({
@@ -1726,12 +1765,20 @@ export function createApp({
         }
       }
     }
+    // A malformed cursor must not become NaN: `seq > NaN` filters out every
+    // comment and `NaN ?? 0` serializes as null, silently corrupting the
+    // client's cursor — reject it instead.
+    const afterRaw = c.req.query("after");
+    const afterSeq = afterRaw ? Number(afterRaw) : undefined;
+    if (afterSeq !== undefined && !Number.isFinite(afterSeq)) {
+      return c.json({ error: "after must be a number" }, 400);
+    }
     const result = await waitForComments(
       {
         sessionId,
         surfaceId,
         author: c.req.query("author"),
-        afterSeq: c.req.query("after") ? Number(c.req.query("after")) : undefined,
+        afterSeq,
         waitSeconds: Number(c.req.query("wait") ?? 0) || 0,
       },
       c.req.raw.signal,

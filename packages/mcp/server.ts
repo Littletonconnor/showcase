@@ -19,8 +19,10 @@ import {
 } from "@showcase/core/mcpSpec";
 import { encodeBase64 } from "@showcase/core/base64";
 
-// Point at a deployed instance later by setting SHOWCASE_URL.
-const API = process.env.SHOWCASE_URL ?? "http://localhost:8229";
+// Point at a deployed instance later by setting SHOWCASE_URL. A trailing slash
+// would produce `//api/...` paths, which the server 404s — strip it, like the
+// CLI does.
+const API = (process.env.SHOWCASE_URL ?? "http://localhost:8229").replace(/\/$/, "");
 const TOKEN = process.env.SHOWCASE_TOKEN;
 const AGENT = process.env.SHOWCASE_AGENT ?? "claude-code";
 
@@ -75,16 +77,27 @@ let sessionId: string | null = process.env.SHOWCASE_SESSION ?? null;
 
 // `title` is used only when this call creates the session — once one exists
 // (here or in the viewer, where the user can rename it) it is never retitled.
+// The create is deduped in-flight: parallel tool calls are legal MCP, and two
+// concurrent first-publishes must not split one conversation across two
+// sessions.
+let sessionCreate: Promise<string> | null = null;
 async function ensureSession(title?: string): Promise<string> {
   if (sessionId) return sessionId;
-  const session = JSON.parse(
-    await api("/api/sessions", {
-      method: "POST",
-      body: JSON.stringify({ agent: AGENT, cwd: process.cwd(), title }),
-    }),
-  );
-  sessionId = session.id as string;
-  return sessionId;
+  sessionCreate ??= (async () => {
+    try {
+      const session = JSON.parse(
+        await api("/api/sessions", {
+          method: "POST",
+          body: JSON.stringify({ agent: AGENT, cwd: process.cwd(), title }),
+        }),
+      );
+      sessionId = session.id as string;
+      return sessionId;
+    } finally {
+      sessionCreate = null;
+    }
+  })();
+  return sessionCreate;
 }
 
 // This process outlives the backend. A 404 on our cached session means the

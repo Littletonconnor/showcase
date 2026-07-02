@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CONFIG_KINDS, validateConfig } from "@showcase/core/configSchema";
+import type { ConfigKind } from "@showcase/core/configSchema";
 
 // A full, valid palette (every documented slot, valid colors). Shared by the
 // theme cases so each test only perturbs the one thing it's checking.
@@ -21,7 +22,7 @@ const palette = {
 };
 const theme = { id: "acme", label: "Acme", light: palette, dark: palette };
 
-const issues = (kind, raw) => {
+const issues = (kind: ConfigKind, raw: unknown) => {
   const r = validateConfig(kind, raw);
   return r.ok ? [] : r.issues;
 };

@@ -5,6 +5,8 @@ import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { openBrowser } from "../browser.ts";
+import { defineCommand } from "../command.ts";
 import type { Command } from "../command.ts";
 import { fail } from "../errors.ts";
 import { SERVICE_LOG } from "../http.ts";
@@ -13,7 +15,7 @@ import { ROOT, ensureNodeCanRun, entrypoint } from "../runtime.ts";
 const SERVICE_LABEL = "dev.showcase.server"; // launchd label / reverse-DNS id
 const SERVICE_UNIT = "showcase.service"; // systemd unit name
 
-const serve: Command = {
+const serve = defineCommand({
   name: "serve",
   group: "Run",
   summary: "start the surface (API + viewer)",
@@ -32,19 +34,13 @@ const serve: Command = {
     });
     if (flags.open) {
       const url = `http://localhost:${port}`;
-      const { opener, openerArgs } =
-        process.platform === "darwin"
-          ? { opener: "open", openerArgs: [url] }
-          : process.platform === "win32"
-            ? { opener: "cmd", openerArgs: ["/c", "start", url] }
-            : { opener: "xdg-open", openerArgs: [url] };
-      setTimeout(() => spawn(opener, openerArgs, { stdio: "ignore" }), 700);
+      setTimeout(() => openBrowser(url), 700);
     }
     child.on("exit", (code) => process.exit(code ?? 0));
   },
-};
+});
 
-const mcp: Command = {
+const mcp = defineCommand({
   name: "mcp",
   group: "Run",
   summary: "run the stdio MCP server (for agent configs)",
@@ -55,9 +51,9 @@ const mcp: Command = {
     const child = spawn(process.execPath, [entry], { stdio: "inherit", env: process.env });
     child.on("exit", (code) => process.exit(code ?? 0));
   },
-};
+});
 
-const service: Command = {
+const service = defineCommand({
   name: "service",
   group: "Run",
   summary: "install/uninstall/status the surface as a background OS service",
@@ -125,7 +121,7 @@ const service: Command = {
 
     fail("usage: showcase service <install|uninstall|status> [--port N]");
   },
-};
+});
 
 // Escape the five XML entities so a home path with `&` or `<` can't corrupt the
 // plist.

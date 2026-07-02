@@ -190,8 +190,8 @@ registry = [ ...BUILT_IN, ...loadUserDefs(dir) ]   // user id wins on collision
 One mechanism, three payoffs — and together they deliver exactly the user's two
 modes:
 
-- **Brand theme** → _"visuals that match my product."_ A palette is just 11
-  colors × 2 schemes; a user authors one as JSON, no code.
+- **Brand theme** → _"visuals that match my product."_ A palette is just 21
+  color slots × 2 schemes; a user authors one as JSON, no code.
 - **Brand kit** → custom visual vocabulary (card frame, product font, a
   screenshot bezel) beyond palette.
 - **Brand blueprint** → ties theme + kit + structure + logo into the reusable
@@ -272,7 +272,7 @@ structure (from the design guide) and authors against it. An old client that
 ignores `blueprint` still works unchanged.
 
 **Phase 1 — user config layer. ✅**
-`server/userConfig.ts` loads `~/.showcase/{themes,kits,blueprints}/*.json` (override
+`packages/server/userConfig.ts` loads `~/.showcase/{themes,kits,blueprints}/*.json` (override
 the dir with `SHOWCASE_CONFIG`) and layers it over the built-ins. This is the unlock
 for _"matches my product"_ and for _customizable + extendable_ — a user defines a
 brand theme + blueprint and never edits source.
@@ -293,28 +293,28 @@ convention the agent holds in its head into something the rendered explainer sho
 
 ## Where it lives (built)
 
-- `server/types.ts` — `blueprint?: string` on `Surface`, `CreateSurfaceInput`,
+- `packages/core/types.ts` — `blueprint?: string` on `Surface`, `CreateSurfaceInput`,
   `UpdateSurfaceInput` (parallel to `theme`).
-- `server/blueprints.ts` — `Blueprint` types, built-in `BLUEPRINTS`,
+- `packages/core/blueprints.ts` — `Blueprint` types, built-in `BLUEPRINTS`,
   `isKnownBlueprint` / `blueprintById` (with `extends` merge) / `blueprintSummaries`,
   the gap-filling `resolveBlueprint`, and `brandCss`. Mirrors `themes.ts` / `kits.ts`.
-- `server/themes.ts` / `server/kits.ts` — `registerThemes` / `registerKits` + merged
+- `packages/core/themes.ts` / `packages/core/kits.ts` — `registerThemes` / `registerKits` + merged
   lookups, so the built-in arrays gain a user-extensible layer without `node:` leaks
   (the viewer build still sees only the built-ins).
-- `server/storage.ts` — persists `blueprint` on create/update (a rendering choice,
+- `packages/server/storage.ts` — persists `blueprint` on create/update (a rendering choice,
   not snapshotted as content — like `theme`).
-- `server/app.ts` — resolves the blueprint in the publish/revise flow (fills theme +
+- `packages/server/app.ts` — resolves the blueprint in the publish/revise flow (fills theme +
   part kits + default badge), serves `GET /api/blueprints` and `/api/themes`, passes
   brand to `renderHtmlPage` at `/s/:id`, and appends a live blueprint listing to
   `/guide`. `createApp` takes `extraThemes/extraKits/extraBlueprints`.
-- `server/surfacePage.ts` — `renderHtmlPage` injects `brandCss` last (brand overrides
+- `packages/core/surfacePage.ts` — `renderHtmlPage` injects `brandCss` last (brand overrides
   the theme's defaults for the part).
-- `server/mcpHttp.ts` / `server/mcpSpec.ts` / `mcp/server.ts` — `blueprint` param on
-  publish_surface / publish_snippet / update_surface, description sourced from
-  `BLUEPRINT_IDS`.
-- `server/userConfig.ts` / `server/index.ts` — the Node-only loader and its wiring;
-  keeps `server/{app,types,surfacePage,themes,kits,blueprints}.ts` runtime-agnostic.
-- `bin/showcase.js` — `--blueprint <id>` on publish + a `showcase blueprints` command.
+- `packages/server/mcpHttp.ts` / `packages/core/mcpSpec.ts` / `packages/mcp/server.ts` —
+  `blueprint` param on publish_surface / publish_snippet / update_surface,
+  description sourced from `BLUEPRINT_IDS`.
+- `packages/server/userConfig.ts` / `packages/server/index.ts` — the Node-only loader and its
+  wiring; keeps `@showcase/core` (and the server's `app.ts`) runtime-agnostic.
+- `packages/cli/bin/showcase.js` — `--blueprint <id>` on publish + a `showcase blueprints` command.
 - `guide/PLAYBOOK.md` — the explainer recipe now starts from a blueprint.
 - `test/blueprints.test.ts` — resolution, inheritance, registry layering, brand CSS,
   and the publish → render path end to end.

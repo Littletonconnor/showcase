@@ -2,14 +2,15 @@
 // (`wait`), or stream every new comment forever for a background monitor
 // (`watch`). Both read with author=user and resume from the server-side agent
 // cursor so a comment is delivered exactly once across wait/watch/piggyback.
+import { defineCommand } from "../command.ts";
 import type { Command } from "../command.ts";
 import { fail } from "../errors.ts";
 import { api, BASE, TOKEN } from "../http.ts";
-import { emit } from "../output.ts";
+import { emit, isJson } from "../output.ts";
 import { resolveSession, resolveSessionByCwd } from "../session.ts";
 import { sleep, watchLine } from "../util.ts";
 
-const wait: Command = {
+const wait = defineCommand({
   name: "wait",
   group: "Feedback",
   summary: "block until the user comments (long-poll)",
@@ -24,6 +25,11 @@ const wait: Command = {
     if (!session) fail("no active session — publish something first, or pass --session");
     if (flags.after !== undefined && !/^\d+$/.test(flags.after)) {
       fail(`--after must be a number (got "${flags.after}")`);
+    }
+    // NaN would make the deadline NaN and skip the poll loop entirely — a
+    // false "no feedback" answer without ever asking the server.
+    if (flags.timeout !== undefined && !/^\d+$/.test(flags.timeout)) {
+      fail(`--timeout must be a number of seconds (got "${flags.timeout}")`);
     }
     const timeout = Math.max(1, Number(flags.timeout ?? 120));
     const deadline = Date.now() + timeout * 1000;
@@ -44,9 +50,9 @@ const wait: Command = {
       );
     }
   },
-};
+});
 
-const watch: Command = {
+const watch = defineCommand({
   name: "watch",
   group: "Feedback",
   summary: "stream each new user comment forever, one per line",
@@ -84,9 +90,13 @@ const watch: Command = {
         continue;
       }
       firstAfter = undefined;
-      for (const c of result.comments ?? []) console.log(watchLine(c));
+      // --json is the global scripting contract: one JSON object per line
+      // (JSONL) so a monitor can pipe into jq instead of parsing prose.
+      for (const c of result.comments ?? []) {
+        console.log(isJson() ? JSON.stringify(c) : watchLine(c));
+      }
     }
   },
-};
+});
 
 export const feedbackCommands: Command[] = [wait, watch];

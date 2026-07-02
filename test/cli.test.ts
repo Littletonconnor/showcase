@@ -82,6 +82,8 @@ for (const cmd of [
   "watch",
   "list",
   "kits",
+  "logs",
+  "open",
   "gc",
   "health",
   "validate",
@@ -541,4 +543,156 @@ test("top-level help groups the commands", async () => {
   assert.match(stdout, /publish:/);
   assert.match(stdout, /feedback:/);
   assert.match(stdout, /usage: showcase <command>/);
+});
+
+test("update preserves the surface's part kind (markdown stays markdown)", async () => {
+  const server = await serveApp();
+  try {
+    const session = await post(`${server.url}/api/sessions`, { agent: "e2e", title: "Kinds" });
+    const surface = await post(`${server.url}/api/surfaces`, {
+      session: session.id,
+      title: "Notes",
+      parts: [{ kind: "markdown", markdown: "# v1" }],
+    });
+
+    const dir = mkdtempSync(join(tmpdir(), "showcase-upd-"));
+    const file = join(dir, "next.md");
+    writeFileSync(file, "# v2 heading");
+    const { code } = await runWith(
+      { env: { SHOWCASE_URL: server.url } },
+      "update",
+      surface.id,
+      file,
+    );
+    assert.equal(code, 0);
+
+    const after = await fetch(`${server.url}/api/surfaces/${surface.id}`).then(
+      (r) => r.json() as Promise<any>,
+    );
+    assert.equal(after.version, 2);
+    assert.equal(after.parts.length, 1);
+    assert.equal(after.parts[0].kind, "markdown");
+    assert.equal(after.parts[0].markdown, "# v2 heading");
+  } finally {
+    await server.close();
+  }
+});
+
+test("update refuses an asset-backed part instead of rewriting it", async () => {
+  const server = await serveApp();
+  try {
+    const session = await post(`${server.url}/api/sessions`, { agent: "e2e", title: "Img" });
+    const asset = await fetch(`${server.url}/api/assets?filename=a.png&session=${session.id}`, {
+      method: "POST",
+      headers: { "content-type": "image/png" },
+      body: new Uint8Array([137, 80, 78, 71]),
+    }).then((r) => r.json() as Promise<any>);
+    const surface = await post(`${server.url}/api/surfaces`, {
+      session: session.id,
+      parts: [{ kind: "image", assetId: asset.id }],
+    });
+
+    const dir = mkdtempSync(join(tmpdir(), "showcase-upd-"));
+    const file = join(dir, "next.txt");
+    writeFileSync(file, "not an image");
+    const { code, stderr } = await runWith(
+      { env: { SHOWCASE_URL: server.url } },
+      "update",
+      surface.id,
+      file,
+    );
+    assert.equal(code, 1);
+    assert.match(stderr, /asset-backed/);
+  } finally {
+    await server.close();
+  }
+});
+
+test("themes lists the built-in theme ids", async () => {
+  const server = await serveApp();
+  try {
+    const { code, stdout } = await runWith({ env: { SHOWCASE_URL: server.url } }, "themes");
+    assert.equal(code, 0);
+    assert.match(stdout, /showcase/);
+    assert.match(stdout, /ocean/);
+  } finally {
+    await server.close();
+  }
+});
+
+test("logs prints the tail of the server log and honors --lines/--json", async () => {
+  // SERVICE_LOG lives under homedir(), which honors $HOME on posix.
+  const home = mkdtempSync(join(tmpdir(), "showcase-logs-"));
+  mkdirSync(join(home, ".showcase"), { recursive: true });
+  const file = join(home, ".showcase", "server.log");
+  writeFileSync(file, Array.from({ length: 60 }, (_, i) => `line ${i + 1}`).join("\n") + "\n");
+  const env = { HOME: home };
+
+  const tail = await runWith({ env }, "logs", "--lines", "3");
+  assert.equal(tail.code, 0);
+  assert.equal(tail.stdout, "line 58\nline 59\nline 60\n");
+
+  const json = await runWith({ env }, "logs", "--json");
+  assert.equal(json.code, 0);
+  const out = JSON.parse(json.stdout);
+  assert.equal(out.file, file);
+  assert.equal(out.lines.length, 50); // the default tail
+  assert.equal(out.lines.at(-1), "line 60");
+});
+
+test("logs without a log file explains how one gets created and exits 0", async () => {
+  const home = mkdtempSync(join(tmpdir(), "showcase-logs-none-"));
+  const { code, stdout } = await runWith({ env: { HOME: home } }, "logs");
+  assert.equal(code, 0);
+  assert.match(stdout, /no log yet/);
+  assert.match(stdout, /showcase service install/);
+});
+
+test("a non-numeric --lines fails fast instead of an empty tail", async () => {
+  const { code, stderr } = await run("logs", "--lines", "abc");
+  assert.equal(code, 1);
+  assert.match(stderr, /--lines must be a number/);
+});
+
+test("open prints the session URL (board root without one), no browser under SHOWCASE_NO_OPEN", async () => {
+  const server = await serveApp();
+  try {
+    const env = { SHOWCASE_URL: server.url, SHOWCASE_NO_AUTOSTART: "1", SHOWCASE_NO_OPEN: "1" };
+
+    const scoped = await runWith({ env: { ...env, SHOWCASE_SESSION: "s123" } }, "open", "--json");
+    assert.equal(scoped.code, 0);
+    assert.equal(JSON.parse(scoped.stdout).url, `${server.url}/session/s123`);
+
+    // no resolvable session -> the board root is still a useful destination
+    const root = await runWith({ env }, "open", "--json");
+    assert.equal(root.code, 0);
+    assert.equal(JSON.parse(root.stdout).url, server.url);
+  } finally {
+    await server.close();
+  }
+});
+
+test("doctor reports ok against a healthy server and exits 0", async () => {
+  const server = await serveApp();
+  try {
+    const { code, stdout } = await runWith(
+      { env: { SHOWCASE_URL: server.url, SHOWCASE_NO_AUTOSTART: "1" } },
+      "doctor",
+    );
+    assert.equal(code, 0);
+    assert.match(stdout, /✓ node/);
+    assert.match(stdout, /✓ server/);
+  } finally {
+    await server.close();
+  }
+});
+
+test("doctor fails with the fix when the server is down", async () => {
+  const { code, stdout } = await runWith(
+    { env: { SHOWCASE_URL: "http://localhost:1", SHOWCASE_NO_AUTOSTART: "1" } },
+    "doctor",
+  );
+  assert.equal(code, 1);
+  assert.match(stdout, /✗ server/);
+  assert.match(stdout, /showcase serve/);
 });
