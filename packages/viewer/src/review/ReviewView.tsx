@@ -432,12 +432,17 @@ export function ReviewView(props: {
 
   function accept(idx: number) {
     const key = keyOf(r.decisions[idx]);
-    setAccepted((prev) => new Set(prev).add(key));
-    const next = r.decisions.findIndex((d, i) => i > idx && !accepted.has(keyOf(d)));
-    if (next >= 0) {
-      itemRefs.current[next]?.scrollIntoView({ behavior: "smooth", block: "start" });
-      setActive(next);
-    }
+    // Derive the scroll target inside the updater: the closure's `accepted` is
+    // stale under rapid accepts, which would skip or repeat a decision.
+    setAccepted((prev) => {
+      const n = new Set(prev).add(key);
+      const next = r.decisions.findIndex((d, i) => i > idx && !n.has(keyOf(d)));
+      if (next >= 0) {
+        itemRefs.current[next]?.scrollIntoView({ behavior: "smooth", block: "start" });
+        setActive(next);
+      }
+      return n;
+    });
   }
   function jumpToDecision(idx: number) {
     itemRefs.current[idx]?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -476,6 +481,9 @@ export function ReviewView(props: {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      // Keystrokes while a sandboxed part iframe has focus surface here with the
+      // IFRAME as target — those belong to the embedded content, not the review.
+      if (t?.closest("iframe")) return;
       const down = e.key === "j" || e.key === "ArrowDown";
       const up = e.key === "k" || e.key === "ArrowUp";
       if (down || up) {
@@ -490,7 +498,7 @@ export function ReviewView(props: {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, r.decisions.length, interactive, accepted]);
+  }, [active, r.decisions.length, interactive]);
 
   // Burndown toward a reachable "Review complete": every decision Accepted. To
   // push back on one, the human uses its copy-ref in chat — the agent revises and

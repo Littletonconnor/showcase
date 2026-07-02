@@ -94,12 +94,12 @@ test("every card header shows a click-to-copy card id handle", async ({ page, re
   ).toBeVisible();
 });
 
-test("the Approve quick-action posts a user feedback signal", async ({ page, request }) => {
-  // Approve / Dismiss are generic card feedback actions: they render on a badged
-  // card (one carrying a severity-style badge). Seed such a card so the
-  // quick-action is present.
+test("a user comment reaches the agent's long-poll exactly once", async ({ request }) => {
+  // The feedback half of the loop: a comment posted on a surface is delivered
+  // to the agent's author=user session wait, and a second wait does NOT
+  // re-deliver it (the server-side cursor advanced — exactly-once).
   const session = await (
-    await request.post("/api/sessions", { data: { agent: "e2e", title: "approve" } })
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "feedback" } })
   ).json();
   const surface = await (
     await request.post("/api/surfaces", {
@@ -111,23 +111,22 @@ test("the Approve quick-action posts a user feedback signal", async ({ page, req
       },
     })
   ).json();
-  await page.goto(`/?surface=${surface.id}`);
-  const card = page.locator(`.card[data-id="${surface.id}"]`);
-  await expect(card).toBeVisible();
 
-  // One tap on the card's Approve action posts a recognizable author=user signal.
-  await card.getByRole("button", { name: "Approve" }).click();
+  await request.post("/api/comments", {
+    data: { surface: surface.id, text: "please pick a clearer name" },
+  });
 
-  // It lands server-side as a user comment carrying the approval marker, so the
-  // agent reads it as "yes, this is right".
-  await expect
-    .poll(async () => {
-      const all = await (await request.get(`/api/comments?surface=${surface.id}`)).json();
-      return all.comments.some(
-        (c: { author: string; text: string }) => c.author === "user" && c.text.includes("Approved"),
-      );
-    })
-    .toBe(true);
+  const first = await (
+    await request.get(`/api/comments?session=${session.id}&author=user&wait=5`)
+  ).json();
+  expect(first.comments.map((c: { text: string }) => c.text)).toEqual([
+    "please pick a clearer name",
+  ]);
+
+  const second = await (
+    await request.get(`/api/comments?session=${session.id}&author=user&wait=0`)
+  ).json();
+  expect(second.comments).toEqual([]);
 });
 
 test("a badged card renders its severity badge in the trusted header", async ({

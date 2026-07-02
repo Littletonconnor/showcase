@@ -84,11 +84,18 @@ function buildFileDiffs(part: DiffPartData): { diffs: FileDiffMetadata[]; langs:
         if (fd.name) langs.add(getFiletypeFromFileName(fd.name));
       }
     }
-    // Some patches (a bare hunk with no `diff --git` header) yield no files
-    // from parsePatchFiles; fall back to treating the whole text as one file.
+    // A bare hunk with no file header yields no files from parsePatchFiles —
+    // and processFile would misread patch text as file CONTENTS (an empty,
+    // hunkless diff). Synthesize a minimal header so the hunks parse for real.
+    if (diffs.length === 0 && /^@@ /m.test(part.patch)) {
+      const synthetic = `diff --git a/file b/file\n--- a/file\n+++ b/file\n${part.patch}`;
+      for (const parsed of parsePatchFiles(synthetic)) {
+        for (const fd of parsed.files) diffs.push(fd);
+      }
+    }
     if (diffs.length === 0) {
       const fd = processFile(part.patch);
-      if (fd) diffs.push(fd);
+      if (fd && (fd.hunks?.length ?? 0) > 0) diffs.push(fd);
     }
   } else if (part.files) {
     for (const f of part.files) {
