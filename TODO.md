@@ -284,9 +284,10 @@ complete. The stable base everything below assumes:
 
 ### Retired / cut — don't rebuild (commit `03c2693` unless noted)
 
-- **Chat thread** — the per-surface comment thread + composer (`Thread.tsx`). Surface
-  feedback is now Approve/Dismiss + decision threads + "copy the card id, mention it
-  in your terminal."
+- **Chat thread** — the per-surface comment thread + composer (`Thread.tsx`). The
+  rendered thread stays gone; what returned later is a single quiet reply line in
+  the card footer (posts an author=user comment, no thread UI). Scoped revision
+  requests still go "copy the card ref, mention it in your terminal."
 - **Anchored annotations + line-anchored diff comments (R4)** — point-pin, line-click
   composer, and the whole `CommentAnchor` / `parseAnchor` / `onLineClick` machinery;
   all removed from the tree.

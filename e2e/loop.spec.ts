@@ -381,3 +381,29 @@ test("a decision review renders its brief and burns down on Accept", async ({ pa
   await page.keyboard.press("a");
   await expect(page.getByText("1 / 2 accepted")).toBeVisible();
 });
+
+test("the card's reply line posts an author=user comment on that surface", async ({
+  page,
+  request,
+}) => {
+  const { surfaceId } = await seedSurface(request);
+  await page.goto(`/?surface=${surfaceId}`);
+  const card = page.locator(`.card[data-id="${surfaceId}"]`);
+  await expect(card).toBeVisible();
+
+  const input = card.getByRole("textbox", { name: "Comment on this surface" });
+  await input.fill("tighten the copy in the header");
+  await input.press("Enter");
+
+  await expect
+    .poll(async () => {
+      const all = await (await request.get(`/api/comments?surface=${surfaceId}`)).json();
+      return all.comments.some(
+        (c: { author: string; text: string }) =>
+          c.author === "user" && c.text === "tighten the copy in the header",
+      );
+    })
+    .toBe(true);
+  // sent → the line clears for the next note
+  await expect(input).toHaveValue("");
+});

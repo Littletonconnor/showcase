@@ -45,7 +45,16 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cx } from "./cx.ts";
 import { DiffPart } from "./DiffPart.tsx";
-import { BookOpen, Check, Copy, ExternalLink, Link2, MoreHorizontal, Trash2 } from "lucide-react";
+import {
+  BookOpen,
+  Check,
+  Copy,
+  ExternalLink,
+  Link2,
+  MoreHorizontal,
+  Send,
+  Trash2,
+} from "lucide-react";
 import { ImagePart } from "./ImagePart.tsx";
 import { JsonPart } from "./JsonPart.tsx";
 import { MarkdownPart } from "./MarkdownPart.tsx";
@@ -304,10 +313,68 @@ function SurfaceBadgeChip(props: { badge: SurfaceBadge }) {
 // "<title>"` — not the bare id, so when you paste it to your agent in the
 // terminal it carries enough to resolve the exact surface (the agent calls
 // get_surface with the id to read its current content). The pill still shows the
-// id so it reads as an identifier. This is how a surface is referenced now (the
-// in-browser comment thread is gone).
+// id so it reads as an identifier. The ref is for scoped terminal requests; the
+// footer reply line covers the quick in-browser note.
 function surfaceRef(id: string, title: string): string {
   return title.trim() ? `showcase surface ${id} "${title.trim()}"` : `showcase surface ${id}`;
+}
+
+// The card's inline reply line: one quiet input in the footer that posts an
+// author=user comment on THIS surface. This is the browser half of the loop —
+// the agent receives it exactly once via wait_for_feedback / piggyback. It
+// complements (does not replace) the copy-ref path: type here for a quick
+// note, copy the ref for a scoped revision request in the terminal.
+function CommentComposer(props: { surfaceId: string }) {
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const send = async () => {
+    const trimmed = text.trim();
+    if (!trimmed || sending) return;
+    setSending(true);
+    try {
+      await api("/api/comments", {
+        method: "POST",
+        body: JSON.stringify({ surface: props.surfaceId, text: trimmed }),
+      });
+      setText("");
+      toast("Sent — the agent reads this on its next check-in");
+    } catch {
+      toast("Couldn't send the comment");
+    } finally {
+      setSending(false);
+    }
+  };
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-1">
+      <input
+        type="text"
+        value={text}
+        disabled={sending}
+        placeholder="Reply to the agent…"
+        aria-label="Comment on this surface"
+        spellCheck={false}
+        className="h-7 min-w-0 flex-1 rounded-md bg-transparent px-2 text-[12.5px] text-foreground placeholder:text-faint focus:bg-muted/40 focus:ring-1 focus:ring-brand/30 focus:outline-none"
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") void send();
+          else if (e.key === "Escape") e.currentTarget.blur();
+        }}
+      />
+      {text.trim() ? (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="text-brand"
+          aria-label="Send comment"
+          title="Send to the agent (Enter)"
+          disabled={sending}
+          onClick={() => void send()}
+        >
+          <Send />
+        </Button>
+      ) : null}
+    </div>
+  );
 }
 
 function CardIdChip(props: { id: string; title: string }) {
@@ -575,16 +642,20 @@ export function Card(props: { surface: Surface }) {
             }
           })}
         </div>
-        {/* Footer toolbar: per-surface utilities. Interactive chrome — hidden when
-          the board is printed/saved as PDF. There is no inline composer: to
-          discuss a surface with the agent, copy its card id (the header chip) and
-          mention it in your terminal. */}
+        {/* Footer toolbar: the reply line (the browser half of the comment
+          loop) plus per-surface utilities. Interactive chrome — hidden when the
+          board is printed/saved as PDF, and read-only boards/exports have no
+          comment channel so the composer drops away with them. */}
         <div
           data-print-hide
           className="flex min-h-[34px] items-center gap-0.5 border-t-[0.5px] border-border px-2.5 py-2"
         >
           <TooltipProvider delayDuration={300}>
-            <span className="flex-1" />
+            {!isReadonly() && !exportBundle() ? (
+              <CommentComposer surfaceId={surfaceId} />
+            ) : (
+              <span className="flex-1" />
+            )}
             {surfaceActions}
           </TooltipProvider>
         </div>

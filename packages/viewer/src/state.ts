@@ -520,7 +520,15 @@ export function connect() {
 // reconnect; surfaces reconcile by id and comments dedupe by id.
 async function resyncSelected() {
   const before = selectedNow();
+  // Events that fired during the gap are gone, so away-session unread dots
+  // would silently stay dark: infer them by diffing lastActiveAt across the
+  // refresh — any non-selected session that advanced saw activity we missed.
+  const prevActive = new Map(sessionsNow().map((s) => [s.id, s.lastActiveAt]));
   await refreshSessions();
+  for (const s of sessionsNow()) {
+    const prev = prevActive.get(s.id);
+    if (prev && s.lastActiveAt > prev && s.id !== selectedNow()) markUnread(s.id);
+  }
   if (!before || selectedNow() !== before) return; // select() rebuilt the stream
   const metas = await api<{ id: string }[]>(`/api/sessions/${before}/surfaces`).catch(() => []);
   const ids = new Set(metas.map((m) => m.id));
