@@ -268,10 +268,12 @@ complete. The stable base everything below assumes:
   (`issues` / `slides` copy-paste markup); **structured feedback** (one-tap Approve
   👍 / Dismiss ⊘ posting an `author:"user"` signal); a **hardened oracle**
   (`render-smoke.spec.ts` + an opt-in real-Chrome Playwright lane).
-- **Workflow 1 — Visual PR review (R1–R4)** — finding-card `badge` (tone+label) +
-  the recipe + demo; a live verdict bar derived from badges (burns down on
-  Approve/Dismiss); `showcase review <branch>` ingestion (churn-seeded manifest +
-  risk scaffold, delegates analysis to the `code-review` skill).
+- **Workflow 1 — Visual PR review** — the decision-review form factor:
+  `publish_decisions` renders a plain-English brief, a verdict chip, and a
+  risk-ranked decision queue over a complete changed-file manifest (analysis
+  delegated to the `code-review` skill); adjudication is Accept (A) with a live
+  burndown. (The finding-card era — `showcase review <branch>`, badge-derived
+  verdict bar — is removed; see §"Retired / cut".)
 - **Workflow 2 — Learning & explainers (L1–L3)** — the opt-in `animate` kit
   (`server/kits.ts`: cumulative `.step` reveal + scrub bar, reduced-motion aware),
   the screenshot→explainer recipe + demo, and `ReadingView` (one-explainer focus
@@ -311,9 +313,11 @@ load-bearing:
 
 #### Review depth — fancier review visualizations (a track to develop)
 
-The base review (R1–R4) ships with the opinionated overview, risk treemap,
-confidence×coverage quadrant, edge-status change map, live burndown, and keyboard
-traversal. These are the next depth investments to make the review _best-in-class_
+The base review ships the brief + verdict + risk-ranked decision queue with live
+burndown and keyboard traversal. The finding-era visuals (risk treemap,
+confidence×coverage quadrant, edge-status change map) were removed with that
+model — the ideas below are depth investments to (re)build to make the review
+_best-in-class_
 — worth working through deliberately, one at a time, opt-in per PR so the overview
 never clutters. Getting each one to feel right matters more than shipping fast.
 

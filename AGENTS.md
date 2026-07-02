@@ -23,7 +23,7 @@ behind enforced boundaries. `core` ← everyone; `cli` talks to `server` over HT
   interface — a surface is an ordered list of parts; a snippet is sugar for one
   html part), `surfacePage.ts` / `themes.ts` / `kits.ts` (sandboxed rendering,
   theme registry, opt-in html-part style bundles `issues`/`slides`/`animate`/
-  `review`), `blueprints.ts` (explainer blueprints), `events.ts`, `mcpSpec.ts`
+  `review`/`mockup`), `blueprints.ts` (explainer blueprints), `events.ts`, `mcpSpec.ts`
   (the single MCP tool-schema source both transports import), `export.ts`.
 - `@showcase/server` (`packages/server/`) — Node HTTP runtime. `app.ts` (Hono
   app: all routes, SSE `/api/events`, long-poll `/api/comments`, renderer

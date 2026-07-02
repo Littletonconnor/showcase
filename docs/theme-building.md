@@ -1,13 +1,13 @@
 # Theme building — from a few seeds to a full palette
 
-A **theme** is the palette layer a preset (blueprint) pins. A full theme is 24
+A **theme** is the palette layer a preset (blueprint) pins. A full theme is 21
 color slots × two schemes — `bg`/`panel`/`surface`, three text tiers, two border
-tiers, hover, and four semantic accents (info/success/warning/danger), in light
-**and** dark (`server/themes.ts`). Hand-authoring all of that is the friction a
-new engineer hits: "I just have my brand color; now I owe you ~48 hex values,
-half of them dark-mode."
+tiers, hover, and four semantic accents (info/success/warning/danger, three values
+each), in light **and** dark (`packages/core/themes.ts`). Hand-authoring all of
+that is the friction a new engineer hits: "I just have my brand color; now I owe
+you 42 hex values, half of them dark-mode."
 
-The **derivation engine** (`server/themeDerive.ts`) inverts that. You supply 1–4
+The **derivation engine** (`packages/core/themeDerive.ts`) inverts that. You supply 1–4
 **seeds**; it computes the rest, contrast-checked, in both schemes. The division
 of labor is deliberate:
 

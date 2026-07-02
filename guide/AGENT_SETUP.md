@@ -24,8 +24,8 @@ Then fetch the design contract once per session when you are ready to publish:
     SHOWCASE_URL=http://localhost:8229 showcase guide
 
 To receive the user's feedback, run `showcase wait` (or `showcase watch` for a
-background monitor). The user adjudicates a review in the browser — Approve /
-Dismiss findings, Prove-it / Challenge decisions — and references any surface by
+background monitor). The user adjudicates a review in the browser — Accept (A)
+each decision — and references any surface by
 the **card id** shown in its header, which they paste to you here in the terminal.
 Act on the feedback and republish; the conversation lives in your terminal, not the tab.
 

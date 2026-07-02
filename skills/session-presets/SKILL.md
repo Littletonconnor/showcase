@@ -19,7 +19,7 @@ Built-in presets (a board/repo/user may add more):
 | `design-doc`     | technical design / RFC        | metadata → summary → **goal (as a problem)** → invariants → background → **solution space (axes)** → proposed → scope → rollout → testing → open questions |
 | `architecture`   | system design                 | overview → components → data flow → decisions → scale                                                                                                      |
 | `data-viz`       | metrics dashboard             | headline → breakdown → trend → detail → takeaway                                                                                                           |
-| `postmortem`     | blameless incident review     | summary → timeline → impact → **root cause (5 Whys)** → action items                                                                                       |
+| `postmortem`     | blameless incident review     | summary → customer impact → timeline → **root cause (5 Whys)** → fixes (immediate/necessary/additional) → what went well/painful → owned follow-ups        |
 | `status`         | recurring status report       | headline → shipped → in flight → blockers → next                                                                                                           |
 | `product-demo`   | branded feature walkthrough   | hook → problem → feature → proof → cta                                                                                                                     |
 | `product-mockup` | visualize a product idea fast | premise → screens → core flow → key states → validate                                                                                                      |

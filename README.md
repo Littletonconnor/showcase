@@ -104,7 +104,7 @@ out in the same structure and the same look — no matter what you ask.** A
 producing dashboards. The repeatability _is_ the feature: you configure the
 format, then think about the content.
 
-A preset (internally a **blueprint**, see `server/blueprints.ts`) bundles three
+A preset (internally a **blueprint**, see `packages/core/blueprints.ts`) bundles three
 layers under one id:
 
 - a **theme** — the palette (one of the built-ins, or your brand);
@@ -152,7 +152,7 @@ guarantee `publish_decisions` gives a code review. `publish_postmortem` takes
 themed to the surface), not a static image; `publish_design_doc` takes
 `goal{problem}` / `solutionSpace{axes[]}` / … ; plus `publish_status`,
 `publish_architecture`, `publish_product_demo`. Every screenshot above is rendered
-by these tools (`server/presetRenders.ts`), not hand-authored. The generic
+by these tools (`packages/server/presetRenders.ts`), not hand-authored. The generic
 `publish_surface` + `blueprint` path remains for free-form surfaces.
 
 ### Defaults and your own presets — repo + user
@@ -174,8 +174,8 @@ default; the agent can still override per session). It's all JSON, no rebuild.
 
 ### Match your brand (theme building)
 
-A theme is the palette layer. Hand-authoring one is 24 colors × light + dark; the
-**derivation engine** (`server/themeDerive.ts`) instead expands a few **seed**
+A theme is the palette layer. Hand-authoring one is 21 colors × light + dark; the
+**derivation engine** (`packages/core/themeDerive.ts`) instead expands a few **seed**
 colors into a full, contrast-checked light+dark palette. The intended loop: an
 agent reads a screenshot you drop, names the brand color(s), and authors the
 theme for you —
@@ -249,7 +249,7 @@ launchd/systemd — use auto-start or run `showcase serve` under a process manag
 ## Use it from your agent (MCP)
 
 Cursor and Claude Code talk to showcase over **MCP** — a stdio server
-(`mcp/server.ts`) that proxies the local HTTP API. The server needs to be
+(`packages/mcp/server.ts`) that proxies the local HTTP API. The server needs to be
 reachable (it auto-starts on demand, or install it as a service — see
 [Keep it running](#keep-it-running-no-babysat-tab)); register the MCP server once:
 
@@ -259,7 +259,7 @@ reachable (it auto-starts on demand, or install it as a service — see
 claude mcp add showcase \
   --env SHOWCASE_URL=http://localhost:8229 \
   --env SHOWCASE_AGENT=claude-code \
-  -- node /ABSOLUTE/PATH/TO/showcase/mcp/server.ts
+  -- node /ABSOLUTE/PATH/TO/showcase/packages/mcp/server.ts
 ```
 
 **Cursor** — add to `~/.cursor/mcp.json`:
@@ -269,7 +269,7 @@ claude mcp add showcase \
   "mcpServers": {
     "showcase": {
       "command": "node",
-      "args": ["/ABSOLUTE/PATH/TO/showcase/mcp/server.ts"],
+      "args": ["/ABSOLUTE/PATH/TO/showcase/packages/mcp/server.ts"],
       "env": { "SHOWCASE_URL": "http://localhost:8229", "SHOWCASE_AGENT": "cursor" }
     }
   }
@@ -277,8 +277,11 @@ claude mcp add showcase \
 ```
 
 Restart the editor after changing MCP config. The agent's tools: `publish_surface`,
-`update_surface`, `publish_decisions`, `reply_to_user`, `wait_for_feedback`,
-`list_surfaces`, `upload_asset`, `get_design_guide`.
+`update_surface`, `publish_snippet`, `update_snippet`, `delete_surface`,
+`publish_decisions`, `wait_for_feedback`, `list_surfaces`, `get_surface`,
+`upload_asset`, `get_design_guide`, and `configure_session` — plus the tailored
+preset tools (`publish_postmortem`, `publish_dashboard`, `publish_design_doc`,
+`publish_status`, `publish_architecture`, `publish_product_demo`, …).
 
 Then just ask in plain language:
 
@@ -362,7 +365,7 @@ The server never pushes into your editor — the agent **pulls**. A comment you 
 is stored on the surface and reaches the agent the next time it touches showcase,
 three ways:
 
-1. **Piggyback** — the next `publish`/`update`/`reply` response carries new comments.
+1. **Piggyback** — the next `publish`/`update` response carries new comments.
 2. **Blocking wait** — `wait_for_feedback` / `showcase wait` long-polls for comments.
 3. **Background watch** — `showcase watch` streams them one per line.
 

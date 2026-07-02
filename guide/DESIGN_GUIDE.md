@@ -463,6 +463,11 @@ instead of each re-inventing a look. Themes:
 - **`showcase`** — the warm default (omit `theme` to get it).
 - **`brand`** — deep-indigo ink with a violet accent; the polished product look.
 - **`neutral`** — stark grayscale for wireframe / low-fidelity mockups.
+- **`ocean`** — calm professional blue; cool slate neutrals under an azure accent.
+- **`forest`** — grounded green; sage neutrals with a deep-green accent.
+- **`dracula`** — the high-contrast purple dark classic (with a light companion).
+- **`nord`** — arctic, desaturated slate-blue.
+- **`rose`** — warm, muted mauve (Rosé Pine) with an iris accent.
 
 Set it on publish (`theme` on `publish_surface` / `publish_snippet`, or `--theme`
 on the CLI), change it later with `update_surface` (pass `null` to reset), or let
@@ -472,11 +477,12 @@ the user switch it from the card's ⋯ menu. Because the tokens drive everything
 
 ## External resources
 
-A CSP blocks all external origins — no CDN scripts, styles, or webfonts load
-(anything else silently fails). Keep everything inline: inline `<script>` and
-`<style>`, `data:` fonts, and inline SVG for icons. Images are the one exception:
-they may load from any https URL, a `data:` URI, or an asset you uploaded to this
-server (`<img src="/a/<id>">`).
+A CSP blocks all external origins — nothing loads from an external https URL: no
+CDN scripts, styles, or webfonts, and no external images either (anything remote
+silently fails). Keep everything inline: inline `<script>` and `<style>`, `data:`
+fonts, and inline SVG for icons. For images, either inline them as a `data:` URI
+or upload them with `upload_asset` and reference the returned URL
+(`<img src="/a/<id>">`) — this server's own origin is the only one allowed.
 
 ## Interactivity
 

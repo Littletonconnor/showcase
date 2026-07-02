@@ -29,7 +29,7 @@ Fetch the design contract once per session (fragment rules, theme CSS variables,
 showcase guide        # or: curl -s ${SHOWCASE_URL:-http://localhost:8229}/guide
 ```
 
-If `SHOWCASE_URL` is unset, the surface is at `http://localhost:8229`. If it is not running, start it: `showcase serve` (or `npx showcase serve`). If the `showcase` command is not on PATH but you are inside this repo, use `node bin/showcase.js ...` as the CLI command.
+If `SHOWCASE_URL` is unset, the surface is at `http://localhost:8229`. If it is not running, start it: `showcase serve` (or `pnpm serve` from inside this repo). If the `showcase` command is not on PATH but you are inside this repo, use `node packages/cli/bin/showcase.js ...` as the CLI command.
 
 ## Publishing
 
