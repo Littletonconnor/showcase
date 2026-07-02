@@ -42,6 +42,14 @@ export const MCP_INSTRUCTIONS =
   "happens. To act on a referenced surface, call get_surface with its id to read its CURRENT full " +
   "content (every part), then update_surface to revise it in place. list_surfaces is the title index " +
   "for a session; get_surface is the full content of one. " +
+  "TEACHING: when the user wants to LEARN or deeply understand a topic or codebase (not just get an " +
+  "answer), use publish_lesson — the learn form factor. Call get_learner_state first (prior mastery), " +
+  "publish the lesson (syllabus + concept beats with checkpoints), then park on wait_for_feedback: the " +
+  "learner's checkpoint attempts arrive as [checkpoint] telemetry lines with misconception tags. Grade " +
+  "free-text answers and record_attempt; remediate misses with update_lesson. Never dump answers — the " +
+  "structure makes the learner produce before they receive, and reveals stay hidden until an attempt. " +
+  "When `showcase review-due` / get_learner_state shows due concepts, run a short review session with " +
+  "FRESH variants of the due checkpoints. " +
   "FEEDBACK FROM THE BROWSER: on a review the user adjudicates in the tab — Accept burns a decision down " +
   "(local). To push back they copy a decision's ref (shown in its header) and paste it to you in YOUR " +
   "TERMINAL to scope a revision — there's no browser pushback verb. On other surfaces the user leaves " +
@@ -115,6 +123,27 @@ const d = {
   partCode: "code part: the source text, shiki-highlighted",
   partCodeLanguage: "code part: shiki language id (inferred from `title` when omitted)",
   partCodeLineStart: "code part: 1-based line number the excerpt starts at",
+  partCheckpoint:
+    "checkpoint part: a learn-mode assessment the viewer renders interactively (see publish_lesson). " +
+    "{id, conceptId, kind: predict|mcq|completion|explain|trace|apply, prompt, code?, options?, " +
+    "expected?, askConfidence?, reveal, gate?}",
+  lessonTopic: 'The lesson subject, e.g. "Redis eviction policies" — also the mastery-store key',
+  lessonLevel:
+    "novice | intermediate | advanced — sets the worked-example-to-problem fading arc (default novice)",
+  lessonGraph:
+    "The 4-9 concepts this lesson teaches with prerequisite edges. Enumerate each concept's 2-3 " +
+    "canonical misconceptions BEFORE writing beats — checkpoint distractors should tag them.",
+  lessonBeats:
+    "One beat per concept, in teaching order: hook (a predict checkpoint asked before any teaching), " +
+    "model (markdown/mermaid/code/diff parts — one diagram + prose, one screenful), workedExample " +
+    "(code/diff parts), explorable ({html, gate} — sandboxed interactive html unlocked by a predict " +
+    "checkpoint), checkpoints (the retrieval practice — mcq distractors tag misconceptions), recap (one line)",
+  checkpointObj:
+    "A checkpoint: {id (stable, unique in the lesson), conceptId, kind (predict|mcq|completion|explain|" +
+    "trace|apply), prompt, code? ({code,language} the prompt asks about), options? (2-6 for mcq/predict " +
+    "choice — exactly one correct:true; wrong ones SHOULD carry a misconception tag), expected? (exact-" +
+    "match answer for client-graded trace), askConfidence? (collect a 0-1 confidence for calibration " +
+    "feedback), reveal (the resolution, shown only after an attempt)}",
   partChartX: "chart part: the field naming the category (x axis / pie slice label)",
   partChartY: "chart part: the numeric series field, or an array of fields for multiple series",
   partChartStacked: "chart part: stack bars/areas instead of grouping (ignored for line/pie)",
@@ -313,6 +342,40 @@ export const MCP_TOOL_DESCRIPTIONS = {
     "Publish a branded PRODUCT DEMO walkthrough as a structured, stepped surface (hook → problem → feature → proof → cta). Pass: hook{headline,sub,stats[]}, problem{text,stats[]}, featureTitle + features[]{title,body}, proof{stats[],quote,quoteBy}, cta{headline,body,actions[],tags[]}. The server renders the animate-kit stepper so the demo plays/scrubs the same way every time.",
   publishProductDirection:
     "THE tool for the 'wf product style' — visualize what a product looks like and weigh options with pros & cons, ending in a 'Leaning & why' recommendation. You supply typed fields; the server renders the fixed Wealthfront product-direction layout (branded `.wf` spine: Direction eyebrow → product view → detail → alternatives → comparison → phasing → leaning) so EVERY surface comes out consistent and polished — never hand-roll this in html. Pass: direction (the one-line likely path, shown in the 'Direction' chip), heading (the serif title), sub, view (RAW html of the bespoke product mockup — the ONE freehand slot; author it with the kit's classes: a `.frame` app mockup with `.side`/`.main`/`.body`, or a `.flow` pipeline), detail[]{icon,title,body}, alternatives[]{key,icon,title,tag{label,kind:future|interrupts|non-blocking|shortcut|cost},mockup(optional raw html),pro,con,lean(true on the recommended one)}, comparison{headers[],rows[]{label,cells[]},winner(1-based option column)}, phases[]{when:now|next|later,title,items[]}, and leaning{verdict,recommendation,why,alternatives} (the payoff — always include). Pins the wealthfront theme + kit. For free-form product art that doesn't fit this spine, fall back to publish_surface with blueprint:\"wealthfront-product\".",
+  publishLesson:
+    "Publish a LESSON — the learn form factor (docs/learn-form-factor.md). Use it when the user wants " +
+    "to LEARN or deeply understand a topic or codebase (drive it with your teach skill), not for quick " +
+    "answers. You supply the typed plan; the server renders the fixed session anatomy: a syllabus card " +
+    "(the concept graph, badged by mastery) plus one card per concept beat (hook prediction -> mental " +
+    "model -> worked example -> gated explorable -> checkpoints -> recap). RULES the structure enforces " +
+    "and you must not fight: never reveal an answer before an attempt (each checkpoint's reveal is " +
+    "hidden until the learner commits); every concept gets checkpoints — reading is not the mastery " +
+    "signal, answers are. Call get_learner_state FIRST so the lesson starts from prior mastery, not " +
+    "zero. After publishing, park on wait_for_feedback: attempts arrive as [checkpoint] telemetry " +
+    "lines. Grade free-text answers substantively (name what's right, the gap, one targeted question " +
+    "back) and record the outcome with record_attempt; on a misconception-tagged miss, insert a " +
+    "remediation card with update_lesson targeting THAT misconception. Returns sessionId, the syllabus " +
+    "surface id, and one surface id per beat.",
+  updateLesson:
+    "Revise a lesson beat card in place (pass surfaceId + the full replacement beat), or INSERT a new " +
+    "remediation card into the lesson session (pass session + beat, no surfaceId). The server renders " +
+    "the beat layout; you fill the typed slots. Use it for: remediation after a misconception-tagged " +
+    "miss (a short beat re-teaching JUST that wrong model, with a fresh checkpoint), fading scaffolding " +
+    "as mastery rises, or fixing a beat the learner flagged as confusing.",
+  getLearnerState:
+    "Read the learner's cross-session mastery state: per-topic concept records (untouched|shaky|solid, " +
+    "attempt counts, the misconceptions they actually hit, due dates) plus the interleaved due-for-" +
+    "review queue. Call it BEFORE opening a lesson so you start from reality (fade scaffolding on " +
+    "solid prerequisites, remediate shaky ones), and to run review sessions: generate FRESH variant " +
+    "checkpoints for due concepts — vary the surface context, target the same concept; never replay " +
+    "stored questions verbatim.",
+  recordAttempt:
+    "Record YOUR grading of a learner's free-text checkpoint answer (explain/completion/apply and " +
+    "free-text predict — the kinds a client can't grade). Pass the lesson session (or topic), " +
+    "conceptId, kind, correct, and the misconception tag if the answer revealed one. This is what " +
+    "moves mastery for agent-graded kinds, so grade honestly — mastery gates what review resurfaces. " +
+    "Client-graded kinds (mcq, choice predicts, exact-match trace) record themselves; do NOT " +
+    "double-record those.",
 } as const;
 
 const MCP_BADGE_JSON_SCHEMA = {
@@ -323,6 +386,70 @@ const MCP_BADGE_JSON_SCHEMA = {
     label: { type: "string" },
   },
   required: ["tone", "label"],
+} as const;
+
+// Learn-mode JSON schemas, shared by publish_lesson and update_lesson.
+const MCP_CHECKPOINT_JSON_SCHEMA = {
+  type: "object",
+  description: d.checkpointObj,
+  properties: {
+    id: { type: "string" },
+    conceptId: { type: "string" },
+    kind: { type: "string", enum: ["predict", "mcq", "completion", "explain", "trace", "apply"] },
+    prompt: { type: "string" },
+    code: {
+      type: "object",
+      properties: { code: { type: "string" }, language: { type: "string" } },
+      required: ["code"],
+    },
+    options: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          label: { type: "string" },
+          correct: { type: "boolean" },
+          misconception: {
+            type: "string",
+            description: "Which wrong mental model this distractor diagnoses (P10)",
+          },
+        },
+        required: ["id", "label"],
+      },
+    },
+    expected: { type: "string" },
+    askConfidence: { type: "boolean" },
+    reveal: { type: "string" },
+  },
+  required: ["id", "conceptId", "kind", "prompt", "reveal"],
+} as const;
+
+const MCP_BEAT_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    conceptId: { type: "string" },
+    hook: MCP_CHECKPOINT_JSON_SCHEMA,
+    model: {
+      type: "array",
+      description:
+        "The mental model: markdown/mermaid/code/diff/chart parts (no html — use explorable)",
+      items: MCP_PART_JSON_SCHEMA,
+    },
+    workedExample: { type: "array", items: MCP_PART_JSON_SCHEMA },
+    explorable: {
+      type: "object",
+      properties: {
+        html: { type: "string", description: d.partHtml },
+        kits: { type: "array", items: { type: "string" } },
+        gate: MCP_CHECKPOINT_JSON_SCHEMA,
+      },
+      required: ["html"],
+    },
+    checkpoints: { type: "array", items: MCP_CHECKPOINT_JSON_SCHEMA },
+    recap: { type: "string" },
+  },
+  required: ["conceptId", "model", "checkpoints", "recap"],
 } as const;
 
 export const HTTP_MCP_TOOLS = [
@@ -1003,6 +1130,102 @@ export const HTTP_MCP_TOOLS = [
     },
   },
   {
+    name: "publish_lesson",
+    description: MCP_TOOL_DESCRIPTIONS.publishLesson,
+    inputSchema: {
+      type: "object",
+      properties: {
+        topic: { type: "string", description: d.lessonTopic },
+        learnerLevel: {
+          type: "string",
+          enum: ["novice", "intermediate", "advanced"],
+          description: d.lessonLevel,
+        },
+        conceptGraph: {
+          type: "object",
+          description: d.lessonGraph,
+          properties: {
+            concepts: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  label: { type: "string" },
+                  misconceptions: { type: "array", items: { type: "string" } },
+                },
+                required: ["id", "label"],
+              },
+            },
+            edges: {
+              type: "array",
+              items: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 2 },
+              description: "Prerequisite edges [from, to]",
+            },
+          },
+          required: ["concepts"],
+        },
+        beats: { type: "array", description: d.lessonBeats, items: MCP_BEAT_JSON_SCHEMA },
+        session: { type: "string", description: d.session },
+        sessionTitle: { type: "string", description: d.sessionTitle },
+        agent: { type: "string", description: d.agent },
+      },
+      required: ["topic", "conceptGraph", "beats"],
+    },
+  },
+  {
+    name: "update_lesson",
+    description: MCP_TOOL_DESCRIPTIONS.updateLesson,
+    inputSchema: {
+      type: "object",
+      properties: {
+        surfaceId: {
+          type: "string",
+          description: "Beat card to revise in place (omit to insert a new remediation card)",
+        },
+        session: {
+          type: "string",
+          description: "Lesson session to insert into (required when surfaceId is omitted)",
+        },
+        beat: MCP_BEAT_JSON_SCHEMA,
+        title: { type: "string", description: "Card title (e.g. the misconception being fixed)" },
+      },
+      required: ["beat"],
+    },
+  },
+  {
+    name: "get_learner_state",
+    description: MCP_TOOL_DESCRIPTIONS.getLearnerState,
+    inputSchema: {
+      type: "object",
+      properties: {
+        topic: { type: "string", description: "Scope to one topic (omit for all)" },
+      },
+    },
+  },
+  {
+    name: "record_attempt",
+    description: MCP_TOOL_DESCRIPTIONS.recordAttempt,
+    inputSchema: {
+      type: "object",
+      properties: {
+        session: { type: "string", description: "The lesson session (resolves the topic)" },
+        topic: { type: "string", description: "Mastery topic (alternative to session)" },
+        conceptId: { type: "string" },
+        kind: {
+          type: "string",
+          enum: ["predict", "mcq", "completion", "explain", "trace", "apply"],
+        },
+        correct: { type: "boolean", description: "Your grading of the learner's answer" },
+        misconception: {
+          type: "string",
+          description: "The wrong mental model the answer revealed, if any",
+        },
+      },
+      required: ["conceptId", "kind", "correct"],
+    },
+  },
+  {
     name: "configure_session",
     description: MCP_TOOL_DESCRIPTIONS.configureSession,
     inputSchema: {
@@ -1052,6 +1275,7 @@ const mcpPartSchema = z
       "chart",
       "json",
       "code",
+      "checkpoint",
     ]),
     html: z.string().optional().describe(d.partHtml),
     kits: z.array(z.string()).optional().describe(d.partKits),
@@ -1084,6 +1308,9 @@ const mcpPartSchema = z
     code: z.string().optional().describe(d.partCode),
     language: z.string().optional().describe(d.partCodeLanguage),
     lineStart: z.number().optional().describe(d.partCodeLineStart),
+    // checkpoint part payload — kept loose here (the server validates strictly)
+    // so a get_surface -> update_surface round-trip of a lesson card survives.
+    checkpoint: z.object({}).passthrough().optional().describe(d.partCheckpoint),
   })
   .describe(
     "A surface part: html {kind:'html',html}; markdown {kind:'markdown',markdown} (prose); mermaid " +
@@ -1091,8 +1318,50 @@ const mcpPartSchema = z
       "{kind:'image',assetId} (from upload_asset); trace {kind:'trace',steps} and/or {kind:'trace',assetId}; " +
       "terminal {kind:'terminal',text} (monospace output; ANSI SGR colors rendered); chart " +
       "{kind:'chart',chartType,data,x,y} (native chart); json {kind:'json',data} (collapsible tree); " +
-      "code {kind:'code',code,language?} (shiki-highlighted source)",
+      "code {kind:'code',code,language?} (shiki-highlighted source); checkpoint " +
+      "{kind:'checkpoint',checkpoint} (a learn-mode assessment — prefer publish_lesson/update_lesson " +
+      "over hand-building these)",
   );
+
+// Learn-mode zod shapes (mirroring the JSON schemas above).
+const checkpointSchema = z
+  .object({
+    id: z.string(),
+    conceptId: z.string(),
+    kind: z.enum(["predict", "mcq", "completion", "explain", "trace", "apply"]),
+    prompt: z.string(),
+    code: z.object({ code: z.string(), language: z.string().optional() }).optional(),
+    options: z
+      .array(
+        z.object({
+          id: z.string(),
+          label: z.string(),
+          correct: z.boolean().optional(),
+          misconception: z.string().optional(),
+        }),
+      )
+      .optional(),
+    expected: z.string().optional(),
+    askConfidence: z.boolean().optional(),
+    reveal: z.string(),
+  })
+  .describe(d.checkpointObj);
+
+const lessonBeatSchema = z.object({
+  conceptId: z.string(),
+  hook: checkpointSchema.optional(),
+  model: z.array(mcpPartSchema),
+  workedExample: z.array(mcpPartSchema).optional(),
+  explorable: z
+    .object({
+      html: z.string().describe(d.partHtml),
+      kits: z.array(z.string()).optional().describe(d.partKits),
+      gate: checkpointSchema.optional(),
+    })
+    .optional(),
+  checkpoints: z.array(checkpointSchema),
+  recap: z.string(),
+});
 
 const badgeStdioSchemas = {
   badge: z
@@ -1436,6 +1705,50 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
   getSurface: {
     id: z.string().describe(d.surfaceId),
   },
+  publishLesson: {
+    topic: z.string().describe(d.lessonTopic),
+    learnerLevel: z.enum(["novice", "intermediate", "advanced"]).optional().describe(d.lessonLevel),
+    conceptGraph: z
+      .object({
+        concepts: z.array(
+          z.object({
+            id: z.string(),
+            label: z.string(),
+            misconceptions: z.array(z.string()).optional(),
+          }),
+        ),
+        edges: z.array(z.tuple([z.string(), z.string()])).optional(),
+      })
+      .describe(d.lessonGraph),
+    beats: z.array(lessonBeatSchema).describe(d.lessonBeats),
+    sessionTitle: z.string().optional().describe(d.stdioSessionTitle),
+  },
+  updateLesson: {
+    surfaceId: z
+      .string()
+      .optional()
+      .describe("Beat card to revise in place (omit to insert a remediation card)"),
+    session: z
+      .string()
+      .optional()
+      .describe("Lesson session to insert into (required when surfaceId is omitted)"),
+    beat: lessonBeatSchema,
+    title: z.string().optional().describe("Card title (e.g. the misconception being fixed)"),
+  },
+  getLearnerState: {
+    topic: z.string().optional().describe("Scope to one topic (omit for all)"),
+  },
+  recordAttempt: {
+    session: z.string().optional().describe("The lesson session (resolves the topic)"),
+    topic: z.string().optional().describe("Mastery topic (alternative to session)"),
+    conceptId: z.string(),
+    kind: z.enum(["predict", "mcq", "completion", "explain", "trace", "apply"]),
+    correct: z.boolean().describe("Your grading of the learner's answer"),
+    misconception: z
+      .string()
+      .optional()
+      .describe("The wrong mental model the answer revealed, if any"),
+  },
 } as const;
 
 // Per-tool zod validators for the HTTP transport. The stdio server gets input
@@ -1510,6 +1823,30 @@ export const HTTP_MCP_TOOL_SCHEMAS: Record<string, z.ZodTypeAny> = {
     session: z.string().describe("Session id to configure"),
   }),
   get_design_guide: toolObject({}),
+  // Lesson payloads are re-validated server-side (coerceLesson/coerceBeat give
+  // precise field-level errors), so the gate checks only the envelope shape.
+  publish_lesson: toolObject({
+    topic: z.string().describe(d.lessonTopic),
+    conceptGraph: z.object({}).passthrough().describe(d.lessonGraph),
+    beats: looseObjects.describe(d.lessonBeats),
+    sessionTitle: z.string().optional().describe(d.sessionTitle),
+    ...httpEnvelope,
+  }),
+  update_lesson: toolObject({
+    surfaceId: z.string().optional(),
+    beat: z.object({}).passthrough(),
+    title: z.string().optional(),
+    ...httpEnvelope,
+  }),
+  get_learner_state: toolObject({ topic: z.string().optional() }),
+  record_attempt: toolObject({
+    topic: z.string().optional(),
+    conceptId: z.string(),
+    kind: z.enum(["predict", "mcq", "completion", "explain", "trace", "apply"]),
+    correct: z.boolean(),
+    misconception: z.string().optional(),
+    ...httpEnvelope,
+  }),
 };
 
 // Format a ZodError into a compact, agent-actionable string: each issue as

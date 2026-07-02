@@ -23,6 +23,8 @@ import {
   surfaceLink,
 } from "./api.ts";
 import { ChartPart } from "./ChartPart.tsx";
+import { CheckpointPart, ExplorableLock } from "./CheckpointPart.tsx";
+import { useLearn } from "./learn.ts";
 import { CodePart } from "./CodePart.tsx";
 import { Button } from "@/components/ui/button";
 import {
@@ -412,6 +414,9 @@ export function Card(props: { surface: Surface }) {
   const activeTheme = useActiveTheme();
   const mode = useResolvedMode();
   const scrollTarget = useBoard((s) => s.scrollTarget);
+  // Checkpoint attempts drive explorable gating, so a committed attempt
+  // re-renders the card and mounts the unlocked iframe.
+  const learnAttempts = useLearn((s) => s.attempts);
 
   const surfaceId = props.surface.id;
   // This surface's theme — its own if set, else the global board theme. Drives
@@ -590,6 +595,19 @@ export function Card(props: { surface: Surface }) {
           {props.surface.parts.map((part, i) => {
             switch (part.kind) {
               case "html": {
+                // Explorable gating (learn mode): the lesson renderer places a
+                // gate checkpoint immediately before its explorable html part.
+                // Until that checkpoint records an attempt, the iframe never
+                // mounts — a locked placeholder stands in (P4: predict before
+                // you manipulate).
+                const prev = props.surface.parts[i - 1];
+                if (
+                  prev?.kind === "checkpoint" &&
+                  prev.checkpoint.gate &&
+                  !learnAttempts[prev.checkpoint.id]
+                ) {
+                  return <ExplorableLock key={i} gateId={prev.checkpoint.id} />;
+                }
                 const exportDoc = exportHtmlDocs?.get(i);
                 return (
                   <iframe
@@ -630,6 +648,10 @@ export function Card(props: { surface: Surface }) {
                 return <CodePart key={i} part={part as CodePartData} />;
               case "chart":
                 return <ChartPart key={i} part={part as ChartPartData} />;
+              case "checkpoint":
+                return (
+                  <CheckpointPart key={i} surfaceId={surfaceId} checkpoint={part.checkpoint} />
+                );
               default:
                 return (
                   <div

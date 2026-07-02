@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { isKnownKit, KIT_IDS } from "./kits.ts";
-import { type SurfaceBadge, SURFACE_BADGE_TONES, type SurfacePart } from "./types.ts";
+import {
+  CHECKPOINT_KINDS,
+  type SurfaceBadge,
+  SURFACE_BADGE_TONES,
+  type SurfacePart,
+} from "./types.ts";
 
 const MAX_BADGE_LABEL = 24;
 const badgeSchema = z.object({
@@ -301,6 +306,47 @@ const looseChartPart = z
     { message: 'chart part requires "data", "x", and "y"' },
   );
 
+// A checkpoint part carries the learn form factor's assessment unit as DATA
+// (see Checkpoint in types.ts) — the trusted viewer renders it interactively
+// and the reveal stays out of the DOM until an attempt commits. Strict and
+// loose share one schema: a malformed checkpoint drops (loose) or 400s
+// (strict); there is no safe partial coercion of an assessment.
+const checkpointIdRe = /^[\w.-]{1,80}$/;
+const checkpointOptionSchema = z.object({
+  id: z.string().regex(checkpointIdRe),
+  label: z.string().min(1).max(400),
+  correct: z.boolean().optional(),
+  misconception: z.string().max(200).optional(),
+});
+const strictCheckpointPart = z
+  .object({
+    kind: z.literal("checkpoint"),
+    checkpoint: z.object({
+      id: z.string().regex(checkpointIdRe, 'checkpoint "id" must be a short [\\w.-] token'),
+      conceptId: z.string().regex(checkpointIdRe),
+      kind: z.enum(CHECKPOINT_KINDS as unknown as [string, ...string[]]),
+      prompt: z.string().min(1).max(4000),
+      code: z
+        .object({ code: z.string().min(1), language: z.string().optional() })
+        .optional(),
+      options: z.array(checkpointOptionSchema).min(2).max(6).optional(),
+      expected: z.string().max(400).optional(),
+      askConfidence: z.boolean().optional(),
+      reveal: z.string().min(1).max(4000),
+      gate: z.boolean().optional(),
+    }),
+  })
+  .refine(
+    (p) =>
+      p.checkpoint.options === undefined ||
+      p.checkpoint.options.filter((o) => o.correct).length === 1,
+    { message: "checkpoint options must mark exactly one choice correct" },
+  )
+  .refine((p) => p.checkpoint.kind !== "mcq" || p.checkpoint.options !== undefined, {
+    message: 'an mcq checkpoint requires "options"',
+  }) as unknown as z.ZodType<SurfacePart, z.ZodTypeDef, any>;
+const looseCheckpointPart = strictCheckpointPart;
+
 const looseSurfacePart = z.union([
   looseHtmlPart,
   looseMarkdownPart,
@@ -312,6 +358,7 @@ const looseSurfacePart = z.union([
   looseJsonPart,
   looseCodePart,
   looseChartPart,
+  looseCheckpointPart,
 ]);
 
 // Runtime SurfacePart parser shared by REST and MCP. REST uses strict mode to
@@ -386,6 +433,8 @@ function schemaForKind(kind: unknown): z.ZodType<SurfacePart, z.ZodTypeDef, any>
       return strictCodePart;
     case "chart":
       return strictChartPart;
+    case "checkpoint":
+      return strictCheckpointPart;
     default:
       return null;
   }

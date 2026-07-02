@@ -313,6 +313,82 @@ presetTool(
   STDIO_MCP_INPUT_SCHEMAS.publishProductDirection,
 );
 
+// Learn mode: publish/revise lessons, read learner state, record graded
+// attempts (docs/learn-form-factor.md). All thin posts to the REST routes.
+server.registerTool(
+  "publish_lesson",
+  {
+    description: MCP_TOOL_DESCRIPTIONS.publishLesson,
+    inputSchema: STDIO_MCP_INPUT_SCHEMAS.publishLesson,
+  },
+  async ({ topic, learnerLevel, conceptGraph, beats, sessionTitle }) => {
+    const created = await withSession(sessionTitle ?? `Learn: ${topic}`, (session) =>
+      api("/api/lessons", {
+        method: "POST",
+        body: JSON.stringify({ topic, learnerLevel, conceptGraph, beats, session }),
+      }).then(JSON.parse),
+    );
+    return text({
+      ...created,
+      url: `${API}/session/${created.sessionId}`,
+      note: "Now call wait_for_feedback: checkpoint attempts arrive as [checkpoint] lines. Grade free-text answers with record_attempt and reply; on a misconception-tagged miss, remediate with update_lesson.",
+    });
+  },
+);
+
+server.registerTool(
+  "update_lesson",
+  {
+    description: MCP_TOOL_DESCRIPTIONS.updateLesson,
+    inputSchema: STDIO_MCP_INPUT_SCHEMAS.updateLesson,
+  },
+  async ({ surfaceId, session, beat, title }) => {
+    const result = await withSession(undefined, (fallback) =>
+      api("/api/lessons/beats", {
+        method: "POST",
+        body: JSON.stringify({ surfaceId, session: session ?? fallback, beat, title }),
+      }).then(JSON.parse),
+    );
+    return text({ ...result, url: `${API}/session/${result.sessionId}/s/${result.id}` });
+  },
+);
+
+server.registerTool(
+  "get_learner_state",
+  {
+    description: MCP_TOOL_DESCRIPTIONS.getLearnerState,
+    inputSchema: STDIO_MCP_INPUT_SCHEMAS.getLearnerState,
+  },
+  async ({ topic }) => {
+    const q = topic ? `?topic=${encodeURIComponent(topic)}` : "";
+    return text(JSON.parse(await api(`/api/mastery${q}`)));
+  },
+);
+
+server.registerTool(
+  "record_attempt",
+  {
+    description: MCP_TOOL_DESCRIPTIONS.recordAttempt,
+    inputSchema: STDIO_MCP_INPUT_SCHEMAS.recordAttempt,
+  },
+  async ({ topic, session, conceptId, kind, correct, misconception }) => {
+    const result = await withSession(undefined, (fallback) =>
+      api("/api/mastery/attempt", {
+        method: "POST",
+        body: JSON.stringify({
+          topic,
+          session: session ?? (topic ? undefined : fallback),
+          conceptId,
+          kind,
+          correct,
+          misconception,
+        }),
+      }).then(JSON.parse),
+    );
+    return text(result);
+  },
+);
+
 server.registerTool(
   "wait_for_feedback",
   {

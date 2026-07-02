@@ -37,7 +37,8 @@ export type SurfacePartKind =
   | "mermaid"
   | "json"
   | "code"
-  | "chart";
+  | "chart"
+  | "checkpoint";
 
 export interface HtmlPart {
   kind: "html";
@@ -193,6 +194,65 @@ export interface ChartPart {
   caption?: string;
 }
 
+// --- the learn form factor's assessment unit (see docs/learn-form-factor.md) ---
+// A checkpoint is DATA the trusted viewer renders as an interactive component
+// (option buttons, a free-text box, a confidence slider) — never markup, so
+// nothing here can execute in the trusted origin (C1). `reveal` is rendered
+// only AFTER an attempt is committed; the viewer enforces this structurally
+// (the reveal never enters the DOM pre-attempt). `prompt`/`reveal` are plain
+// text with light inline emphasis, rendered as React text nodes.
+
+export type CheckpointKind = "predict" | "mcq" | "completion" | "explain" | "trace" | "apply";
+
+export const CHECKPOINT_KINDS: readonly CheckpointKind[] = [
+  "predict",
+  "mcq",
+  "completion",
+  "explain",
+  "trace",
+  "apply",
+];
+
+export const isCheckpointKind = (v: unknown): v is CheckpointKind =>
+  typeof v === "string" && (CHECKPOINT_KINDS as string[]).includes(v);
+
+export interface CheckpointOption {
+  id: string;
+  label: string;
+  correct?: boolean;
+  // Which wrong mental model this distractor diagnoses — a miss on it tells the
+  // agent WHAT the learner believes, not just that they missed (P10).
+  misconception?: string;
+}
+
+export interface Checkpoint {
+  id: string;
+  conceptId: string;
+  kind: CheckpointKind;
+  prompt: string;
+  // Optional code the prompt asks about (trace/completion kinds).
+  code?: { code: string; language?: string };
+  // Choice kinds (mcq / predict-with-options). At least 2; exactly one correct.
+  options?: CheckpointOption[];
+  // Exact-match expected answer for client-graded free-text kinds (trace).
+  // Compared whitespace/case-normalized; absent -> the agent grades.
+  expected?: string;
+  // Collect a confidence rating alongside the answer — for calibration feedback
+  // only, never as a mastery signal (P3).
+  askConfidence?: boolean;
+  // The resolution: correct answer + why. Rendered only post-attempt.
+  reveal: string;
+  // This checkpoint gates the html part that FOLLOWS it in the parts list (an
+  // explorable): the viewer keeps that iframe locked until an attempt lands
+  // (predict-before-manipulate, P4/P7).
+  gate?: boolean;
+}
+
+export interface CheckpointPart {
+  kind: "checkpoint";
+  checkpoint: Checkpoint;
+}
+
 export type SurfacePart =
   | HtmlPart
   | DiffPart
@@ -203,7 +263,8 @@ export type SurfacePart =
   | MermaidPart
   | JsonPart
   | CodePart
-  | ChartPart;
+  | ChartPart
+  | CheckpointPart;
 
 // A short, colored chip on a surface's header. Deliberately generic (not
 // PR-specific), but the driver is review **finding cards**: `tone` picks the
@@ -593,6 +654,8 @@ export function partsByteLength(parts: SurfacePart[]): number {
         bytes(p.xLabel) +
         bytes(p.yLabel) +
         bytes(p.caption);
+    } else if (p.kind === "checkpoint") {
+      n += bytes(JSON.stringify(p.checkpoint));
     } else {
       n += bytes(p.assetId) + bytes(p.title);
       for (const s of p.steps ?? []) {

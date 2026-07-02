@@ -29,6 +29,18 @@ import {
 import { deriveTheme, type ThemeSeed } from "@showcase/core/themeDerive";
 import { PRESET_RENDERERS } from "./presetRenders.ts";
 import {
+  coerceBeat,
+  coerceLesson,
+  formatTelemetryComment,
+  renderBeatParts,
+  renderLessonSurfaces,
+  renderSyllabusParts,
+  SANDBOX_TELEMETRY_TYPES,
+  type TelemetryEvent,
+  validateTelemetryEvent,
+} from "@showcase/core/lesson";
+import type { MasteryStore } from "./masteryStore.ts";
+import {
   type Asset,
   type AssetKind,
   type Comment,
@@ -38,6 +50,7 @@ import {
   type ManifestFile,
   htmlPart,
   isAssetKind,
+  isCheckpointKind,
   MAX_ASSET_BYTES,
   newId,
   partsByteLength,
@@ -188,6 +201,11 @@ export interface AppOptions {
   requestLog?: boolean;
   // Test seam: replaces the npm-registry/GitHub lookup for the latest release.
   fetchLatestRelease?: () => Promise<LatestRelease | null>;
+  // Learner mastery persistence (the learn vertical's cross-session memory —
+  // docs/learn-form-factor.md). Node-backed, so index.ts injects it like the
+  // board store. Omitted (e.g. embedders that don't teach) → lessons still
+  // publish and telemetry still flows; only mastery/review-due degrade to empty.
+  masteryStore?: MasteryStore;
 }
 
 export interface LatestRelease {
@@ -560,6 +578,7 @@ export function createApp({
   upgradeCommand,
   requestLog,
   fetchLatestRelease,
+  masteryStore,
 }: AppOptions) {
   // Layer user config over the built-in registries before any route resolves a
   // theme/kit/blueprint. Each register* call REPLACES its extras, so building a
@@ -860,6 +879,279 @@ export function createApp({
       decisions: review.decisions.length,
       ...(review.briefWarning ? { briefWarning: review.briefWarning } : {}),
       ...(review.warnings && review.warnings.length > 0 ? { warnings: review.warnings } : {}),
+    };
+  }
+
+  // --- learn mode (docs/learn-form-factor.md) ---
+
+  // Re-render a topic's syllabus card from current mastery states, in place.
+  // Deliberately NOT reviseSurface: that flow piggybacks pending user feedback
+  // onto its response, and this refresh runs inside the telemetry ingest — it
+  // would consume the just-landed telemetry comment before the agent's wait
+  // ever saw it. Direct store update + broadcast only.
+  async function refreshSyllabus(topic: string): Promise<void> {
+    if (!masteryStore) return;
+    const t = await masteryStore.getTopic(topic);
+    if (!t?.syllabusSurfaceId) return;
+    const states = await masteryStore.statesForTopic(topic);
+    const surface = await store.updateSurface(t.syllabusSurfaceId, {
+      parts: renderSyllabusParts(topic, t.conceptGraph, states),
+    });
+    if (surface) {
+      bus.broadcast({
+        type: "surface-updated",
+        id: surface.id,
+        sessionId: surface.sessionId,
+        version: surface.version,
+      });
+    }
+  }
+
+  // Publish a full lesson: a syllabus card plus one card per concept beat, all
+  // pinned to the `learn` blueprint. The renderer (core/lesson.ts) owns every
+  // layout decision (C8); this flow owns session plumbing and mastery wiring.
+  async function publishLesson(input: {
+    lesson: unknown;
+    session?: string;
+    sessionTitle?: string;
+    agent?: string;
+    cwd?: string;
+  }): Promise<
+    | {
+        sessionId: string;
+        syllabusId: string;
+        beats: { surfaceId: string; conceptId: string }[];
+        userFeedback?: Feedback[];
+      }
+    | { error: string; status: 400 | 404 | 413 }
+  > {
+    const parsed = coerceLesson(input.lesson);
+    if ("error" in parsed) return { error: parsed.error, status: 400 };
+    const { lesson } = parsed;
+    const states = masteryStore ? await masteryStore.statesForTopic(lesson.topic) : {};
+    const rendered = renderLessonSurfaces(lesson, states);
+
+    let sessionId = input.session;
+    let syllabusId = "";
+    const beats: { surfaceId: string; conceptId: string }[] = [];
+    let userFeedback: Feedback[] | undefined;
+    for (let i = 0; i < rendered.length; i++) {
+      const r = rendered[i];
+      const result = await publishSurface({
+        parts: r.parts,
+        title: r.title,
+        badge: r.badge,
+        blueprint: "learn",
+        session: sessionId,
+        sessionTitle: input.sessionTitle ?? `Learn: ${lesson.topic}`,
+        agent: input.agent,
+        cwd: input.cwd,
+      });
+      if ("error" in result) return result;
+      sessionId = result.surface.sessionId;
+      if (i === 0) syllabusId = result.surface.id;
+      else beats.push({ surfaceId: result.surface.id, conceptId: lesson.beats[i - 1].conceptId });
+      if (result.userFeedback) userFeedback = result.userFeedback;
+    }
+    if (masteryStore) {
+      await masteryStore.upsertTopic(
+        lesson.topic,
+        {
+          concepts: lesson.conceptGraph.concepts.map((c) => ({ id: c.id, label: c.label })),
+          edges: lesson.conceptGraph.edges,
+        },
+        { sessionId, syllabusSurfaceId: syllabusId },
+      );
+    }
+    return {
+      sessionId: sessionId!,
+      syllabusId,
+      beats,
+      ...(userFeedback ? { userFeedback } : {}),
+    };
+  }
+
+  // Revise a beat card in place (remediation, fading), or append a new one to
+  // the lesson session when no surfaceId is given (an inserted remediation
+  // card). Mirrors update_surface semantics but through the lesson renderer,
+  // so the beat layout stays owned server-side.
+  async function updateLessonBeat(input: {
+    surfaceId?: string;
+    session?: string;
+    beat: unknown;
+    title?: string;
+  }): Promise<
+    { surface: Surface; userFeedback?: Feedback[] } | { error: string; status: 400 | 404 | 413 }
+  > {
+    // Concept ids come from the stored topic graph when we can find one;
+    // otherwise fall back to the ids the beat itself claims — update must not
+    // require a mastery store to function.
+    let sessionId = input.session;
+    if (input.surfaceId && !sessionId) {
+      sessionId = (await store.getSurface(input.surfaceId))?.sessionId;
+    }
+    let conceptIds: Set<string> | null = null;
+    if (masteryStore && sessionId) {
+      const topic = await masteryStore.topicForSession(sessionId);
+      if (topic) conceptIds = new Set(topic.conceptGraph.concepts.map((c) => c.id));
+    }
+    if (!conceptIds) {
+      const raw = input.beat as Record<string, unknown> | null;
+      conceptIds = new Set<string>();
+      if (raw && typeof raw === "object") {
+        if (typeof raw.conceptId === "string") conceptIds.add(raw.conceptId);
+        for (const list of [raw.checkpoints, [raw.hook], [(raw.explorable as any)?.gate]]) {
+          if (!Array.isArray(list)) continue;
+          for (const cp of list) {
+            if (cp && typeof cp === "object" && typeof (cp as any).conceptId === "string") {
+              conceptIds.add((cp as any).conceptId);
+            }
+          }
+        }
+      }
+    }
+    const parsed = coerceBeat(input.beat, "beat", conceptIds, new Set());
+    if ("error" in parsed) return { error: parsed.error, status: 400 };
+    const parts = renderBeatParts(parsed.beat);
+    if (input.surfaceId) {
+      return reviseSurface(input.surfaceId, {
+        parts,
+        ...(input.title !== undefined ? { title: input.title } : {}),
+      });
+    }
+    if (!sessionId) return { error: 'provide a "surfaceId" or a "session"', status: 400 };
+    return publishSurface({
+      parts,
+      title: input.title ?? "Remediation",
+      badge: { tone: "warning", label: "Remediation" },
+      blueprint: "learn",
+      session: sessionId,
+    });
+  }
+
+  // Ingest one learner-interaction event. Every event becomes a fixed-format
+  // comment (core/lesson.ts formatTelemetryComment) so it rides the SAME
+  // exactly-once delivery channels as typed feedback — piggyback, the blocking
+  // wait, the watch stream (C6). Graded checkpoint attempts additionally move
+  // mastery and refresh the syllabus card. `sandbox: true` marks events the
+  // viewer forwarded from a sandboxed iframe: only the allowlisted
+  // explorable_interaction shape is accepted from that path (C1) — anything
+  // else is dropped without error, matching the bridge's own policy.
+  async function recordTelemetry(input: {
+    surfaceId?: string;
+    session?: string;
+    event: unknown;
+    sandbox?: boolean;
+  }): Promise<
+    { stored: boolean; event?: TelemetryEvent } | { error: string; status: 400 | 404 }
+  > {
+    const event = validateTelemetryEvent(input.event);
+    if (!event) return { stored: false };
+    if (input.sandbox && !SANDBOX_TELEMETRY_TYPES.includes(event.type)) {
+      return { stored: false };
+    }
+    const result = await createComment({
+      text: formatTelemetryComment(event),
+      surface: input.surfaceId,
+      session: input.session,
+      author: "user",
+    });
+    if ("error" in result) return result;
+    if (
+      masteryStore &&
+      event.type === "checkpoint_attempt" &&
+      event.correct !== undefined
+    ) {
+      const topic = await masteryStore.topicForSession(result.comment.sessionId);
+      if (topic) {
+        await masteryStore.recordAttempt(topic.topic, event.conceptId, {
+          checkpointKind: event.kind,
+          correct: event.correct,
+          ...(event.misconception ? { misconception: event.misconception } : {}),
+        });
+        await refreshSyllabus(topic.topic);
+      }
+    }
+    return { stored: true, event };
+  }
+
+  // Record an agent-graded attempt (explain/completion/apply and free-text
+  // predict answers are graded by the agent, not the client — P6). The graded
+  // outcome is what moves mastery; the substantive feedback itself goes back
+  // as an ordinary reply comment.
+  async function gradeAttempt(input: {
+    topic?: string;
+    session?: string;
+    conceptId?: string;
+    kind?: string;
+    correct?: unknown;
+    misconception?: string;
+  }): Promise<{ record: unknown } | { error: string; status: 400 | 404 }> {
+    if (!masteryStore) return { error: "mastery is not enabled on this board", status: 400 };
+    let topic = input.topic;
+    if (!topic && input.session) {
+      topic = (await masteryStore.topicForSession(input.session))?.topic;
+    }
+    if (!topic) return { error: 'provide a "topic" or a lesson "session"', status: 400 };
+    if (typeof input.conceptId !== "string" || !input.conceptId.trim()) {
+      return { error: '"conceptId" is required', status: 400 };
+    }
+    if (!isCheckpointKind(input.kind)) {
+      return { error: '"kind" must be predict|mcq|completion|explain|trace|apply', status: 400 };
+    }
+    if (typeof input.correct !== "boolean") {
+      return { error: '"correct" must be a boolean', status: 400 };
+    }
+    const record = await masteryStore.recordAttempt(topic, input.conceptId, {
+      checkpointKind: input.kind,
+      correct: input.correct,
+      ...(typeof input.misconception === "string" && input.misconception.trim()
+        ? { misconception: input.misconception.trim() }
+        : {}),
+    });
+    if (!record) return { error: `unknown topic/concept: ${topic}/${input.conceptId}`, status: 404 };
+    await refreshSyllabus(topic);
+    return { record };
+  }
+
+  // The learner's cross-session state: per-topic mastery records plus the
+  // interleaved due-for-review queue — what the teach skill reads before
+  // opening a session (P12: start from reality).
+  async function learnerState(input: { topic?: string; now?: Date }): Promise<{
+    topics: unknown[];
+    due: unknown[];
+  }> {
+    if (!masteryStore) return { topics: [], due: [] };
+    const topics = input.topic
+      ? await masteryStore.getTopic(input.topic).then((t) => (t ? [t] : []))
+      : await masteryStore.listTopics();
+    const due = await masteryStore.due(input.now);
+    return {
+      topics: topics.map((t) => ({
+        topic: t.topic,
+        updatedAt: t.updatedAt,
+        concepts: t.conceptGraph.concepts.map((c) => {
+          const r = t.records[c.id];
+          return {
+            id: c.id,
+            label: c.label,
+            state: r?.state ?? "untouched",
+            ...(r
+              ? {
+                  attempts: r.attempts.length,
+                  lastAttemptAt: r.attempts[r.attempts.length - 1]?.at,
+                  dueAt: r.dueAt,
+                  misconceptions: [
+                    ...new Set(
+                      r.attempts.flatMap((a) => (a.misconception ? [a.misconception] : [])),
+                    ),
+                  ],
+                }
+              : {}),
+          };
+        }),
+      })),
+      due: input.topic ? (due as { topic: string }[]).filter((d) => d.topic === input.topic) : due,
     };
   }
 
@@ -1439,6 +1731,97 @@ export function createApp({
     );
   });
 
+  // --- learn mode routes ---
+
+  // Publish a lesson (syllabus + beat cards) from its typed payload. The stdio
+  // MCP posts here; the HTTP MCP calls publishLesson in-process.
+  app.post("/api/lessons", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object") return c.json({ error: "invalid JSON body" }, 400);
+    const result = await publishLesson({
+      lesson: body,
+      session: typeof body.session === "string" ? body.session : undefined,
+      sessionTitle: typeof body.sessionTitle === "string" ? body.sessionTitle : undefined,
+      agent: typeof body.agent === "string" ? body.agent : undefined,
+      cwd: typeof body.cwd === "string" ? body.cwd : undefined,
+    });
+    if ("error" in result) return c.json({ error: result.error }, result.status);
+    return c.json(result, 201);
+  });
+
+  // Revise a beat card in place (surfaceId set) or append a remediation card
+  // to the lesson session (surfaceId absent, session set).
+  app.post("/api/lessons/beats", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object" || !body.beat) {
+      return c.json({ error: 'body must include a "beat"' }, 400);
+    }
+    const result = await updateLessonBeat({
+      surfaceId: typeof body.surfaceId === "string" ? body.surfaceId : undefined,
+      session: typeof body.session === "string" ? body.session : undefined,
+      beat: body.beat,
+      title: typeof body.title === "string" ? body.title : undefined,
+    });
+    if ("error" in result) return c.json({ error: result.error }, result.status);
+    return c.json({
+      ...writeResult(result.surface),
+      ...(result.userFeedback && { userFeedback: result.userFeedback }),
+    });
+  });
+
+  // Learner-interaction telemetry ingest. Trusted checkpoint components post
+  // here directly; the sandbox bridge forwards explorable events with
+  // sandbox:true so the allowlist applies (see recordTelemetry). Invalid or
+  // disallowed events return { stored: false } (200) — dropping is policy, not
+  // an error the viewer should surface.
+  app.post("/api/telemetry", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object") return c.json({ error: "invalid JSON body" }, 400);
+    const result = await recordTelemetry({
+      surfaceId: typeof body.surface === "string" ? body.surface : undefined,
+      session: typeof body.session === "string" ? body.session : undefined,
+      event: body.event,
+      sandbox: body.sandbox === true,
+    });
+    if ("error" in result) return c.json({ error: result.error }, result.status);
+    return c.json(result, result.stored ? 201 : 200);
+  });
+
+  // Mastery state — plainly inspectable JSON (C5). ?now= lets tests and the
+  // CLI time-travel the due computation without faking the system clock.
+  const parseNow = (raw: string | undefined): Date | undefined => {
+    if (!raw) return undefined;
+    const t = Date.parse(raw);
+    return Number.isFinite(t) ? new Date(t) : undefined;
+  };
+  app.get("/api/mastery", async (c) => {
+    const state = await learnerState({
+      topic: c.req.query("topic"),
+      now: parseNow(c.req.query("now")),
+    });
+    return c.json(state);
+  });
+  app.post("/api/mastery/attempt", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object") return c.json({ error: "invalid JSON body" }, 400);
+    const result = await gradeAttempt(body);
+    if ("error" in result) return c.json({ error: result.error }, result.status);
+    return c.json(result, 201);
+  });
+  app.delete("/api/mastery/:topic", async (c) => {
+    if (!masteryStore) return c.json({ error: "mastery is not enabled on this board" }, 400);
+    const topic = decodeURIComponent(c.req.param("topic"));
+    if (!(await masteryStore.reset(topic))) return c.json({ error: "unknown topic" }, 404);
+    return c.json({ ok: true });
+  });
+
+  // The interleaved cross-topic review queue (P2/P11) — what `showcase
+  // review-due` and the teach skill's review sessions read.
+  app.get("/api/review-due", async (c) => {
+    if (!masteryStore) return c.json({ due: [] });
+    return c.json({ due: await masteryStore.due(parseNow(c.req.query("now"))) });
+  });
+
   // --- sessions ---
 
   app.get("/api/sessions", async (c) => {
@@ -1994,6 +2377,10 @@ export function createApp({
     publishSurface,
     publishDecisions,
     publishPreset,
+    publishLesson,
+    updateLessonBeat,
+    gradeAttempt,
+    learnerState,
     reviseSurface,
     deleteSurface,
     configureSession,

@@ -206,6 +206,16 @@ window.openLink = function (url) {
 window.copyToClipboard = function (text) {
   parent.postMessage({ __showcase: true, type: 'copy', text: String(text) }, '*');
 };
+// Learn-mode telemetry out of an explorable: showcase.emit posts a structured
+// interaction event to the host bridge, which validates it against the closed
+// TelemetryEvent union (core/lesson.ts) and forwards ONLY the allowlisted
+// explorable_interaction shape — anything else is dropped host-side. This is
+// the sole sanctioned data channel out of the sandbox (CSP blocks fetch/XHR).
+window.showcase = {
+  emit: function (event) {
+    parent.postMessage({ __showcase: true, type: 'telemetry', event: event }, '*');
+  },
+};
 document.addEventListener('click', function (e) {
   var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
   if (a && /^https?:/.test(a.href)) { e.preventDefault(); window.openLink(a.href); return; }

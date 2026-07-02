@@ -1,6 +1,8 @@
 import { api, isReadonly, layoutMode } from "./api.ts";
+import { SANDBOX_TELEMETRY_TYPES, validateTelemetryEvent } from "@showcase/core/telemetry";
 import { frameForSource } from "./Card.tsx";
 import { root } from "./host.ts";
+import { postSandboxTelemetry } from "./learn.ts";
 import { applyFrameHeight } from "./SandboxedPart.tsx";
 import { selectAdjacent, toast } from "./state.ts";
 
@@ -53,6 +55,18 @@ export async function onBridgeMessage(ev: MessageEvent) {
       body: JSON.stringify({ surface: src.id, text: String(d.text), author: "surface" }),
     });
     toast("Added to this surface’s thread");
+  } else if (d.type === "telemetry" && src) {
+    // Learn-mode telemetry from a sandboxed explorable (showcase.emit). This is
+    // agent-authored script talking, so the gate is strict: the event must
+    // parse against the closed TelemetryEvent union AND be one of the sandbox-
+    // allowlisted types (today: explorable_interaction only). Everything else
+    // drops silently — checkpoint attempts can never be forged from a sandbox.
+    // The server re-validates with sandbox:true, so this check can't be the
+    // only line of defense either.
+    if (isReadonly()) return;
+    const event = validateTelemetryEvent((d as { event?: unknown }).event);
+    if (!event || !SANDBOX_TELEMETRY_TYPES.includes(event.type)) return;
+    postSandboxTelemetry(src.id, event);
   } else if (d.type === "open-link" && isOwnFrame(ev.source)) {
     // Only ever open real external links. The in-frame click handler forwards
     // just http(s) hrefs, but a surface can call openLink() directly (or post
