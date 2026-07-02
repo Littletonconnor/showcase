@@ -7,6 +7,7 @@
 import { existsSync, statSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { defineCommand } from "../command.ts";
 import type { Command } from "../command.ts";
 import { BASE, TOKEN } from "../http.ts";
 import { emit } from "../output.ts";
@@ -119,7 +120,7 @@ async function checkCachedSession(serverUp: boolean): Promise<CheckResult | null
       };
 }
 
-const doctor: Command = {
+const doctor = defineCommand({
   name: "doctor",
   group: "Inspect",
   summary: "diagnose the local setup — node, server, viewer build, data file",
@@ -145,6 +146,6 @@ const doctor: Command = {
         .join("\n");
     });
   },
-};
+});
 
 export const doctorCommands: Command[] = [doctor];

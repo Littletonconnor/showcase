@@ -7,7 +7,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Command, OptionSpecs } from "../command.ts";
-import { GLOBAL_OPTIONS } from "../command.ts";
+import { GLOBAL_OPTIONS, defineCommand } from "../command.ts";
 import { fail } from "../errors.ts";
 
 type Shell = "bash" | "zsh";
@@ -118,7 +118,7 @@ function install(shell: Shell, commands: Command[]): void {
   );
 }
 
-const completions: Command = {
+const completions = defineCommand({
   name: "completions",
   group: "Setup",
   summary: "generate or install shell completions (bash|zsh)",
@@ -146,6 +146,6 @@ const completions: Command = {
     }
     fail("usage: showcase completions <bash|zsh|install [bash|zsh]>");
   },
-};
+});
 
 export const completionsCommands: Command[] = [completions];

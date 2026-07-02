@@ -9,11 +9,11 @@ import { fail } from "./errors.ts";
 
 // The flags that pair with confirm(): spread into a destructive command's
 // options so --yes parses, completes, and shows in help like any other.
-export const CONFIRM_OPTS: OptionSpecs = {
+export const CONFIRM_OPTS = {
   yes: { type: "boolean", short: "y", desc: "skip the confirmation prompt" },
-};
+} satisfies OptionSpecs;
 
-export async function confirm(message: string, flags: Record<string, any>): Promise<void> {
+export async function confirm(message: string, flags: { yes?: boolean }): Promise<void> {
   if (flags.yes) return;
   if (!process.stdin.isTTY) {
     fail(

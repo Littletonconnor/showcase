@@ -9,7 +9,8 @@ import { join } from "node:path";
 import { api, BASE, ensureServerUp, TOKEN } from "./http.ts";
 
 export interface SessionFlags {
-  session?: string;
+  // null = a caller already resolved and found none; treated as absent.
+  session?: string | null;
   "session-title"?: string;
   agent?: string;
   "new-session"?: boolean;

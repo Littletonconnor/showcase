@@ -2,6 +2,7 @@
 // (`wait`), or stream every new comment forever for a background monitor
 // (`watch`). Both read with author=user and resume from the server-side agent
 // cursor so a comment is delivered exactly once across wait/watch/piggyback.
+import { defineCommand } from "../command.ts";
 import type { Command } from "../command.ts";
 import { fail } from "../errors.ts";
 import { api, BASE, TOKEN } from "../http.ts";
@@ -9,7 +10,7 @@ import { emit, isJson } from "../output.ts";
 import { resolveSession, resolveSessionByCwd } from "../session.ts";
 import { sleep, watchLine } from "../util.ts";
 
-const wait: Command = {
+const wait = defineCommand({
   name: "wait",
   group: "Feedback",
   summary: "block until the user comments (long-poll)",
@@ -49,9 +50,9 @@ const wait: Command = {
       );
     }
   },
-};
+});
 
-const watch: Command = {
+const watch = defineCommand({
   name: "watch",
   group: "Feedback",
   summary: "stream each new user comment forever, one per line",
@@ -96,6 +97,6 @@ const watch: Command = {
       }
     }
   },
-};
+});
 
 export const feedbackCommands: Command[] = [wait, watch];

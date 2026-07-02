@@ -1,5 +1,6 @@
 // Read-only inspection of the board (list surfaces, sessions, kits,
 // blueprints) plus `demo`, which seeds example sessions to explore the viewer.
+import { defineCommand } from "../command.ts";
 import type { Command } from "../command.ts";
 import { fail } from "../errors.ts";
 import { api, BASE } from "../http.ts";
@@ -23,7 +24,7 @@ function statusLine(s: any): string {
   return parts.join(" · ");
 }
 
-const list: Command = {
+const list = defineCommand({
   name: "list",
   group: "Inspect",
   summary: "list surfaces in the active (or a given) session",
@@ -63,9 +64,9 @@ const list: Command = {
             .join("\n"),
     );
   },
-};
+});
 
-const sessions: Command = {
+const sessions = defineCommand({
   name: "sessions",
   group: "Inspect",
   summary: "list sessions",
@@ -80,9 +81,9 @@ const sessions: Command = {
             .join("\n"),
     );
   },
-};
+});
 
-const kits: Command = {
+const kits = defineCommand({
   name: "kits",
   group: "Inspect",
   summary: "list the opt-in html kits this board offers",
@@ -91,9 +92,9 @@ const kits: Command = {
     const all = await api("/api/kits");
     emit(all, () => all.map((k: any) => `${k.id}  —  ${k.summary ?? k.label ?? ""}`).join("\n"));
   },
-};
+});
 
-const themes: Command = {
+const themes = defineCommand({
   name: "themes",
   group: "Inspect",
   summary: "list the theme ids this board offers (--theme on any publish)",
@@ -102,9 +103,9 @@ const themes: Command = {
     const all = await api("/api/themes");
     emit(all, () => all.join("\n"));
   },
-};
+});
 
-const blueprints: Command = {
+const blueprints = defineCommand({
   name: "blueprints",
   group: "Inspect",
   summary: "list the explainer blueprint presets this board offers",
@@ -113,9 +114,9 @@ const blueprints: Command = {
     const all = await api("/api/blueprints");
     emit(all, () => all.map((b: any) => `${b.id}  —  ${b.summary ?? b.label ?? ""}`).join("\n"));
   },
-};
+});
 
-const demo: Command = {
+const demo = defineCommand({
   name: "demo",
   group: "Inspect",
   summary: "seed example sessions to explore the viewer",
@@ -170,9 +171,9 @@ const demo: Command = {
     }
     console.log(`Seeded ${DEMO_SESSIONS.length} demo sessions — open ${BASE} to look around.`);
   },
-};
+});
 
-const board: Command = {
+const board = defineCommand({
   name: "board",
   group: "Inspect",
   summary: "show board size — sessions, surfaces, assets, orphaned slack",
@@ -181,9 +182,9 @@ const board: Command = {
     const stats = await api("/api/board");
     emit(stats, () => statusLine(stats));
   },
-};
+});
 
-const health: Command = {
+const health = defineCommand({
   name: "health",
   group: "Inspect",
   summary: "liveness check — uptime, version, board tally, last error",
@@ -197,9 +198,9 @@ const health: Command = {
       return lines.join("\n");
     });
   },
-};
+});
 
-const gc: Command = {
+const gc = defineCommand({
   name: "gc",
   group: "Manage",
   summary: "reclaim orphaned assets no surface references",
@@ -235,7 +236,7 @@ const gc: Command = {
       return `${head}\n${statusLine(result.stats)}`;
     });
   },
-};
+});
 
 export const boardCommands: Command[] = [
   list,
