@@ -109,6 +109,7 @@ export class JsonFileStore implements Store {
   private loaded = false;
   private loadPromise: Promise<void> | null = null;
   private writeQueue: Promise<void> = Promise.resolve();
+  private pendingFlush: Promise<void> | null = null;
   private filePath: string;
 
   constructor(filePath: string) {
@@ -175,8 +176,8 @@ export class JsonFileStore implements Store {
     return null;
   }
 
-  private persist() {
-    const data = JSON.stringify(
+  private serialize(): string {
+    return JSON.stringify(
       {
         sessions: [...this.sessions.values()],
         surfaces: [...this.surfaces.values()],
@@ -191,13 +192,27 @@ export class JsonFileStore implements Store {
       null,
       2,
     );
+  }
+
+  // Persist the full store, coalescing bursts: every mutation awaits a flush,
+  // but all persist() calls that land while a disk write is in flight share ONE
+  // follow-up write serialized from the store's latest state — N mutations in a
+  // burst cost 2 writes, not N (the store rewrites everything, asset bytes
+  // included, so per-mutation writes are the whole cost). A caller's await
+  // still means "my write is on disk": the shared flush serializes after their
+  // mutation and they hold the promise for that flush.
+  private persist(): Promise<void> {
     // A rejected write must not poison the chain: without the catch, one
     // transient failure (ENOSPC, EMFILE) would leave writeQueue permanently
-    // rejected and every later persist would silently never run. The caller
-    // still sees its own failure via the returned promise.
-    this.writeQueue = this.writeQueue
+    // rejected and every later persist would silently never run. The callers
+    // still see their own failure via the returned promise.
+    this.pendingFlush ??= this.writeQueue
       .catch(() => {})
       .then(async () => {
+        // Clear BEFORE serializing: a mutation landing after this snapshot but
+        // before the write finishes must schedule a fresh flush of its own.
+        this.pendingFlush = null;
+        const data = this.serialize();
         await mkdir(dirname(this.filePath), { recursive: true });
         const tmp = `${this.filePath}.tmp`;
         await writeFile(tmp, data, "utf8");
@@ -208,6 +223,7 @@ export class JsonFileStore implements Store {
         // later lost or truncated.
         await copyFile(this.filePath, `${this.filePath}.bak`);
       });
+    this.writeQueue = this.pendingFlush;
     return this.writeQueue;
   }
 

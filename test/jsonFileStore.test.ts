@@ -101,3 +101,19 @@ test("JsonFileStore: touchAsset flushes at most hourly, not per serve", async ()
   const after = JSON.parse(readFileSync(path, "utf8"));
   assert.ok(after.assets[0].lastAccessedAt > old);
 });
+
+test("JsonFileStore: a concurrent mutation burst is durable through the coalesced flush", async () => {
+  const path = freshPath();
+  const store = new JsonFileStore(path);
+  const session = await store.createSession({ agent: "pi", title: "Burst" });
+  // 20 concurrent writes coalesce into few disk flushes; every awaited call
+  // must still mean "my write is on disk".
+  await Promise.all(
+    Array.from({ length: 20 }, (_, i) =>
+      store.createSurface({ sessionId: session.id, parts: [htmlPart(`<p>${i}</p>`)] }),
+    ),
+  );
+  const reloaded = new JsonFileStore(path);
+  const surfaces = await reloaded.listSurfaces(session.id);
+  assert.equal(surfaces.length, 20);
+});
