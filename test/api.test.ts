@@ -2368,8 +2368,10 @@ test("delivered feedback nudges the agent to act on it and republish", async () 
   ).json()) as any;
   const payload = JSON.parse(res.result.content[0].text);
   // The in-context reminder rides with every non-empty delivery so the agent
-  // acts on the feedback in its terminal and republishes — no browser reply.
-  assert.match(payload.note, /republish/i);
+  // acts on the feedback: anchored threads get a `reply`, substantive changes
+  // still go through update_surface / publish_decisions.
+  assert.match(payload.note, /update_surface|republish/i);
+  assert.match(payload.note, /reply/i);
   assert.doesNotMatch(payload.note, /reply_to_user/);
 });
 

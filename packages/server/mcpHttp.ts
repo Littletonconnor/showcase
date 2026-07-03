@@ -5,6 +5,7 @@ import {
   type Asset,
   type AssetKind,
   type Comment,
+  formatCommentAnchor,
   htmlPart,
   isAssetKind,
   type Session,
@@ -123,6 +124,8 @@ export interface McpDeps {
     surface?: string;
     session?: string;
     author: string;
+    anchor?: unknown;
+    replyTo?: string;
   }): Promise<{ comment: Comment; userFeedback?: Feedback[] } | { error: string; status: number }>;
   waitForComments(q: CommentWait): Promise<{ comments: Comment[]; lastSeq: number }>;
   uploadAsset(input: {
@@ -339,6 +342,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
         return JSON.stringify(
           {
             comments: result.comments.map((c) => ({
+              ...(c.anchor ? { id: c.id, anchor: formatCommentAnchor(c.anchor) } : {}),
               surfaceId: c.surfaceId,
               surfaceTitle: c.surfaceTitle,
               text: c.text,
@@ -346,6 +350,26 @@ export function registerMcp(app: Hono, deps: McpDeps) {
             })),
             lastSeq: result.lastSeq,
             note: FEEDBACK_REPLY_NOTE,
+          },
+          null,
+          2,
+        );
+      }
+      case "reply": {
+        const result = await deps.createComment({
+          text: String(args.text ?? ""),
+          replyTo: typeof args.replyTo === "string" ? args.replyTo : undefined,
+          surface: typeof args.surface === "string" ? args.surface : undefined,
+          session: typeof args.session === "string" ? args.session : undefined,
+          author: typeof args.agent === "string" ? args.agent : "agent",
+        });
+        if ("error" in result) throw new Error(result.error);
+        return JSON.stringify(
+          {
+            id: result.comment.id,
+            surfaceId: result.comment.surfaceId,
+            ...(result.comment.replyTo ? { replyTo: result.comment.replyTo } : {}),
+            ...(result.userFeedback && { userFeedback: result.userFeedback }),
           },
           null,
           2,

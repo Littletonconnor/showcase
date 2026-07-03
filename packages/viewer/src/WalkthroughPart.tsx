@@ -19,6 +19,7 @@ import { isReadonly } from "./api.ts";
 import { InlineText } from "./CheckpointPart.tsx";
 import { loadLangs, setCurrentThemes, tokenize, type TokenLine } from "./highlight.ts";
 import { postTelemetry } from "./learn.ts";
+import { openComposer } from "./threads.ts";
 import { MermaidPart } from "./MermaidPart.tsx";
 import { toast } from "./state.ts";
 import { useResolvedMode, useSurfaceTheme } from "./theme.ts";
@@ -41,7 +42,11 @@ function inRanges(line: number, ranges: [number, number][] | undefined): boolean
 // One step's code pane: numbered token lines, highlight ranges emphasized with
 // an accent bar + tint, everything else dimmed when ranges exist. Scrolls the
 // first highlighted line into view (within the pane, never the page).
-function CodePane(props: { step: WalkthroughStep; stepIndex: number }) {
+function CodePane(props: {
+  step: WalkthroughStep;
+  stepIndex: number;
+  onLineComment?: (line: number, at: { x: number; y: number }) => void;
+}) {
   const { step } = props;
   const activeTheme = useSurfaceTheme();
   const mode = useResolvedMode();
@@ -124,7 +129,15 @@ function CodePane(props: { step: WalkthroughStep; stepIndex: number }) {
                     : "border-transparent",
               )}
             >
-              <span className="mr-3 w-9 flex-none select-none text-right text-faint">{lineNo}</span>
+              <button
+                type="button"
+                tabIndex={-1}
+                title="Comment on this line"
+                onClick={(e) => props.onLineComment?.(lineNo, { x: e.clientX, y: e.clientY })}
+                className="mr-3 w-9 flex-none cursor-pointer border-0 bg-transparent p-0 text-right font-mono text-faint select-none hover:font-semibold hover:text-blue-500"
+              >
+                {lineNo}
+              </button>
               <span className="min-h-[1.55em]">
                 {tokens.map((t, j) => (
                   <span key={j} style={t.color ? { color: t.color } : undefined}>
@@ -140,7 +153,11 @@ function CodePane(props: { step: WalkthroughStep; stepIndex: number }) {
   );
 }
 
-export function WalkthroughPart(props: { surfaceId: string; part: WalkthroughPartData }) {
+export function WalkthroughPart(props: {
+  surfaceId: string;
+  partIndex?: number;
+  part: WalkthroughPartData;
+}) {
   const { part } = props;
   const steps = part.steps;
   const [index, setIndex] = useState(0);
@@ -257,7 +274,24 @@ export function WalkthroughPart(props: { surfaceId: string; part: WalkthroughPar
         />
       ) : null}
 
-      <CodePane step={step} stepIndex={index} />
+      <CodePane
+        step={step}
+        stepIndex={index}
+        onLineComment={
+          readonly
+            ? undefined
+            : (line, at) =>
+                openComposer({
+                  surfaceId: props.surfaceId,
+                  partIndex: props.partIndex ?? 0,
+                  line,
+                  ...(step.file ? { file: step.file } : {}),
+                  step: index,
+                  x: at.x,
+                  y: at.y,
+                })
+        }
+      />
     </div>
   );
 }

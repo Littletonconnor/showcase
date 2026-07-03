@@ -440,9 +440,22 @@ export class JsonFileStore implements Store {
       author: input.author.trim() || "user",
       text: input.text,
       createdAt: new Date().toISOString(),
+      ...(input.anchor ? { anchor: input.anchor } : {}),
+      ...(input.replyTo ? { replyTo: input.replyTo } : {}),
     };
     this.comments.push(comment);
     this.touch(input.sessionId);
+    await this.persist();
+    return clone(comment);
+  }
+
+  // Local thread adjudication: flip resolved on a thread's root comment.
+  async setCommentResolved(id: string, resolved: boolean) {
+    await this.load();
+    const comment = this.comments.find((c) => c.id === id);
+    if (!comment) return null;
+    if (resolved) comment.resolved = true;
+    else delete comment.resolved;
     await this.persist();
     return clone(comment);
   }

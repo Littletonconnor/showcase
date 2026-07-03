@@ -3,6 +3,7 @@ import { SANDBOX_TELEMETRY_TYPES, validateTelemetryEvent } from "@showcase/core/
 import { frameForSource } from "./Card.tsx";
 import { root } from "./host.ts";
 import { postSandboxTelemetry } from "./learn.ts";
+import { closeComposer, openComposer } from "./threads.ts";
 import { applyFrameHeight } from "./SandboxedPart.tsx";
 import { selectAdjacent, toast } from "./state.ts";
 
@@ -55,6 +56,38 @@ export async function onBridgeMessage(ev: MessageEvent) {
       body: JSON.stringify({ surface: src.id, text: String(d.text), author: "surface" }),
     });
     toast("Added to this surface’s thread");
+  } else if (d.type === "text-selected" || d.type === "selection-cleared") {
+    // Anchored comments from sandboxed parts: a selection in any part frame
+    // opens the trusted comment popover at that spot. Only a capped text QUOTE
+    // and rect numbers arrive; both are re-validated server-side with the
+    // anchor. The frame element resolves which surface/part it was.
+    const frameEl = ownFrameElement(ev.source);
+    if (!frameEl) return;
+    if (d.type === "selection-cleared") {
+      closeComposer();
+      return;
+    }
+    if (isReadonly()) return;
+    const quote = typeof (d as { text?: unknown }).text === "string" ? (d as any).text : "";
+    if (!quote.trim()) return;
+    const wrapper = frameEl.closest<HTMLElement>("[data-part-anchor]");
+    const card = frameEl.closest<HTMLElement>(".card");
+    const surfaceId = card?.dataset.id;
+    if (!wrapper || !surfaceId) return;
+    const partIndex = Number(wrapper.dataset.partIndex ?? 0) || 0;
+    const rect = (d as any).rect as
+      | { top?: number; left?: number; width?: number; height?: number }
+      | undefined;
+    const frameRect = frameEl.getBoundingClientRect();
+    const x = frameRect.left + (Number(rect?.left) || 0) + (Number(rect?.width) || 0) / 2;
+    const y = frameRect.top + (Number(rect?.top) || 0) + (Number(rect?.height) || 0);
+    openComposer({
+      surfaceId,
+      partIndex,
+      quote: quote.slice(0, 300),
+      x: Math.max(0, Math.min(window.innerWidth, x)),
+      y: Math.max(0, Math.min(window.innerHeight, y)),
+    });
   } else if (d.type === "telemetry" && src) {
     // Learn-mode telemetry from a sandboxed explorable (showcase.emit). This is
     // agent-authored script talking, so the gate is strict: the event must
@@ -100,8 +133,15 @@ export async function onBridgeMessage(ev: MessageEvent) {
 // comparison works across the opaque-origin boundary even though the frame's
 // document is unreadable.
 function isOwnFrame(source: unknown): boolean {
+  return ownFrameElement(source) !== null;
+}
+
+// The embedded iframe ELEMENT for a message source (html or rich part), or
+// null for an unknown/nested frame. The element is how the selection handler
+// resolves position and the owning card/part wrappers.
+function ownFrameElement(source: unknown): HTMLIFrameElement | null {
   for (const f of root().querySelectorAll("iframe")) {
-    if (f.contentWindow === source) return true;
+    if (f.contentWindow === source) return f;
   }
-  return false;
+  return null;
 }

@@ -66,10 +66,13 @@ export const MCP_INSTRUCTIONS =
 // Rides on every wait_for_feedback delivery (both transports) as an in-context
 // reminder, right when the agent is deciding how to respond.
 export const FEEDBACK_REPLY_NOTE =
-  "These are the user's comments on the surfaces they're watching. (On a review the user Accepts decisions " +
-  "locally and pushes back by pasting a decision's ref into your terminal, so that arrives as an ordinary " +
-  "terminal message, not here.) Act on them in your terminal: make the change and republish the review with " +
-  "publish_decisions so the board updates, then call wait_for_feedback again if you expect more.";
+  "These are the user's comments on the surfaces they're watching. A comment with an `anchor` points at an " +
+  "exact spot (a quoted selection, a file:line, a walkthrough step) — answer it with the `reply` tool passing " +
+  "its `id` as replyTo, so your answer renders IN the thread at that spot on the card. Substantive changes " +
+  "still go through update_surface / publish_decisions; use reply for the conversational half (answering a " +
+  "question, explaining a line, confirming a fix landed). Telemetry lines ([checkpoint]/[explorable]/" +
+  "[confused]) are machine-built signals, not prose to reply to verbatim. Then wait_for_feedback again if " +
+  "you expect more.";
 
 const d = {
   title: "Short human-readable title shown above the card",
@@ -341,7 +344,9 @@ export const MCP_TOOL_DESCRIPTIONS = {
   deleteSurface:
     "Delete a surface you published — removes the card and ALL its versions from the board permanently. Use it to clean up while iterating: a stale, duplicate, or superseded card. Prefer update_surface to revise a card in place; reach for this only when the card should disappear entirely. Irreversible. Returns the deleted id and its sessionId.",
   waitForFeedback:
-    "Block until the user comments on a surface in this session in their browser (or the timeout passes), coalesced into one batch (delivered once, resuming from where the agent last left off). (Review Accepts are local and pushback comes via a decision's copy-ref pasted into your terminal, so review adjudications do NOT arrive here.) Use timeoutSeconds 0 for a non-blocking check. Act on what comes back in your terminal and republish the review with publish_decisions so the board reflects it.",
+    "Block until the user comments on a surface in this session in their browser (or the timeout passes), coalesced into one batch (delivered once, resuming from where the agent last left off). Comments may carry an `anchor` (a quoted selection, file:line, or step the user attached it to) and an `id` — answer those with the `reply` tool (replyTo: id) so your answer lands in the thread at that spot. Learn-mode telemetry ([checkpoint]/[confused] lines) arrives here too. Use timeoutSeconds 0 for a non-blocking check.",
+  reply:
+    "Reply to a user's comment ON the board — your text renders in the thread at the comment's anchor (the exact selection/line they pointed at), attributed to you. Pass replyTo (the comment id from wait_for_feedback / userFeedback). Use it for the conversational half of feedback: answering an anchored question, explaining a line, noting that a fix landed. Substantive changes still go through update_surface / update_lesson / publish_decisions; a reply never replaces a revision. Keep replies short — the card is the artifact, the thread is margin notes.",
   listSurfacesHttp:
     "List surfaces (the title index: id, title, part kinds, version) — pass a session id to scope, or omit for all sessions. Use get_surface to read one's full content.",
   listSurfacesStdio:
@@ -653,6 +658,27 @@ export const HTTP_MCP_TOOLS = [
         timeoutSeconds: { type: "number", description: `${d.timeout} (default 60)` },
       },
       required: ["session"],
+    },
+  },
+  {
+    name: "reply",
+    description: MCP_TOOL_DESCRIPTIONS.reply,
+    inputSchema: {
+      type: "object",
+      properties: {
+        replyTo: {
+          type: "string",
+          description: "The comment id being answered (from wait_for_feedback / userFeedback)",
+        },
+        text: { type: "string", description: "Your reply — short; the card is the artifact" },
+        surface: {
+          type: "string",
+          description: "Surface to comment on when not replying to a specific comment",
+        },
+        session: { type: "string", description: d.session },
+        agent: { type: "string", description: "Author label (default: agent)" },
+      },
+      required: ["text"],
     },
   },
   {
@@ -1757,6 +1783,17 @@ export const STDIO_MCP_INPUT_SCHEMAS = {
   getSurface: {
     id: z.string().describe(d.surfaceId),
   },
+  reply: {
+    replyTo: z
+      .string()
+      .optional()
+      .describe("The comment id being answered (from wait_for_feedback / userFeedback)"),
+    text: z.string().describe("Your reply — short; the card is the artifact"),
+    surface: z
+      .string()
+      .optional()
+      .describe("Surface to comment on when not replying to a specific comment"),
+  },
   publishLesson: {
     topic: z.string().describe(d.lessonTopic),
     learnerLevel: z.enum(["novice", "intermediate", "advanced"]).optional().describe(d.lessonLevel),
@@ -1891,6 +1928,7 @@ export const HTTP_MCP_TOOL_SCHEMAS: Record<string, z.ZodTypeAny> = {
     ...httpEnvelope,
   }),
   get_learner_state: toolObject({ topic: z.string().optional() }),
+  reply: toolObject({ ...STDIO_MCP_INPUT_SCHEMAS.reply, ...httpEnvelope }),
   record_attempt: toolObject({
     topic: z.string().optional(),
     conceptId: z.string(),
@@ -1965,6 +2003,42 @@ export const MCP_PROMPT_DEFS = [
       "Turn a concept or a screenshot into an animated, scrubbable explainer surface the user can step through.",
     arguments: [{ name: "topic", description: "What to explain (optional)", required: false }],
   },
+  {
+    name: "explain_repo",
+    title: "Explain this repo",
+    description:
+      "Onboard the user to the current repository: architecture map, the load-bearing invariants, and a step-through walkthrough of one core path.",
+    arguments: [
+      {
+        name: "focus",
+        description: "A subsystem or question to center on (optional)",
+        required: false,
+      },
+    ],
+  },
+  {
+    name: "explain_directory",
+    title: "Explain a directory",
+    description:
+      "Explain what one directory/package does and how its pieces connect, with a walkthrough of its main path.",
+    arguments: [{ name: "path", description: "The directory to explain", required: false }],
+  },
+  {
+    name: "diff_branch",
+    title: "Explain + review my branch diff",
+    description:
+      "Diff the current branch against its base, explain what changed and why it hangs together, then publish the decision review.",
+    arguments: [
+      { name: "base", description: "Base branch to diff against (default: main)", required: false },
+    ],
+  },
+  {
+    name: "explain_conversation",
+    title: "Explain our conversation",
+    description:
+      "Turn the current working conversation into a visual recap: what was decided, what changed, what is open.",
+    arguments: [],
+  },
 ] as const;
 
 // Build a prompts/get result for a prompt name + args. Returns null for an
@@ -2006,6 +2080,47 @@ export function promptMessages(
           "in place.",
       );
     }
+    case "explain_repo": {
+      const focus = arg("focus");
+      return text(
+        `Explain this repository on showcase${focus ? `, centered on ${focus}` : ""}. READ the code first ` +
+          "(entry points, package boundaries, CI-enforced invariants, the docs the repo itself trusts). Then " +
+          "publish ONE surface: a markdown part with the one-paragraph thesis, a mermaid architecture map " +
+          "(add `config.layout: elk` frontmatter if it has 10+ nodes), and a `walkthrough` part stepping " +
+          "through the ONE most load-bearing path with real excerpts and line numbers. Wait for feedback: " +
+          "anchored comments and [confused] flags name the exact spot to clarify — reply in the thread and " +
+          "revise that step in place. If the user wants to LEARN the codebase durably, offer publish_lesson.",
+      );
+    }
+    case "explain_directory": {
+      const path = arg("path");
+      return text(
+        `Explain ${path ? `\`${path}\`` : "the directory the user names"} on showcase. Read every file in it ` +
+          "first. Publish ONE surface: a markdown part saying what this directory is FOR and what imports it, " +
+          "a small mermaid map of its internal pieces, and a `walkthrough` part tracing its main path (entry " +
+          "to exit) with real excerpts. Keep it one screenful per idea; wait for anchored feedback and reply " +
+          "in the threads.",
+      );
+    }
+    case "diff_branch": {
+      const base = arg("base");
+      return text(
+        `Diff the current branch against ${base ? `\`${base}\`` : "its base (default main)"} and put it on ` +
+          "showcase in two cards. First an EXPLAINER surface: a markdown part on what this change does and why " +
+          "it hangs together, plus a `walkthrough` part stepping through the change's core path (use diff parts " +
+          "for the hunks that matter). Then the REVIEW: publish_decisions with the brief, risk-ranked " +
+          "decisions, and the full manifest. The user will leave anchored comments on lines and selections — " +
+          "answer each with `reply` (replyTo: its id) and fold real issues back into the branch.",
+      );
+    }
+    case "explain_conversation":
+      return text(
+        "Recap OUR current working conversation on showcase as one surface: a markdown part with what we set " +
+          "out to do and what was decided (with the why), a mermaid timeline/flow of the decisions, and — if " +
+          "code changed — a `walkthrough` part through the key changes with real excerpts. End with an " +
+          "'open questions' markdown section. Keep it honest: unresolved things stay marked unresolved. Wait " +
+          "for anchored feedback afterward.",
+      );
     default:
       return null;
   }

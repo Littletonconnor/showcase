@@ -48,6 +48,8 @@ import {
   type Decision,
   type DecisionProposal,
   type ManifestFile,
+  coerceCommentAnchor,
+  formatCommentAnchor,
   htmlPart,
   isAssetKind,
   isCheckpointKind,
@@ -312,6 +314,8 @@ export interface CommentWait {
 }
 
 export interface Feedback {
+  id?: string;
+  anchor?: string;
   surfaceId: string | null;
   surfaceTitle: string | null;
   text: string;
@@ -325,8 +329,11 @@ export interface Feedback {
 const sessionNotFound = (id: string) =>
   `session "${id}" not found — it may predate a server restart or have been deleted; omit the session id to start a fresh one`;
 
-// Lean comment shape attached to agent-facing responses.
+// Lean comment shape attached to agent-facing responses. `id` is the reply
+// handle (pass it as replyTo so the answer lands in the thread at the anchor);
+// `anchor` is the human-readable location ("app.ts:704 \"the quoted lines\"").
 const feedbackView = (c: Comment): Feedback => ({
+  ...(c.anchor ? { id: c.id, anchor: formatCommentAnchor(c.anchor) } : {}),
   surfaceId: c.surfaceId,
   surfaceTitle: c.surfaceTitle,
   text: c.text,
@@ -1256,9 +1263,20 @@ export function createApp({
     surface?: string;
     session?: string;
     author: string;
+    anchor?: unknown;
+    replyTo?: string;
   }): Promise<
     { comment: Comment; userFeedback?: Feedback[] } | { error: string; status: 400 | 404 }
   > {
+    // A reply inherits its parent's surface/session and anchor, so threads
+    // can't split across cards and the reply renders at the same spot.
+    let parent: Comment | null = null;
+    if (input.replyTo) {
+      parent = (await store.listComments({})).find((cm) => cm.id === input.replyTo) ?? null;
+      if (!parent) return { error: `no comment ${input.replyTo} to reply to`, status: 404 };
+      if (!input.surface && parent.surfaceId) input.surface = parent.surfaceId;
+      if (!input.session) input.session = parent.sessionId;
+    }
     // A comment attaches to a surface (a remark on that card) OR to the session
     // (a session-level chat message — `surfaceId` null). One of the two is
     // required; a surface id wins and resolves its session.
@@ -1281,6 +1299,8 @@ export function createApp({
       surfaceId,
       author: input.author,
       text: input.text.trim().slice(0, MAX_COMMENT_TEXT),
+      anchor: coerceCommentAnchor(input.anchor) ?? (parent?.anchor ? parent.anchor : undefined),
+      ...(parent ? { replyTo: parent.id } : {}),
     });
     if (!comment) return { error: "session not found", status: 404 };
     bus.broadcast({
@@ -2089,12 +2109,35 @@ export function createApp({
       surface: typeof surface === "string" ? surface : undefined,
       session: typeof body.session === "string" ? body.session : undefined,
       author: typeof body.author === "string" ? body.author : "user",
+      anchor: body.anchor,
+      replyTo: typeof body.replyTo === "string" ? body.replyTo : undefined,
     });
     if ("error" in result) return c.json({ error: result.error }, result.status);
     return c.json(
       { ...result.comment, ...(result.userFeedback && { userFeedback: result.userFeedback }) },
       201,
     );
+  });
+
+  // Thread adjudication: the user marks an anchored thread handled (or
+  // reopens it). Local state, like a review Accept — never delivered to the
+  // agent as feedback.
+  app.patch("/api/comments/:id", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body.resolved !== "boolean") {
+      return c.json({ error: 'body must include boolean "resolved"' }, 400);
+    }
+    const comment = await store.setCommentResolved(c.req.param("id"), body.resolved);
+    if (!comment) return c.json({ error: "comment not found" }, 404);
+    bus.broadcast({
+      type: "comment-created", // reuse: viewers refetch the thread on any comment event
+      id: comment.id,
+      sessionId: comment.sessionId,
+      surfaceId: comment.surfaceId,
+      seq: comment.seq,
+      author: comment.author,
+    });
+    return c.json(comment);
   });
 
   // "I'm still composing" heartbeat: the viewer pings this while a comment

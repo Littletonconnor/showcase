@@ -331,3 +331,103 @@ test("the MCP transport exposes the learn tools end to end", async () => {
   const parsed = JSON.parse(state.result.content[0].text);
   assert.equal(parsed.topics[0].topic, "Redis eviction");
 });
+
+// --- anchored comments + threads ----------------------------------------------
+
+test("anchored comments deliver with anchor + reply handle; replies thread; resolve is local", async () => {
+  const { app } = makeApp();
+  const lesson = await publishLesson(app);
+  const beatId = lesson.beats[0].surfaceId;
+
+  // Anchored user comment (the popover path).
+  const posted = await app.request(
+    "/api/comments",
+    json({
+      surface: beatId,
+      text: "why sample five and not fifty?",
+      anchor: { partIndex: 2, file: "app.ts", line: 704, quote: "const prev = ...", junk: "x" },
+    }),
+  );
+  assert.equal(posted.status, 201);
+  const root = (await posted.json()) as any;
+  assert.equal(root.anchor.partIndex, 2);
+  assert.equal(root.anchor.junk, undefined);
+
+  // Delivered once with the reply handle and a formatted anchor.
+  const wait = (await (
+    await app.request(`/api/comments?session=${lesson.sessionId}&author=user&wait=0`)
+  ).json()) as { comments: any[] };
+  assert.equal(wait.comments.length, 1);
+  assert.equal(wait.comments[0].id, root.id);
+  assert.equal(wait.comments[0].anchor.line, 704);
+
+  // The agent replies via replyTo: inherits surface + anchor, threads.
+  const replied = await app.request(
+    "/api/comments",
+    json({ replyTo: root.id, text: "five keeps eviction O(1)-ish", author: "agent" }),
+  );
+  assert.equal(replied.status, 201);
+  const reply = (await replied.json()) as any;
+  assert.equal(reply.replyTo, root.id);
+  assert.equal(reply.surfaceId, beatId);
+  assert.equal(reply.anchor.line, 704);
+
+  // Replying to a ghost comment is a clean 404.
+  const ghost = await app.request(
+    "/api/comments",
+    json({ replyTo: "nope", text: "?", author: "agent" }),
+  );
+  assert.equal(ghost.status, 404);
+
+  // Resolve flips locally and never rides the feedback channel.
+  const patched = await app.request(`/api/comments/${root.id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ resolved: true }),
+  });
+  assert.equal(patched.status, 200);
+  assert.equal(((await patched.json()) as any).resolved, true);
+  const after = (await (
+    await app.request(`/api/comments?session=${lesson.sessionId}&author=user&wait=0`)
+  ).json()) as { comments: any[] };
+  assert.equal(after.comments.length, 0);
+
+  // A malformed anchor degrades to a whole-card comment, never a reject.
+  const loose = await app.request(
+    "/api/comments",
+    json({ surface: beatId, text: "plain note", anchor: { partIndex: "x" } }),
+  );
+  assert.equal(loose.status, 201);
+  assert.equal(((await loose.json()) as any).anchor, undefined);
+});
+
+test("the MCP reply tool answers into the thread", async () => {
+  const { app } = makeApp();
+  const lesson = await publishLesson(app);
+  const posted = (await (
+    await app.request(
+      "/api/comments",
+      json({
+        surface: lesson.syllabusId,
+        text: "what does shaky mean?",
+        anchor: { partIndex: 1, quote: "1 shaky" },
+      }),
+    )
+  ).json()) as any;
+  const rpc = await app.request(
+    "/mcp",
+    json({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: "reply",
+        arguments: { replyTo: posted.id, text: "missed or unspaced answers so far" },
+      },
+    }),
+  );
+  const out = (await rpc.json()) as any;
+  assert.ok(!out.result.isError, JSON.stringify(out.result));
+  const payload = JSON.parse(out.result.content[0].text);
+  assert.equal(payload.replyTo, posted.id);
+});

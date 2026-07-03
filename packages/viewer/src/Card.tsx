@@ -23,6 +23,8 @@ import {
   surfaceLink,
 } from "./api.ts";
 import { ChartPart } from "./ChartPart.tsx";
+import { ThreadStrip } from "./ThreadStrip.tsx";
+import { threadsFor } from "./threads.ts";
 import { CheckpointPart, ExplorableLock } from "./CheckpointPart.tsx";
 import { useLearn } from "./learn.ts";
 import { CodePart } from "./CodePart.tsx";
@@ -48,16 +50,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cx } from "./cx.ts";
 import { DiffPart } from "./DiffPart.tsx";
-import {
-  BookOpen,
-  Check,
-  Copy,
-  ExternalLink,
-  Link2,
-  MoreHorizontal,
-  Send,
-  Trash2,
-} from "lucide-react";
+import { BookOpen, Check, Copy, ExternalLink, Link2, MoreHorizontal, Trash2 } from "lucide-react";
 import { ImagePart } from "./ImagePart.tsx";
 import { JsonPart } from "./JsonPart.tsx";
 import { MarkdownPart } from "./MarkdownPart.tsx";
@@ -322,64 +315,6 @@ function surfaceRef(id: string, title: string): string {
   return title.trim() ? `showcase surface ${id} "${title.trim()}"` : `showcase surface ${id}`;
 }
 
-// The card's inline reply line: one quiet input in the footer that posts an
-// author=user comment on THIS surface. This is the browser half of the loop —
-// the agent receives it exactly once via wait_for_feedback / piggyback. It
-// complements (does not replace) the copy-ref path: type here for a quick
-// note, copy the ref for a scoped revision request in the terminal.
-function CommentComposer(props: { surfaceId: string }) {
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
-  const send = async () => {
-    const trimmed = text.trim();
-    if (!trimmed || sending) return;
-    setSending(true);
-    try {
-      await api("/api/comments", {
-        method: "POST",
-        body: JSON.stringify({ surface: props.surfaceId, text: trimmed }),
-      });
-      setText("");
-      toast("Sent — the agent reads this on its next check-in");
-    } catch {
-      toast("Couldn't send the comment");
-    } finally {
-      setSending(false);
-    }
-  };
-  return (
-    <div className="flex min-w-0 flex-1 items-center gap-1">
-      <input
-        type="text"
-        value={text}
-        disabled={sending}
-        placeholder="Reply to the agent…"
-        aria-label="Comment on this surface"
-        spellCheck={false}
-        className="h-7 min-w-0 flex-1 rounded-md bg-transparent px-2 text-[12.5px] text-foreground placeholder:text-faint focus:bg-muted/40 focus:ring-1 focus:ring-brand/30 focus:outline-none"
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") void send();
-          else if (e.key === "Escape") e.currentTarget.blur();
-        }}
-      />
-      {text.trim() ? (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="text-brand"
-          aria-label="Send comment"
-          title="Send to the agent (Enter)"
-          disabled={sending}
-          onClick={() => void send()}
-        >
-          <Send />
-        </Button>
-      ) : null}
-    </div>
-  );
-}
-
 function CardIdChip(props: { id: string; title: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -418,6 +353,13 @@ export function Card(props: { surface: Surface }) {
   // Checkpoint attempts drive explorable gating, so a committed attempt
   // re-renders the card and mounts the unlocked iframe.
   const learnAttempts = useLearn((s) => s.attempts);
+  // Anchored threads, grouped by the part they point at — rendered in place
+  // under that part (see ThreadStrip).
+  const comments = useBoard((s) => s.comments);
+  const threadsByPart = useMemo(
+    () => threadsFor(comments, props.surface.id),
+    [comments, props.surface.id],
+  );
 
   const surfaceId = props.surface.id;
   // This surface's theme — its own if set, else the global board theme. Drives
@@ -594,77 +536,89 @@ export function Card(props: { surface: Surface }) {
           comment composer can layer over them. */}
         <div className="relative">
           {props.surface.parts.map((part, i) => {
-            switch (part.kind) {
-              case "html": {
-                // Explorable gating (learn mode): the lesson renderer places a
-                // gate checkpoint immediately before its explorable html part.
-                // Until that checkpoint records an attempt, the iframe never
-                // mounts — a locked placeholder stands in (P4: predict before
-                // you manipulate).
-                const prev = props.surface.parts[i - 1];
-                if (
-                  prev?.kind === "checkpoint" &&
-                  prev.checkpoint.gate &&
-                  !learnAttempts[prev.checkpoint.id]
-                ) {
-                  return <ExplorableLock key={i} gateId={prev.checkpoint.id} />;
+            const partEl = (() => {
+              switch (part.kind) {
+                case "html": {
+                  // Explorable gating (learn mode): the lesson renderer places a
+                  // gate checkpoint immediately before its explorable html part.
+                  // Until that checkpoint records an attempt, the iframe never
+                  // mounts — a locked placeholder stands in (P4: predict before
+                  // you manipulate).
+                  const prev = props.surface.parts[i - 1];
+                  if (
+                    prev?.kind === "checkpoint" &&
+                    prev.checkpoint.gate &&
+                    !learnAttempts[prev.checkpoint.id]
+                  ) {
+                    return <ExplorableLock key={i} gateId={prev.checkpoint.id} />;
+                  }
+                  const exportDoc = exportHtmlDocs?.get(i);
+                  return (
+                    <iframe
+                      key={i}
+                      ref={htmlFrameRef(i)}
+                      className="block h-[120px] w-full border-0 border-t-[0.5px] border-border bg-transparent"
+                      sandbox="allow-scripts"
+                      title={
+                        props.surface.parts.length > 1
+                          ? `${props.surface.title} (part ${i + 1})`
+                          : props.surface.title
+                      }
+                      {...(exportDoc !== undefined
+                        ? { srcDoc: exportDoc }
+                        : {
+                            src: appPath(
+                              `/s/${surfaceId}?part=${i}&ver=${props.surface.version}&cb=${props.surface.version}&theme=${surfaceTheme}&mode=${mode}`,
+                            ),
+                          })}
+                    ></iframe>
+                  );
                 }
-                const exportDoc = exportHtmlDocs?.get(i);
-                return (
-                  <iframe
-                    key={i}
-                    ref={htmlFrameRef(i)}
-                    className="block h-[120px] w-full border-0 border-t-[0.5px] border-border bg-transparent"
-                    sandbox="allow-scripts"
-                    title={
-                      props.surface.parts.length > 1
-                        ? `${props.surface.title} (part ${i + 1})`
-                        : props.surface.title
-                    }
-                    {...(exportDoc !== undefined
-                      ? { srcDoc: exportDoc }
-                      : {
-                          src: appPath(
-                            `/s/${surfaceId}?part=${i}&ver=${props.surface.version}&cb=${props.surface.version}&theme=${surfaceTheme}&mode=${mode}`,
-                          ),
-                        })}
-                  ></iframe>
-                );
+                case "markdown":
+                  return <MarkdownPart key={i} part={part as MarkdownPartData} />;
+                case "mermaid":
+                  return <MermaidPart key={i} part={part as MermaidPartData} />;
+                case "diff":
+                  return <DiffPart key={i} part={part as DiffPartData} />;
+                case "image":
+                  return <ImagePart key={i} part={part as ImagePartData} />;
+                case "trace":
+                  return <TracePart key={i} part={part as TracePartData} />;
+                case "terminal":
+                  return <TerminalPart key={i} part={part as TerminalPartData} />;
+                case "json":
+                  return <JsonPart key={i} part={part as JsonPartData} />;
+                case "code":
+                  return <CodePart key={i} part={part as CodePartData} />;
+                case "chart":
+                  return <ChartPart key={i} part={part as ChartPartData} />;
+                case "checkpoint":
+                  return (
+                    <CheckpointPart key={i} surfaceId={surfaceId} checkpoint={part.checkpoint} />
+                  );
+                case "walkthrough":
+                  return (
+                    <WalkthroughPart key={i} surfaceId={surfaceId} partIndex={i} part={part} />
+                  );
+                default:
+                  return (
+                    <div
+                      className="border-t-[0.5px] border-border px-3.5 py-2.5 text-xs text-faint"
+                      key={i}
+                    >
+                      Can&rsquo;t show this part — refresh showcase to update the viewer.
+                    </div>
+                  );
               }
-              case "markdown":
-                return <MarkdownPart key={i} part={part as MarkdownPartData} />;
-              case "mermaid":
-                return <MermaidPart key={i} part={part as MermaidPartData} />;
-              case "diff":
-                return <DiffPart key={i} part={part as DiffPartData} />;
-              case "image":
-                return <ImagePart key={i} part={part as ImagePartData} />;
-              case "trace":
-                return <TracePart key={i} part={part as TracePartData} />;
-              case "terminal":
-                return <TerminalPart key={i} part={part as TerminalPartData} />;
-              case "json":
-                return <JsonPart key={i} part={part as JsonPartData} />;
-              case "code":
-                return <CodePart key={i} part={part as CodePartData} />;
-              case "chart":
-                return <ChartPart key={i} part={part as ChartPartData} />;
-              case "checkpoint":
-                return (
-                  <CheckpointPart key={i} surfaceId={surfaceId} checkpoint={part.checkpoint} />
-                );
-              case "walkthrough":
-                return <WalkthroughPart key={i} surfaceId={surfaceId} part={part} />;
-              default:
-                return (
-                  <div
-                    className="border-t-[0.5px] border-border px-3.5 py-2.5 text-xs text-faint"
-                    key={i}
-                  >
-                    Can&rsquo;t show this part — refresh showcase to update the viewer.
-                  </div>
-                );
-            }
+            })();
+            // data-part-anchor lets the sandbox-selection bridge resolve which
+            // part a selection came from (frame -> closest wrapper).
+            return (
+              <div key={i} data-part-anchor data-part-index={i}>
+                {partEl}
+                <ThreadStrip threads={threadsByPart.get(i) ?? []} />
+              </div>
+            );
           })}
         </div>
         {/* Footer toolbar: the reply line (the browser half of the comment
@@ -677,7 +631,9 @@ export function Card(props: { surface: Surface }) {
         >
           <TooltipProvider delayDuration={300}>
             {!isReadonly() && !exportBundle() ? (
-              <CommentComposer surfaceId={surfaceId} />
+              <span className="flex-1 pl-1.5 text-[11px] text-faint select-none">
+                Select text (or click a line number) to comment
+              </span>
             ) : (
               <span className="flex-1" />
             )}

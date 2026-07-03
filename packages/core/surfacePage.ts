@@ -220,6 +220,26 @@ document.addEventListener('click', function (e) {
   var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
   if (a && /^https?:/.test(a.href)) { e.preventDefault(); window.openLink(a.href); return; }
 });
+// Anchored comments: report a committed text selection (and its position) to
+// the host, which shows the comment popover in the trusted origin. Only a
+// capped text QUOTE and rect numbers cross the boundary — the host treats
+// them as data (rendered as text, validated server-side like any anchor).
+document.addEventListener('mouseup', function () {
+  setTimeout(function () {
+    var sel = window.getSelection && window.getSelection();
+    if (!sel || sel.isCollapsed || !String(sel).trim()) {
+      parent.postMessage({ __showcase: true, type: 'selection-cleared' }, '*');
+      return;
+    }
+    var rect = sel.getRangeAt(0).getBoundingClientRect();
+    parent.postMessage({
+      __showcase: true,
+      type: 'text-selected',
+      text: String(sel).replace(/\\s+/g, ' ').trim().slice(0, 300),
+      rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
+    }, '*');
+  }, 0);
+});
 // Cmd+Option+Up/Down switches sessions in the sidebar, but keydowns fire in
 // whichever document holds focus — once the user clicks into a snippet, this
 // sandboxed iframe swallows them. Forward just that combo to the host.

@@ -418,6 +418,29 @@ server.registerTool(
 );
 
 server.registerTool(
+  "reply",
+  {
+    description: MCP_TOOL_DESCRIPTIONS.reply,
+    inputSchema: STDIO_MCP_INPUT_SCHEMAS.reply,
+  },
+  async ({ replyTo, text: replyText, surface }) => {
+    const created = await withSession(undefined, (session) =>
+      api("/api/comments", {
+        method: "POST",
+        body: JSON.stringify({
+          replyTo,
+          text: replyText,
+          surface,
+          session: replyTo || surface ? undefined : session,
+          author: AGENT,
+        }),
+      }).then(JSON.parse),
+    );
+    return text(created);
+  },
+);
+
+server.registerTool(
   "list_surfaces",
   { description: MCP_TOOL_DESCRIPTIONS.listSurfacesStdio, inputSchema: {} },
   async () => {

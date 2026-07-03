@@ -382,30 +382,83 @@ test("a decision review renders its brief and burns down on Accept", async ({ pa
   await expect(page.getByText("1 / 2 accepted")).toBeVisible();
 });
 
-test("the card's reply line posts an author=user comment on that surface", async ({
+test("an anchored popover comment posts author=user with its anchor, and the thread renders", async ({
   page,
   request,
 }) => {
-  const { surfaceId } = await seedSurface(request);
-  await page.goto(`/?surface=${surfaceId}`);
-  const card = page.locator(`.card[data-id="${surfaceId}"]`);
+  // The footer composer is gone: commenting is the plannotator-style popover,
+  // anchored to a line (walkthrough gutter) or a text selection (sandbox
+  // bridge). This oracle drives the line path end to end.
+  const session = await (
+    await request.post("/api/sessions", { data: { agent: "e2e", title: "anchored comments" } })
+  ).json();
+  const surface = await (
+    await request.post("/api/surfaces", {
+      data: {
+        title: "Anchor oracle",
+        session: session.id,
+        parts: [
+          {
+            kind: "walkthrough",
+            title: "One step",
+            steps: [
+              {
+                title: "The hop",
+                body: "Look at this.",
+                file: "src/thing.ts",
+                code: "alpha\nbeta\ngamma",
+                lineStart: 40,
+                highlight: [[41, 41]],
+              },
+            ],
+          },
+        ],
+      },
+    })
+  ).json();
+  await page.goto(`/?surface=${surface.id}`);
+  const card = page.locator(`.card[data-id="${surface.id}"]`);
   await expect(card).toBeVisible();
 
-  const input = card.getByRole("textbox", { name: "Comment on this surface" });
-  await input.fill("tighten the copy in the header");
-  await input.press("Enter");
+  // Click line 41's gutter -> the popover opens at that line.
+  await card.locator('[data-line="41"] button').click();
+  const popover = page.locator("[data-comment-popover]");
+  await expect(popover).toBeVisible();
+  await expect(popover).toContainText("src/thing.ts line 41");
+  await popover.getByRole("textbox").fill("why beta and not alpha?");
+  await popover.getByRole("textbox").press("Enter");
+  await expect(popover).toHaveCount(0);
 
+  // The comment landed author=user WITH the anchor...
+  let commentId = "";
   await expect
     .poll(async () => {
-      const all = await (await request.get(`/api/comments?surface=${surfaceId}`)).json();
-      return all.comments.some(
-        (c: { author: string; text: string }) =>
-          c.author === "user" && c.text === "tighten the copy in the header",
+      const all = await (await request.get(`/api/comments?surface=${surface.id}`)).json();
+      const hit = all.comments.find(
+        (c: { author: string; text: string; anchor?: { line?: number; file?: string } }) =>
+          c.author === "user" && c.text === "why beta and not alpha?",
       );
+      if (!hit?.anchor) return null;
+      commentId = hit.id;
+      return `${hit.anchor.file}:${hit.anchor.line}`;
     })
-    .toBe(true);
-  // sent → the line clears for the next note
-  await expect(input).toHaveValue("");
+    .toBe("src/thing.ts:41");
+
+  // ...and the thread renders in place under the part.
+  const thread = card.locator("[data-thread]");
+  await expect(thread).toBeVisible();
+  await expect(thread).toContainText("why beta and not alpha?");
+
+  // The agent answers with replyTo -> the reply renders IN the thread.
+  const reply = await request.post("/api/comments", {
+    data: { replyTo: commentId, text: "beta owns the retry loop", author: "agent" },
+  });
+  expect(reply.status()).toBe(201);
+  await expect(thread).toContainText("beta owns the retry loop");
+
+  // Resolve collapses it to the quiet row.
+  await thread.getByRole("button", { name: "Resolve thread" }).click();
+  await expect(card.locator("[data-thread-resolved]")).toBeVisible();
 });
 
 test("pushing back on a decision posts a ref-scoped user comment", async ({ page, request }) => {

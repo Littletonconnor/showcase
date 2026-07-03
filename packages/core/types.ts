@@ -454,6 +454,20 @@ export interface CreateReviewInput {
   warnings?: string[];
 }
 
+// Where on a surface a comment points — the plannotator-style anchor. A
+// comment without one is a whole-card remark (legacy shape, still valid).
+// `partIndex` locates the part; the rest is per-kind precision: a quoted text
+// selection (any sandboxed part — markdown, diff, code, html), a line number
+// (walkthrough/code panes), a file (multi-file diffs), a walkthrough step.
+// Everything is short bounded DATA: quotes are capped and render as text.
+export interface CommentAnchor {
+  partIndex: number;
+  quote?: string;
+  line?: number;
+  file?: string;
+  step?: number;
+}
+
 export interface Comment {
   id: string;
   seq: number;
@@ -463,6 +477,14 @@ export interface Comment {
   author: string;
   text: string;
   createdAt: string;
+  // Anchored feedback (see CommentAnchor). Absent on whole-card comments.
+  anchor?: CommentAnchor;
+  // Threading: the comment this one replies to. An agent reply carries the id
+  // of the user's anchored comment, so the thread renders at the anchor.
+  replyTo?: string;
+  // Local adjudication: the user marked this thread handled. Lives on the
+  // ROOT comment of a thread.
+  resolved?: boolean;
 }
 
 // An uploaded blob (image, trace file, arbitrary file) the agent pushes once and
@@ -539,6 +561,39 @@ export interface CreateCommentInput {
   surfaceId?: string;
   author: string;
   text: string;
+  anchor?: CommentAnchor;
+  replyTo?: string;
+}
+
+// Validate/normalize an anchor from request input: bounded fields only, fresh
+// object out, undefined for anything malformed (an invalid anchor degrades to
+// a whole-card comment rather than rejecting the text with it).
+export function coerceCommentAnchor(raw: unknown): CommentAnchor | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const a = raw as Record<string, unknown>;
+  if (typeof a.partIndex !== "number" || !Number.isInteger(a.partIndex) || a.partIndex < 0) {
+    return undefined;
+  }
+  const out: CommentAnchor = { partIndex: a.partIndex };
+  if (typeof a.quote === "string" && a.quote.trim()) {
+    out.quote = a.quote.replace(/\s+/g, " ").trim().slice(0, 300);
+  }
+  if (typeof a.line === "number" && Number.isInteger(a.line) && a.line >= 1) out.line = a.line;
+  if (typeof a.file === "string" && a.file.trim()) out.file = a.file.trim().slice(0, 300);
+  if (typeof a.step === "number" && Number.isInteger(a.step) && a.step >= 0) out.step = a.step;
+  return out;
+}
+
+// The anchor as the agent reads it in a feedback line: "app.ts:704", "step 3",
+// or the quoted selection.
+export function formatCommentAnchor(a: CommentAnchor): string {
+  const loc = [
+    ...(a.file ? [a.file] : []),
+    ...(a.line !== undefined ? [`line ${a.line}`] : []),
+    ...(a.step !== undefined ? [`step ${a.step + 1}`] : []),
+  ].join(" ");
+  const quote = a.quote ? `"${a.quote.length > 120 ? a.quote.slice(0, 119) + "…" : a.quote}"` : "";
+  return [loc, quote].filter(Boolean).join(" ") || `part ${a.partIndex + 1}`;
 }
 
 export interface CommentQuery {
@@ -591,6 +646,9 @@ export interface Store {
 
   listComments(query: CommentQuery): Promise<Comment[]>;
   createComment(input: CreateCommentInput): Promise<Comment | null>;
+  // Flip the local resolved flag on a thread's root comment. Returns the
+  // updated comment, or null when the id is unknown.
+  setCommentResolved(id: string, resolved: boolean): Promise<Comment | null>;
 
   // The decision-queue review for a session (one per session; replaces it on
   // re-publish). putReview returns null only if the session is missing.

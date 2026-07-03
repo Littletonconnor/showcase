@@ -62,6 +62,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "@/components/ui/sonner";
+import { CommentPopover } from "./CommentPopover.tsx";
 import { renderNotes } from "./notes.ts";
 import { ConnectModal, Onboard } from "./Onboarding.tsx";
 import { ReadingView } from "./ReadingView.tsx";
@@ -334,6 +335,7 @@ export default function App() {
           <SessionView />
         </main>
         <Toaster />
+        <CommentPopover />
         <NewSurfacePill target={pillTarget} />
       </>
     );
@@ -449,6 +451,7 @@ export default function App() {
       {connectOpen ? <ConnectModal onClose={() => setConnectOpen(false)} /> : null}
       <ReadingView />
       <Toaster />
+      <CommentPopover />
       <NewSurfacePill target={pillTarget} />
     </>
   );
