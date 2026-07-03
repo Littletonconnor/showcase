@@ -38,7 +38,8 @@ export type SurfacePartKind =
   | "json"
   | "code"
   | "chart"
-  | "checkpoint";
+  | "checkpoint"
+  | "walkthrough";
 
 export interface HtmlPart {
   kind: "html";
@@ -253,6 +254,49 @@ export interface CheckpointPart {
   checkpoint: Checkpoint;
 }
 
+// --- the code-walkthrough part (the codebase-explainer flagship) ---
+// A step player the trusted viewer renders: each step is one hop of a call
+// path / data flow, pairing an annotation with a REAL code excerpt whose
+// relevant lines highlight (the rest dim), plus an optional shared mermaid
+// diagram whose active node tracks the step. Like json/chart/checkpoint it is
+// DATA, not markup: the viewer renders annotations as text nodes and code as
+// shiki TOKENS (never HTML strings), so nothing here can execute in the
+// trusted origin. Prev/next, clickable step dots, and arrow keys drive it; an
+// "I'm lost here" affordance posts a confusion_flag telemetry event anchored
+// to the exact step, so the agent knows where the explanation lost the reader.
+
+export interface WalkthroughStep {
+  // One line naming the hop, e.g. "The cursor lock serializes readers".
+  title: string;
+  // The annotation for this step — why this code matters, what to notice.
+  // Plain text with `backtick` spans, rendered as text nodes.
+  body: string;
+  // Path label for the excerpt, e.g. "packages/server/app.ts".
+  file?: string;
+  // The excerpt shown for this step (real source, kept tight).
+  code?: string;
+  // Shiki language id; omit or "text" for plain monospace.
+  language?: string;
+  // 1-based line number the excerpt starts at, so numbering matches the file.
+  lineStart?: number;
+  // ABSOLUTE [from, to] line ranges (inclusive) to emphasize; everything else
+  // in the excerpt dims. Omit to show the excerpt undimmed.
+  highlight?: [number, number][];
+  // Node id in the shared `mermaid` diagram to mark active for this step
+  // (rendered with the accent class).
+  node?: string;
+}
+
+export interface WalkthroughPart {
+  kind: "walkthrough";
+  // Heading above the player, e.g. "How a comment reaches the agent".
+  title?: string;
+  // Optional shared diagram (flowchart/sequence source). Steps reference its
+  // node ids via `node`; the active node renders accented.
+  mermaid?: string;
+  steps: WalkthroughStep[];
+}
+
 export type SurfacePart =
   | HtmlPart
   | DiffPart
@@ -264,7 +308,8 @@ export type SurfacePart =
   | JsonPart
   | CodePart
   | ChartPart
-  | CheckpointPart;
+  | CheckpointPart
+  | WalkthroughPart;
 
 // A short, colored chip on a surface's header. Deliberately generic (not
 // PR-specific), but the driver is review **finding cards**: `tone` picks the
@@ -656,6 +701,8 @@ export function partsByteLength(parts: SurfacePart[]): number {
         bytes(p.caption);
     } else if (p.kind === "checkpoint") {
       n += bytes(JSON.stringify(p.checkpoint));
+    } else if (p.kind === "walkthrough") {
+      n += bytes(JSON.stringify(p.steps)) + bytes(p.title) + bytes(p.mermaid);
     } else {
       n += bytes(p.assetId) + bytes(p.title);
       for (const s of p.steps ?? []) {

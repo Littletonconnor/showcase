@@ -83,6 +83,7 @@ const BEAT_PART_KINDS = new Set([
   "image",
   "json",
   "terminal",
+  "walkthrough",
 ]);
 
 const isObj = (v: unknown): v is Record<string, unknown> =>

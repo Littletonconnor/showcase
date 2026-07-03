@@ -85,3 +85,26 @@ export async function loadLangs(langs: string[]): Promise<void> {
   const bundle = bundledLanguages as Record<string, unknown>;
   await Promise.allSettled(langs.map(async (l) => hl.loadLanguage(bundle[l] as never)));
 }
+
+// A themed-token line: what the walkthrough part renders as React spans. Kept
+// as plain data (content + color) so agent code NEVER becomes an HTML string
+// in the trusted origin — the one shiki output shape that is C1-safe to render
+// outside the sandbox.
+export type TokenLine = { content: string; color?: string }[];
+
+// Synchronous tokenize for ONE theme (the caller picks light/dark from the
+// resolved mode and re-tokenizes on a scheme flip). Returns null until the
+// highlighter + language are loaded, or on an unknown language — callers fall
+// back to plain text lines and re-render after loadLangs() resolves.
+export function tokenize(code: string, lang: string, dark: boolean): TokenLine[] | null {
+  if (!highlighter || !lang) return null;
+  try {
+    const { tokens } = highlighter.codeToTokens(code, {
+      lang: lang as never,
+      theme: dark ? currentThemes.dark : currentThemes.light,
+    });
+    return tokens.map((line) => line.map((t) => ({ content: t.content, color: t.color })));
+  } catch {
+    return null;
+  }
+}

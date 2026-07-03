@@ -345,6 +345,34 @@ const strictCheckpointPart = z
   }) as unknown as z.ZodType<SurfacePart, z.ZodTypeDef, any>;
 const looseCheckpointPart = strictCheckpointPart;
 
+// A walkthrough part is a step-through code explainer (see WalkthroughPart in
+// types.ts) — pure data the trusted viewer renders as a step player. Strict
+// and loose share one schema (an assessment-adjacent teaching artifact has no
+// safe partial coercion, same reasoning as checkpoints).
+const walkthroughStepSchema = z.object({
+  title: z.string().min(1).max(200),
+  body: z.string().min(1).max(2000),
+  file: z.string().max(300).optional(),
+  code: z.string().optional(),
+  language: z.string().optional(),
+  lineStart: z.number().int().min(1).optional(),
+  highlight: z
+    .array(z.tuple([z.number().int().min(1), z.number().int().min(1)]))
+    .max(8)
+    .optional(),
+  node: z.string().max(80).optional(),
+});
+const strictWalkthroughPart = z.object({
+  kind: z.literal("walkthrough"),
+  title: z.string().max(200).optional(),
+  mermaid: z.string().optional(),
+  steps: z
+    .array(walkthroughStepSchema)
+    .min(1, "walkthrough part requires at least one step")
+    .max(24),
+}) as unknown as z.ZodType<SurfacePart, z.ZodTypeDef, any>;
+const looseWalkthroughPart = strictWalkthroughPart;
+
 const looseSurfacePart = z.union([
   looseHtmlPart,
   looseMarkdownPart,
@@ -357,6 +385,7 @@ const looseSurfacePart = z.union([
   looseCodePart,
   looseChartPart,
   looseCheckpointPart,
+  looseWalkthroughPart,
 ]);
 
 // Runtime SurfacePart parser shared by REST and MCP. REST uses strict mode to
@@ -433,6 +462,8 @@ function schemaForKind(kind: unknown): z.ZodType<SurfacePart, z.ZodTypeDef, any>
       return strictChartPart;
     case "checkpoint":
       return strictCheckpointPart;
+    case "walkthrough":
+      return strictWalkthroughPart;
     default:
       return null;
   }

@@ -50,7 +50,13 @@ X; which package does it live in and why"), because that is the actual job.
 ## Worked examples are walkthroughs
 
 A worked example here is a traced path: request in, through middleware, into
-the store, back out, with the 3-4 code excerpts that matter. Completion
+the store, back out. With showcase, use a `walkthrough` part (in the beat's
+`workedExample` slot): one step per hop, each with the real excerpt,
+`lineStart` matching the file, and `highlight` on the 1-6 lines the annotation
+discusses; an optional shared mermaid diagram whose `node` tracks the step.
+The reader steps through with arrow keys and can flag "I'm lost here" on the
+exact hop, which reaches you as a `[confused]` line. Without showcase, deliver
+the same thing as numbered hops with tight quoted excerpts. Completion
 checkpoints blank ONE hop of the path.
 
 ## Explorables

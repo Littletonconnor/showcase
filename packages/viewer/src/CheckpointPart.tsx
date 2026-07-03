@@ -46,8 +46,9 @@ function calibrationLine(confidence: number, correct: boolean | undefined): stri
 }
 
 // Prompt/reveal text renders as text nodes with `code` spans for backtick
-// runs — data-to-text only, no HTML path.
-function InlineText(props: { text: string; className?: string }) {
+// runs — data-to-text only, no HTML path. Exported for the walkthrough part's
+// annotations, which need the same data-to-text rendering.
+export function InlineText(props: { text: string; className?: string }) {
   const chunks = useMemo(() => props.text.split(/(`[^`]+`)/g), [props.text]);
   return (
     <span className={cx("whitespace-pre-wrap", props.className)}>

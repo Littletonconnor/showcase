@@ -88,6 +88,24 @@ a `kind`:
   Like image/json it is data, not markup — sent
   as values, rendered with escaped text nodes, so no sandbox is needed. Reach for
   it for metrics, distributions, and before/after comparisons.
+- **`walkthrough`** — a step-through code explainer the viewer renders as a
+  native step player: prev/next buttons, clickable step dots, arrow-key
+  navigation, an annotation panel, and a code pane where each step's
+  `highlight` line ranges glow while the rest of the excerpt dims. THE part for
+  "explain how X works in this codebase": READ the code first, then walk the
+  call path hop by hop. `steps` (3-12): each is `{title, body, file, code,
+language, lineStart, highlight, node}` — `body` is the annotation (plain text
+  with `backtick` spans), `code` is the REAL excerpt kept tight (10-25 lines),
+  `lineStart` keeps the numbering matching the file, `highlight` is absolute
+  `[[from,to]]` ranges. An optional top-level `mermaid` diagram is shared
+  across steps; each step's `node` marks the active node (accent-styled), so
+  the map and the code move together. The reader can flag "I'm lost here" on
+  any step — it reaches you as a `[confused]` feedback line naming the exact
+  step, so wait for feedback after publishing and clarify what lost them.
+  Like json/chart it is data end to end (annotations render as text nodes,
+  code as highlighter tokens), so no sandbox is needed. Pair it with a closing
+  `checkpoint` part when the reader is trying to LEARN the mechanism, not just
+  see it.
 
 For an issue/PR/CI tree, status board, or stepped deck, reach for an `html`
 part with a kit (see Kits below) rather than a dedicated part kind.

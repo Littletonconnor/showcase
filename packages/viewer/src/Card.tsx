@@ -26,6 +26,7 @@ import { ChartPart } from "./ChartPart.tsx";
 import { CheckpointPart, ExplorableLock } from "./CheckpointPart.tsx";
 import { useLearn } from "./learn.ts";
 import { CodePart } from "./CodePart.tsx";
+import { WalkthroughPart } from "./WalkthroughPart.tsx";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -652,6 +653,8 @@ export function Card(props: { surface: Surface }) {
                 return (
                   <CheckpointPart key={i} surfaceId={surfaceId} checkpoint={part.checkpoint} />
                 );
+              case "walkthrough":
+                return <WalkthroughPart key={i} surfaceId={surfaceId} part={part} />;
               default:
                 return (
                   <div

@@ -12,7 +12,12 @@ export const MCP_INSTRUCTIONS =
   "prose the viewer renders with consistent typography, a `mermaid` part is diagram source the viewer " +
   "renders to an SVG (flowchart, sequence, ERD, …), a `diff` part is a patch the viewer renders as " +
   "a syntax-highlighted split/unified diff. Combine them — e.g. a markdown rationale above a diff part — " +
-  "in one card. publish_surface is the general tool; publish_snippet is " +
+  "in one card. CODEBASE EXPLAINERS: when asked how something works in a repo ('explain the auth flow', " +
+  "'how does a request get here?'), READ the code first, then publish a `walkthrough` part — a step " +
+  "player that walks the call path hop by hop with real excerpts, per-step line highlighting, and an " +
+  "optionally synced diagram — instead of a wall of markdown. Pair it with a closing `checkpoint` part " +
+  "when the user is trying to LEARN (or use publish_lesson for a full lesson). " +
+  "publish_surface is the general tool; publish_snippet is " +
   "sugar for a single html part. FOR A CODE REVIEW: call publish_decisions ONCE. Do the analysis " +
   "with your `code-review` skill first, then hand over a plain-English `brief` (≤4 sentences, no code " +
   "identifiers — for anyone), a `verdict`, a risk-ranked `decisions[]` array (ONE decision per thing " +
@@ -123,6 +128,15 @@ const d = {
   partCode: "code part: the source text, shiki-highlighted",
   partCodeLanguage: "code part: shiki language id (inferred from `title` when omitted)",
   partCodeLineStart: "code part: 1-based line number the excerpt starts at",
+  partWalkthrough:
+    "walkthrough part: a step-through code explainer — THE part for 'explain how X works in this " +
+    "codebase'. The viewer renders a step player: prev/next + arrow keys + clickable step dots, an " +
+    "annotation panel, a code pane where each step's `highlight` line ranges glow while the rest dim, " +
+    "and an optional shared `mermaid` diagram whose node (per-step `node`) tracks the step. Each step " +
+    "= ONE hop of the call path: {title, body (the annotation — why this code matters), file (path " +
+    "label), code (the REAL excerpt, kept tight: 10-25 lines), language, lineStart (1-based, so " +
+    "numbering matches the file), highlight ([[from,to]] ABSOLUTE line ranges), node}. 3-12 steps. " +
+    "A reader can flag 'I'm lost here' on any step; it reaches you as a [confused] line naming the step.",
   partCheckpoint:
     "checkpoint part: a learn-mode assessment the viewer renders interactively (see publish_lesson). " +
     "{id, conceptId, kind: predict|mcq|completion|explain|trace|apply, prompt, code?, options?, " +
@@ -224,6 +238,7 @@ const MCP_PART_JSON_SCHEMA = {
         "chart",
         "json",
         "code",
+        "walkthrough",
       ],
     },
     html: { type: "string", description: d.partHtml },
@@ -254,7 +269,11 @@ const MCP_PART_JSON_SCHEMA = {
     cols: { type: "number", description: d.terminalCols },
     steps: {
       type: "array",
-      description: d.traceSteps,
+      description: `trace part: ${d.traceSteps}. ${d.partWalkthrough}`,
+      // Two step shapes share this key: a trace step ({label, kind?, detail?,
+      // ts?}) and a walkthrough step ({title, body, file?, code?, language?,
+      // lineStart?, highlight?, node?}). Kept permissive here so schema-
+      // enforcing clients can emit both; the server validates strictly per kind.
       items: {
         type: "object",
         properties: {
@@ -262,8 +281,19 @@ const MCP_PART_JSON_SCHEMA = {
           kind: { type: "string", description: d.traceKind },
           detail: { type: "string", description: d.traceDetail },
           ts: { type: "string", description: d.traceTs },
+          title: { type: "string", description: "walkthrough step: one line naming the hop" },
+          body: { type: "string", description: "walkthrough step: the annotation" },
+          file: { type: "string", description: "walkthrough step: path label" },
+          code: { type: "string", description: "walkthrough step: the real excerpt" },
+          language: { type: "string" },
+          lineStart: { type: "number" },
+          highlight: {
+            type: "array",
+            items: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2 },
+            description: "walkthrough step: absolute [from,to] line ranges to emphasize",
+          },
+          node: { type: "string", description: "walkthrough step: mermaid node id to mark active" },
         },
-        required: ["label"],
       },
     },
     chartType: {
@@ -1259,6 +1289,20 @@ const traceStepSchema = z.object({
   ts: z.string().optional().describe(d.traceTs),
 });
 
+const walkthroughStepSchema = z.object({
+  title: z.string().describe("one line naming the hop"),
+  body: z.string().describe("the annotation — why this code matters, what to notice"),
+  file: z.string().optional().describe("path label, e.g. packages/server/app.ts"),
+  code: z.string().optional().describe("the REAL excerpt for this step, kept tight"),
+  language: z.string().optional(),
+  lineStart: z.number().optional().describe("1-based, so numbering matches the file"),
+  highlight: z
+    .array(z.tuple([z.number(), z.number()]))
+    .optional()
+    .describe("absolute [from,to] line ranges to emphasize; the rest dims"),
+  node: z.string().optional().describe("mermaid node id to mark active for this step"),
+});
+
 const mcpPartSchema = z
   .object({
     // Must cover every kind the server accepts: the SDK enforces this schema on
@@ -1276,6 +1320,7 @@ const mcpPartSchema = z
       "json",
       "code",
       "checkpoint",
+      "walkthrough",
     ]),
     html: z.string().optional().describe(d.partHtml),
     kits: z.array(z.string()).optional().describe(d.partKits),
@@ -1288,7 +1333,12 @@ const mcpPartSchema = z
     alt: z.string().optional().describe(d.imageAlt),
     caption: z.string().optional().describe(d.imageCaption),
     title: z.string().optional().describe(d.traceTitle),
-    steps: z.array(traceStepSchema).optional().describe(d.traceSteps),
+    // Shared by trace parts (trace steps) and walkthrough parts (walkthrough
+    // steps) — the server validates strictly per kind.
+    steps: z
+      .array(z.union([traceStepSchema, walkthroughStepSchema]))
+      .optional()
+      .describe(`trace: ${d.traceSteps}. walkthrough: ${d.partWalkthrough}`),
     text: z.string().optional().describe(d.terminalText),
     cols: z.number().optional().describe(d.terminalCols),
     chartType: z
@@ -1318,7 +1368,9 @@ const mcpPartSchema = z
       "{kind:'image',assetId} (from upload_asset); trace {kind:'trace',steps} and/or {kind:'trace',assetId}; " +
       "terminal {kind:'terminal',text} (monospace output; ANSI SGR colors rendered); chart " +
       "{kind:'chart',chartType,data,x,y} (native chart); json {kind:'json',data} (collapsible tree); " +
-      "code {kind:'code',code,language?} (shiki-highlighted source); checkpoint " +
+      "code {kind:'code',code,language?} (shiki-highlighted source); walkthrough " +
+      "{kind:'walkthrough',title?,mermaid?,steps} (a step-through code explainer — THE part for " +
+      "'explain how X works in this codebase'); checkpoint " +
       "{kind:'checkpoint',checkpoint} (a learn-mode assessment — prefer publish_lesson/update_lesson " +
       "over hand-building these)",
   );

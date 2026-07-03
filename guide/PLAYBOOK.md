@@ -221,6 +221,40 @@ Publish ONE surface that combines:
 
 **Make each step earn its place** — one idea per step, building toward the whole. Lead with the question or the surprise; reveal the mechanism beat by beat. For a UI/diagram, pair the `animate` html with an `image` or `mermaid` part of what you're walking through. (`showcase demo` seeds a live example.)
 
+## Recipe: interactive codebase explainer (the walkthrough part)
+
+When the user asks how something works in a repo ("explain the auth flow",
+"how does a request end up here?", "what happens when X?"), do NOT answer with
+a wall of markdown. Read the code, then publish a surface shaped like this:
+
+1. **Read first.** Trace the actual call path in the source. The walkthrough's
+   value is exactly the value of this reading; never paraphrase code you can
+   quote.
+2. **One markdown part** (2-3 sentences): what question this answers and the
+   one-line answer.
+3. **One `walkthrough` part**: 3-12 steps, one per hop of the path.
+   - Per step: `title` (the hop), `body` (why this code matters, what to
+     notice), `file` + `code` (the REAL excerpt, 10-25 lines) + `language` +
+     `lineStart` (so numbering matches the file), `highlight` (absolute
+     `[[from,to]]` ranges; the rest of the excerpt dims).
+   - Optional top-level `mermaid`: one flowchart of the whole path, node ids
+     referenced by each step's `node` so the active box tracks the step.
+   - The viewer gives the reader prev/next, clickable dots, and arrow keys.
+4. **Optionally one `checkpoint` part** at the end (an mcq or trace with
+   misconception-tagged distractors) when the user is trying to LEARN the
+   mechanism. For a full teaching arc, use publish_lesson instead; walkthrough
+   parts also slot into lesson beats as `model`/`workedExample` evidence.
+5. **Wait for feedback.** The player has an "I'm lost here" button; it arrives
+   as a `[confused]` line naming the exact step (e.g.
+   `[confused] the learner flagged confusion at "How a comment reaches the
+agent step 3: the cursor lock"`). Treat that as a scoped revision request:
+   clarify THAT step with update_surface (smaller hop, plainer annotation, or
+   an extra intermediate step), not the whole card.
+
+Quality bar: excerpts must be real (correct paths and line numbers); each
+step's highlight covers the 1-6 lines the annotation talks about; the diagram
+has one node per step, not one node per file.
+
 ## Recipe: teach a topic or codebase (learn mode)
 
 When the user wants to LEARN something (not just get an answer), drive a

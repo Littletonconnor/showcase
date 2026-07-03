@@ -304,3 +304,59 @@ test("formatTelemetryComment produces fixed, prefixed lines", () => {
 test("the sandbox allowlist contains only explorable_interaction", () => {
   assert.deepEqual([...SANDBOX_TELEMETRY_TYPES], ["explorable_interaction"]);
 });
+
+// --- walkthrough part ---------------------------------------------------------
+
+import { validateSurfaceParts } from "@showcase/core/surfaceParts";
+import { partsByteLength } from "@showcase/core/types";
+
+const validWalkthrough = () => ({
+  kind: "walkthrough",
+  title: "How a comment reaches the agent",
+  mermaid: "flowchart LR\n  a --> b",
+  steps: [
+    {
+      title: "The route",
+      body: "The composer posts here with `author=user`.",
+      file: "packages/server/app.ts",
+      code: "app.post('/api/comments', handler)",
+      language: "ts",
+      lineStart: 2081,
+      highlight: [[2081, 2081]],
+      node: "a",
+    },
+    { title: "The flow", body: "One shared flow stores and broadcasts." },
+  ],
+});
+
+test("walkthrough parts validate strictly and count toward the byte budget", () => {
+  const ok = validateSurfaceParts([validWalkthrough()]);
+  assert.ok(ok.ok, JSON.stringify(ok));
+  assert.ok(partsByteLength((ok as any).parts) > 100);
+
+  const bad: [(p: any) => void, RegExp][] = [
+    [(p) => (p.steps = []), /at least one step/i],
+    [(p) => delete p.steps[0].title, /title/],
+    [(p) => delete p.steps[0].body, /body/],
+    [(p) => (p.steps[0].highlight = [[0, 5]]), /highlight/],
+    [(p) => (p.steps[0].highlight = [[1, 2, 3]]), /highlight/],
+    [(p) => (p.steps[0].lineStart = 0), /lineStart/],
+  ];
+  for (const [mutate, re] of bad) {
+    const part = validWalkthrough() as any;
+    mutate(part);
+    const parsed = validateSurfaceParts([part]);
+    assert.ok(!parsed.ok, `expected rejection for ${re}`);
+    assert.match((parsed as any).error, re);
+  }
+});
+
+test("walkthrough parts are legal beat evidence (model/workedExample)", () => {
+  const l = validLesson() as any;
+  l.beats[0].workedExample = [validWalkthrough()];
+  const parsed = coerceLesson(l);
+  assert.ok("lesson" in parsed, JSON.stringify(parsed));
+  const we = (parsed as any).lesson.beats[0].workedExample;
+  assert.equal(we[0].kind, "walkthrough");
+  assert.equal(we[0].steps.length, 2);
+});
