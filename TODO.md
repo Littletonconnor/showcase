@@ -143,6 +143,50 @@ owns layout server-side. C9 no em-dashes in authored prose.
       `skills/adding-a-skill/` meta-skill (A6), README fourth workflow + install
       section, empty-state/corruption hardening, e2e lesson oracle, final report.
 
+### Next phase - anchored comments ("plannotator-grade feedback") + diagram polish
+
+Research notes (from github.com/backnotprop/plannotator): its quality comes
+from two properties. (1) Annotations are ANCHORED - to a text selection in a
+plan/markdown doc or a line in a diff - so feedback arrives scoped, never
+"comment on the whole artifact". (2) Feedback is delivered IN-BAND: the agent
+is blocked on a hook (ExitPlanMode -> PermissionRequest -> local server ->
+browser review), and the annotations return as one structured payload in the
+hook response, so the agent cannot miss it and needs no polling. showcase
+already has the delivery half (the exactly-once comment pipe with settle
+batching IS the in-band payload; wait_for_feedback is the block). What it
+lacks is anchoring and in-place threads.
+
+Design (build next):
+
+- [ ] **Anchored comments.** Extend Comment with an optional `anchor`:
+      `{ partIndex, locator }` where locator is per-kind - a line number for
+      code/walkthrough/diff parts (file+line for multi-file diffs), a quoted text
+      range for markdown, a step index for walkthroughs, a checkpoint id for
+      checkpoints. Wire shape in core, stored on the comment row; additive, so
+      the pipe/cursor semantics are untouched.
+- [ ] **Selection-to-comment UX.** In trusted parts: select text (markdown) or
+      click a line gutter (walkthrough/code panes) -> a floating composer chip ->
+      posts an anchored author=user comment. Feedback line format:
+      `[comment] app.ts:704 "the quoted lines": <text>` so the agent gets the
+      exact scope (mirrors the decision copy-ref idea, but zero-friction).
+- [ ] **In-place threads.** Render comments at their anchor (a small pin in
+      the gutter/margin; click expands the thread). Agent replies via the
+      existing comment API with the same anchor -> the reply lands IN the thread
+      on the card, not in a separate feed. Local resolve state per thread
+      (like decision Accept), roll-up chip in the card footer.
+- [ ] **Sandboxed parts** (html explorables) get anchoring via the bridge:
+      a comment mode that records the click position + nearest data-section id,
+      forwarded like telemetry (validated, capped).
+- [ ] e2e oracle: select -> comment -> [comment] line arrives once -> agent
+      reply renders in the thread -> resolve collapses it.
+
+Diagram polish shipped alongside the walkthrough part: ELK layout engine
+(opt-in per diagram via frontmatter `config.layout: elk` - documented in the
+design guide) and pan/zoom on every mermaid part (ctrl/cmd+scroll, drag,
+double-click reset). Still open: click a diagram node to jump the walkthrough
+to that step; D2 as an alternative renderer was evaluated and skipped (new
+heavy dep; mermaid+ELK covers the need locally).
+
 ### Anti-goals (unchanged from the plan)
 
 Not a course platform, not an Anki replacement, not gamified, no self-report

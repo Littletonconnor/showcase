@@ -15,6 +15,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@mermaid-js/layout-elk": "^0.2.2",
     "@pierre/diffs": "^1.2.11",
     "@showcase/core": "workspace:*",
     "@vscode/markdown-it-katex": "^1.1.2",

@@ -34,7 +34,18 @@ a `kind`:
   sequence diagrams style actors globally only. Write flowchart edge labels as
   `A -->|label| B` (or `A -- label --> B` with spaces): the squeezed form
   `A--no-->B` parses `o--` as mermaid's circle-arrow token and silently eats
-  part of your label.
+  part of your label. Every diagram is pan/zoomable in place (ctrl/cmd+scroll,
+  drag, double-click resets), so density is survivable — but for a COMPLEX
+  flowchart (10+ nodes, crossing edges) opt into the ELK layout engine with
+  frontmatter for orthogonal edges and far fewer crossings:
+  ```
+  ---
+  config:
+    layout: elk
+  ---
+  flowchart TD
+    ...
+  ```
 - **`diff`** — a patch you hand over as _data_; the trusted viewer renders it
   natively as a syntax-highlighted code review (split or unified) with
   **word-level** intra-line highlighting. A multi-file diff leads with a
