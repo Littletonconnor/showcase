@@ -137,16 +137,20 @@ function ThreadCard(props: { thread: Thread }) {
           }}
           className="h-6.5 min-w-0 flex-1 rounded-md bg-transparent px-2 text-[12px] text-foreground placeholder:text-faint focus:bg-muted/40 focus:outline-none"
         />
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="size-6 text-faint hover:text-emerald-600"
-          aria-label={resolved ? "Reopen thread" : "Resolve thread"}
-          title={resolved ? "Reopen" : "Resolve — local, never sent to the agent"}
-          onClick={() => void setResolved(root.id, !resolved)}
-        >
-          {resolved ? <RotateCcw /> : <Check />}
-        </Button>
+        {/* Resolve only once there is a back-and-forth to conclude — a lone
+            check beside a fresh question reads like a send button. */}
+        {replies.length > 0 || resolved ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="size-6 text-faint hover:text-emerald-600"
+            aria-label={resolved ? "Reopen thread" : "Resolve thread"}
+            title={resolved ? "Reopen" : "Resolve — local, never sent to the agent"}
+            onClick={() => void setResolved(root.id, !resolved)}
+          >
+            {resolved ? <RotateCcw /> : <Check />}
+          </Button>
+        ) : null}
       </div>
     </div>
   );
