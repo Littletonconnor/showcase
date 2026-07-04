@@ -6,53 +6,52 @@ section 6 is the roadmap (what to build); sections 7–8 are open decisions and
 how to pick up work autonomously. Architecture detail lives in `AGENTS.md`.
 
 **👉 All three form factors are built and dogfooded — decision reviews, learn
-mode, and walkthrough explainers with anchored comments. The next pass is
-simplification, not features: start at "Next up" immediately below.** The
-shipped summaries follow it; sections 1–8 are the stable guide/roadmap
-underneath.
+mode, and walkthrough explainers with anchored comments — and the
+simplification pass that followed them is shipped too (see immediately
+below).** The shipped summaries follow it; sections 1–8 are the stable
+guide/roadmap underneath.
 
 ---
 
-## ⭐ Next up — simplification & cleanup (start here)
+## ✅ Simplification & cleanup pass — SHIPPED (July 2026)
 
-Three verticals shipped fast (learn mode, walkthrough explainers, anchored
-comments). Before adding anything new, pay down the seams they left. Ordered
-by value; each is independent.
+All nine items landed, one commit each, all gates green (typecheck / test /
+lint / oracle):
 
-1. **Extract the shared JSON-file persistence.** `JsonFileStore` (storage.ts)
-   and `MasteryStore` (masteryStore.ts) duplicate the atomic tmp+rename write,
-   the `.bak` mirror, and corruption recovery. Pull a small
-   `server/jsonFile.ts` helper both use; keeps the two stores' policies
-   (board: strict recovery; mastery: never-crash) as thin call-site choices.
-2. **`getComment(id)` on the Store.** `createComment`'s replyTo lookup does
-   `listComments({})` and scans everything to find one parent. Add the direct
-   lookup to the Store interface + contract test; same for the resolve PATCH.
-3. **Split `mcpSpec.ts` (~2200 lines).** One file is now four concerns: part
-   schemas, review tools, preset tools, learn tools, prompts. Split into
-   `mcpSpec/` modules with a single barrel export so the "one schema source
-   for both transports" guarantee is preserved by structure, not by size.
-4. **Extract Card.tsx's part dispatch.** The parts switch + anchor wrapper +
-   thread strip is a `PartRenderer` component waiting to exist; Card should
-   own chrome (header/footer/scroll), not rendering dispatch.
-5. **Split `demoData.js` (~1700 lines)** into per-session modules under
-   `packages/cli/demo/` (still dependency-free, still one export).
-6. **Unify the viewer's write paths.** `threads.ts` and `learn.ts` both wrap
-   POST /api/\* with the same fire-and-forget error handling; one tiny
-   `postJson` helper, one error-toast policy.
-7. **Checkpoint attempts: hydrate from the server.** Attempt state lives in
-   localStorage (per-browser), so a second browser re-locks earned reveals.
-   The truth already exists as telemetry comments; hydrate `learn.ts` from
-   them on session load and drop the localStorage persistence.
-8. **e2e isolation without workarounds.** The lesson/walkthrough specs suffix
-   topics with a run id to dodge the shared mastery file; delete the e2e data
-   - mastery files in a Playwright globalSetup instead and drop the suffixes.
-9. **Small trims:** remove the unused `attemptFor` export (viewer/learn.ts);
-   decide `explorable_gate_passed` (unused event type: wire it or drop it);
-   debounce `explorable_interaction` in the bridge (known flood gap); close
-   the comment popover on scroll (it is position-fixed and can drift from its
-   anchor).
+1. ✅ **Shared JSON-file persistence** — `server/jsonFile.ts` owns the atomic
+   tmp+rename write, `.bak` mirror, and live→`.bak` read fallback; the two
+   stores keep their policies as call-site choices (board: `"strict"`,
+   mastery: `"lenient"`).
+2. ✅ **`getComment(id)` on the Store** — direct lookup (contract-tested,
+   detached snapshot); the replyTo path no longer scans every comment.
+   `setCommentResolved` gained contract coverage too.
+3. ✅ **`mcpSpec.ts` split** into `mcpSpec/` modules (instructions, field
+   docs, part schemas, surface/review/preset/learn tools, validation,
+   resources, prompts); `mcpSpec.ts` stays the barrel both transports import,
+   verified value-identical tool-by-tool.
+4. ✅ **`PartRenderer` extracted** — the kind switch, explorable gate check,
+   anchor wrapper, and thread strip live in `PartRenderer.tsx`; Card owns
+   chrome only.
+5. ✅ **`demoData.js` split** into per-session modules under
+   `packages/cli/demo/` (dependency-free, `demo/index.js` is the one import
+   point), verified value-identical.
+6. ✅ **One viewer write path** — `postJson.ts` with one error-toast policy;
+   threads and telemetry both use it.
+7. ✅ **Checkpoint attempts hydrate from the server.** localStorage is gone:
+   `parseCheckpointComment` (core/telemetry.ts, the formatter's inverse)
+   rebuilds attempts from the session's telemetry comments on load and live
+   over SSE — earned reveals survive reloads and follow the learner across
+   browsers.
+8. ✅ **e2e isolation via globalSetup** — deletes the run's data + mastery
+   files (paths from `webServer.env`); the run-id topic suffixes are gone.
+9. ✅ **Small trims** — `attemptFor` removed; `explorable_gate_passed`
+   DROPPED from the telemetry union (a gate pass already arrives as a
+   `checkpoint_attempt`; the sandbox allowlist means nothing else could emit
+   it); `explorable_interaction` debounced in the bridge (400 ms trailing,
+   per surface+control); the comment popover closes on scroll.
 
-Not in scope for this pass: new part kinds, new tools, new verticals.
+Not in scope for this pass (unchanged): new part kinds, new tools, new
+verticals.
 
 ---
 
