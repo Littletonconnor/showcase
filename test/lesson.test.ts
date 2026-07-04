@@ -215,7 +215,11 @@ test("validateTelemetryEvent accepts each closed-union member and strips junk", 
   assert.ok(
     validateTelemetryEvent({ v: 1, type: "checkpoint_skipped", checkpointId: "c", conceptId: "d" }),
   );
-  assert.ok(validateTelemetryEvent({ v: 1, type: "explorable_gate_passed", checkpointId: "g" }));
+  // Dropped from the union: a gate pass already arrives as a checkpoint_attempt.
+  assert.equal(
+    validateTelemetryEvent({ v: 1, type: "explorable_gate_passed", checkpointId: "g" }),
+    null,
+  );
   assert.ok(
     validateTelemetryEvent({
       v: 1,
@@ -354,7 +358,7 @@ test("parseCheckpointComment round-trips the formatter's checkpoint lines", () =
   // Non-checkpoint telemetry and human prose are not attempts.
   assert.equal(
     parseCheckpointComment(
-      formatTelemetryComment({ v: 1, type: "explorable_gate_passed", checkpointId: "cp-1" }),
+      formatTelemetryComment({ v: 1, type: "explorable_interaction", name: "s", value: "v" }),
     ),
     null,
   );

@@ -37,14 +37,11 @@ export function hydrateAttempts(comments: readonly Comment[]): void {
     if (c.author !== "user") continue;
     const parsed = parseCheckpointComment(c.text);
     if (!parsed || current[parsed.checkpointId] || patch?.[parsed.checkpointId]) continue;
-    patch = {
-      ...patch,
-      [parsed.checkpointId]: {
-        answer: parsed.answer,
-        ...(parsed.correct !== undefined ? { correct: parsed.correct } : {}),
-        ...(parsed.skipped ? { skipped: true } : {}),
-        ...(parsed.confidence !== undefined ? { confidence: parsed.confidence } : {}),
-      },
+    (patch ??= {})[parsed.checkpointId] = {
+      answer: parsed.answer,
+      ...(parsed.correct !== undefined ? { correct: parsed.correct } : {}),
+      ...(parsed.skipped ? { skipped: true } : {}),
+      ...(parsed.confidence !== undefined ? { confidence: parsed.confidence } : {}),
     };
   }
   if (patch) useLearn.setState({ attempts: { ...current, ...patch } });

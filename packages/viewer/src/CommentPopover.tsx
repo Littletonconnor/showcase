@@ -13,7 +13,9 @@ export function CommentPopover() {
   const [sending, setSending] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
 
-  // Fresh composer per target; dismiss on Escape or outside pointer-down.
+  // Fresh composer per target; dismiss on Escape, outside pointer-down, or any
+  // scroll — the popover is position-fixed, so scrolling would drift it away
+  // from the selection/line it's anchored to.
   useEffect(() => {
     setText("");
     if (!target) return;
@@ -23,11 +25,19 @@ export function CommentPopover() {
     const onDown = (e: PointerEvent) => {
       if (boxRef.current && !boxRef.current.contains(e.target as Node)) closeComposer();
     };
+    const onScroll = (e: Event) => {
+      // Scrolling inside the popover itself (the textarea) is fine.
+      if (boxRef.current && e.target instanceof Node && boxRef.current.contains(e.target)) return;
+      closeComposer();
+    };
     document.addEventListener("keydown", onKey);
     document.addEventListener("pointerdown", onDown);
+    // capture: scrolls inside nested scroll containers don't bubble.
+    document.addEventListener("scroll", onScroll, { capture: true, passive: true });
     return () => {
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("scroll", onScroll, { capture: true });
     };
   }, [target]);
 
