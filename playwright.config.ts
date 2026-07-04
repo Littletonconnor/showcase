@@ -8,6 +8,9 @@ const PORT = 8231;
 
 export default defineConfig({
   testDir: "e2e",
+  // Deletes the run's data + mastery files (paths from webServer.env below) so
+  // every run starts from a clean board — no cross-run mastery leakage.
+  globalSetup: "./e2e/globalSetup.ts",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,

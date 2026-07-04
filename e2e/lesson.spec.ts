@@ -10,11 +10,10 @@ import { expect, test } from "@playwright/test";
 // html/markdown parts their text IS reachable from the page DOM — that is by
 // design, and it is what lets this oracle assert on reveal visibility.
 
-// Topic per test AND per run: mastery is keyed by topic and persists in the
-// mastery file across server restarts, so a reused topic would see stale state.
-const RUN = Date.now().toString(36);
+// Topic per test: mastery is keyed by topic, and globalSetup deletes the run's
+// mastery file, so a topic only has to be unique within this suite.
 const LESSON = (topic: string) => ({
-  topic: `${topic} ${RUN}`,
+  topic,
   learnerLevel: "novice",
   conceptGraph: {
     concepts: [{ id: "c1", label: "Concept One", misconceptions: ["the wrong model"] }],
