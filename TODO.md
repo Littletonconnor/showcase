@@ -5,9 +5,54 @@ session. Sections 1–5 are "how it works / how to work here" (stable reference)
 section 6 is the roadmap (what to build); sections 7–8 are open decisions and
 how to pick up work autonomously. Architecture detail lives in `AGENTS.md`.
 
-**👉 The decision-review form factor is built, dogfooded, and complete — the
-shipped summary is immediately below.** Sections 1–8 are the stable guide/roadmap
-underneath it.
+**👉 All three form factors are built and dogfooded — decision reviews, learn
+mode, and walkthrough explainers with anchored comments. The next pass is
+simplification, not features: start at "Next up" immediately below.** The
+shipped summaries follow it; sections 1–8 are the stable guide/roadmap
+underneath.
+
+---
+
+## ⭐ Next up — simplification & cleanup (start here)
+
+Three verticals shipped fast (learn mode, walkthrough explainers, anchored
+comments). Before adding anything new, pay down the seams they left. Ordered
+by value; each is independent.
+
+1. **Extract the shared JSON-file persistence.** `JsonFileStore` (storage.ts)
+   and `MasteryStore` (masteryStore.ts) duplicate the atomic tmp+rename write,
+   the `.bak` mirror, and corruption recovery. Pull a small
+   `server/jsonFile.ts` helper both use; keeps the two stores' policies
+   (board: strict recovery; mastery: never-crash) as thin call-site choices.
+2. **`getComment(id)` on the Store.** `createComment`'s replyTo lookup does
+   `listComments({})` and scans everything to find one parent. Add the direct
+   lookup to the Store interface + contract test; same for the resolve PATCH.
+3. **Split `mcpSpec.ts` (~2200 lines).** One file is now four concerns: part
+   schemas, review tools, preset tools, learn tools, prompts. Split into
+   `mcpSpec/` modules with a single barrel export so the "one schema source
+   for both transports" guarantee is preserved by structure, not by size.
+4. **Extract Card.tsx's part dispatch.** The parts switch + anchor wrapper +
+   thread strip is a `PartRenderer` component waiting to exist; Card should
+   own chrome (header/footer/scroll), not rendering dispatch.
+5. **Split `demoData.js` (~1700 lines)** into per-session modules under
+   `packages/cli/demo/` (still dependency-free, still one export).
+6. **Unify the viewer's write paths.** `threads.ts` and `learn.ts` both wrap
+   POST /api/\* with the same fire-and-forget error handling; one tiny
+   `postJson` helper, one error-toast policy.
+7. **Checkpoint attempts: hydrate from the server.** Attempt state lives in
+   localStorage (per-browser), so a second browser re-locks earned reveals.
+   The truth already exists as telemetry comments; hydrate `learn.ts` from
+   them on session load and drop the localStorage persistence.
+8. **e2e isolation without workarounds.** The lesson/walkthrough specs suffix
+   topics with a run id to dodge the shared mastery file; delete the e2e data
+   - mastery files in a Playwright globalSetup instead and drop the suffixes.
+9. **Small trims:** remove the unused `attemptFor` export (viewer/learn.ts);
+   decide `explorable_gate_passed` (unused event type: wire it or drop it);
+   debounce `explorable_interaction` in the bridge (known flood gap); close
+   the comment popover on scroll (it is position-fixed and can drift from its
+   anchor).
+
+Not in scope for this pass: new part kinds, new tools, new verticals.
 
 ---
 
@@ -143,7 +188,7 @@ owns layout server-side. C9 no em-dashes in authored prose.
       `skills/adding-a-skill/` meta-skill (A6), README fourth workflow + install
       section, empty-state/corruption hardening, e2e lesson oracle, final report.
 
-### Next phase - anchored comments ("plannotator-grade feedback") + diagram polish
+### ✅ Shipped - anchored comments ("plannotator-grade feedback") + diagram polish
 
 Research notes (from github.com/backnotprop/plannotator): its quality comes
 from two properties. (1) Annotations are ANCHORED - to a text selection in a
@@ -156,31 +201,34 @@ already has the delivery half (the exactly-once comment pipe with settle
 batching IS the in-band payload; wait_for_feedback is the block). What it
 lacks is anchoring and in-place threads.
 
-Design (build next):
+All shipped (see the commits on this branch); statuses below:
 
-- [ ] **Anchored comments.** Extend Comment with an optional `anchor`:
+- [x] **Anchored comments.** Extend Comment with an optional `anchor`:
       `{ partIndex, locator }` where locator is per-kind - a line number for
       code/walkthrough/diff parts (file+line for multi-file diffs), a quoted text
       range for markdown, a step index for walkthroughs, a checkpoint id for
       checkpoints. Wire shape in core, stored on the comment row; additive, so
       the pipe/cursor semantics are untouched.
-- [ ] **Selection-to-comment UX.** In trusted parts: select text (markdown) or
+- [x] **Selection-to-comment UX.** In trusted parts: select text (markdown) or
       click a line gutter (walkthrough/code panes) -> a floating composer chip ->
       posts an anchored author=user comment. Feedback line format:
       `[comment] app.ts:704 "the quoted lines": <text>` so the agent gets the
       exact scope (mirrors the decision copy-ref idea, but zero-friction).
-- [ ] **In-place threads.** Render comments at their anchor (a small pin in
+- [x] **In-place threads.** Render comments at their anchor (rendered in a strip under
       the gutter/margin; click expands the thread). Agent replies via the
       existing comment API with the same anchor -> the reply lands IN the thread
       on the card, not in a separate feed. Local resolve state per thread
       (like decision Accept), roll-up chip in the card footer.
-- [ ] **Sandboxed parts** (html explorables) get anchoring via the bridge:
+- [x] **Sandboxed parts** get anchoring via the bridge (text selection in ANY part iframe; the click-position/data-section variant for html explorables was not needed):
       a comment mode that records the click position + nearest data-section id,
       forwarded like telemetry (validated, capped).
-- [ ] e2e oracle: select -> comment -> [comment] line arrives once -> agent
+- [x] e2e oracle: line-gutter -> popover -> anchored delivery once -> agent
       reply renders in the thread -> resolve collapses it.
 
-Diagram polish shipped alongside the walkthrough part: ELK layout engine
+Also shipped since: the `reply` MCP tool + `showcase reply --to`, delivery
+receipts (sent/seen off the real agentSeq cursor, broadcast live), the
+walkthrough part with line-gutter comments, and the "The commands" README
+cheat sheet. Diagram polish shipped alongside the walkthrough part: ELK layout engine
 (opt-in per diagram via frontmatter `config.layout: elk` - documented in the
 design guide) and pan/zoom on every mermaid part (ctrl/cmd+scroll, drag,
 double-click reset). Still open: click a diagram node to jump the walkthrough
@@ -438,9 +486,10 @@ surface for zero benefit, and treemap/scatter were already added this way.
 - **In-file moved-code detection** — `@pierre/diffs` detects file-level renames but
   not in-file block moves; label "moved, unchanged" instead of delete+add. Spike
   the renderer first. _Effort:_ unknown (renderer-gated).
-- **Tour surface** — an optional `slides` / `animate` walkthrough for a complex
-  PR's narrative ("added the column → backfilled → flipped the read path").
-  Deferred polish; the overview is the win. _Effort:_ ~2–3h.
+- **✅ Tour surface — superseded by the `walkthrough` part** (a native step
+  player with real excerpts, per-step line highlights, a synced diagram, and
+  anchored comments), which covers the complex-PR narrative use directly; the
+  `diff_branch` MCP prompt wires it into branch reviews.
 
 _Explicitly **not** doing:_ large-diff row virtualization — the per-file SSR diff
 render is adequate; revisit only if one huge file's hunk count bites. Also dropped:
