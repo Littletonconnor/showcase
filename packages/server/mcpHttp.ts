@@ -5,6 +5,7 @@ import {
   type Asset,
   type AssetKind,
   type Comment,
+  formatCommentAnchor,
   htmlPart,
   isAssetKind,
   type Session,
@@ -74,6 +75,35 @@ export interface McpDeps {
     sessionTitle?: string;
     agent?: string;
   }): FlowResult<Surface>;
+  publishLesson(input: {
+    lesson: unknown;
+    session?: string;
+    sessionTitle?: string;
+    agent?: string;
+  }): Promise<
+    | {
+        sessionId: string;
+        syllabusId: string;
+        beats: { surfaceId: string; conceptId: string }[];
+        userFeedback?: Feedback[];
+      }
+    | { error: string; status: number }
+  >;
+  updateLessonBeat(input: {
+    surfaceId?: string;
+    session?: string;
+    beat: unknown;
+    title?: string;
+  }): FlowResult<Surface>;
+  gradeAttempt(input: {
+    topic?: string;
+    session?: string;
+    conceptId?: string;
+    kind?: string;
+    correct?: unknown;
+    misconception?: string;
+  }): Promise<{ record: unknown } | { error: string; status: number }>;
+  learnerState(input: { topic?: string }): Promise<{ topics: unknown[]; due: unknown[] }>;
   reviseSurface(
     id: string,
     patch: {
@@ -94,6 +124,8 @@ export interface McpDeps {
     surface?: string;
     session?: string;
     author: string;
+    anchor?: unknown;
+    replyTo?: string;
   }): Promise<{ comment: Comment; userFeedback?: Feedback[] } | { error: string; status: number }>;
   waitForComments(q: CommentWait): Promise<{ comments: Comment[]; lastSeq: number }>;
   uploadAsset(input: {
@@ -310,6 +342,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
         return JSON.stringify(
           {
             comments: result.comments.map((c) => ({
+              ...(c.anchor ? { id: c.id, anchor: formatCommentAnchor(c.anchor) } : {}),
               surfaceId: c.surfaceId,
               surfaceTitle: c.surfaceTitle,
               text: c.text,
@@ -317,6 +350,26 @@ export function registerMcp(app: Hono, deps: McpDeps) {
             })),
             lastSeq: result.lastSeq,
             note: FEEDBACK_REPLY_NOTE,
+          },
+          null,
+          2,
+        );
+      }
+      case "reply": {
+        const result = await deps.createComment({
+          text: String(args.text ?? ""),
+          replyTo: typeof args.replyTo === "string" ? args.replyTo : undefined,
+          surface: typeof args.surface === "string" ? args.surface : undefined,
+          session: typeof args.session === "string" ? args.session : undefined,
+          author: typeof args.agent === "string" ? args.agent : "agent",
+        });
+        if ("error" in result) throw new Error(result.error);
+        return JSON.stringify(
+          {
+            id: result.comment.id,
+            surfaceId: result.comment.surfaceId,
+            ...(result.comment.replyTo ? { replyTo: result.comment.replyTo } : {}),
+            ...(result.userFeedback && { userFeedback: result.userFeedback }),
           },
           null,
           2,
@@ -386,6 +439,55 @@ export function registerMcp(app: Hono, deps: McpDeps) {
         });
         if ("error" in result) throw new Error(result.error);
         return surfaceResult(result, origin);
+      }
+      case "publish_lesson": {
+        const result = await deps.publishLesson({
+          lesson: args,
+          session: typeof args.session === "string" ? args.session : undefined,
+          sessionTitle: typeof args.sessionTitle === "string" ? args.sessionTitle : undefined,
+          agent: typeof args.agent === "string" ? args.agent : undefined,
+        });
+        if ("error" in result) throw new Error(result.error);
+        return JSON.stringify(
+          {
+            sessionId: result.sessionId,
+            syllabusId: result.syllabusId,
+            beats: result.beats,
+            url: `${origin}/session/${result.sessionId}`,
+            note: "Now call wait_for_feedback: checkpoint attempts arrive as [checkpoint] lines. Grade free-text answers with record_attempt and reply; on a misconception-tagged miss, remediate with update_lesson.",
+            ...(result.userFeedback && { userFeedback: result.userFeedback }),
+          },
+          null,
+          2,
+        );
+      }
+      case "update_lesson": {
+        const result = await deps.updateLessonBeat({
+          surfaceId: typeof args.surfaceId === "string" ? args.surfaceId : undefined,
+          session: typeof args.session === "string" ? args.session : undefined,
+          beat: args.beat,
+          title: typeof args.title === "string" ? args.title : undefined,
+        });
+        if ("error" in result) throw new Error(result.error);
+        return surfaceResult(result, origin);
+      }
+      case "record_attempt": {
+        const result = await deps.gradeAttempt({
+          topic: typeof args.topic === "string" ? args.topic : undefined,
+          session: typeof args.session === "string" ? args.session : undefined,
+          conceptId: typeof args.conceptId === "string" ? args.conceptId : undefined,
+          kind: typeof args.kind === "string" ? args.kind : undefined,
+          correct: args.correct,
+          misconception: typeof args.misconception === "string" ? args.misconception : undefined,
+        });
+        if ("error" in result) throw new Error(result.error);
+        return JSON.stringify(result, null, 2);
+      }
+      case "get_learner_state": {
+        const state = await deps.learnerState({
+          topic: typeof args.topic === "string" ? args.topic : undefined,
+        });
+        return JSON.stringify(state, null, 2);
       }
       case "configure_session": {
         const presetField = (v: unknown): string | null | undefined =>

@@ -1,0 +1,21 @@
+{
+  "name": "showcase",
+  "owner": {
+    "name": "Connor Littleton",
+    "url": "https://github.com/Littletonconnor"
+  },
+  "metadata": {
+    "description": "Skills for the showcase live visual surface: publish surfaces, run consistent preset sessions, teach with checkpoints and spaced review.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "showcase",
+      "source": "./",
+      "description": "showcase workflows: the publish/feedback bootstrap (showcase), one-format sessions (session-presets), the learning vertical (teach), and the repo's skill conventions (adding-a-skill).",
+      "author": {
+        "name": "Connor Littleton"
+      }
+    }
+  ]
+}

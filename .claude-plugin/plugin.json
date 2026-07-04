@@ -1,0 +1,9 @@
+{
+  "name": "showcase",
+  "description": "Skills for the showcase live visual surface: publish surfaces and read feedback (showcase), pin one-format sessions (session-presets), teach for durable understanding (teach), extend the repo consistently (adding-a-skill).",
+  "version": "0.1.0",
+  "author": {
+    "name": "Connor Littleton",
+    "url": "https://github.com/Littletonconnor"
+  }
+}

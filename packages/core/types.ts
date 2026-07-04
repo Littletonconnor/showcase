@@ -37,7 +37,9 @@ export type SurfacePartKind =
   | "mermaid"
   | "json"
   | "code"
-  | "chart";
+  | "chart"
+  | "checkpoint"
+  | "walkthrough";
 
 export interface HtmlPart {
   kind: "html";
@@ -193,6 +195,108 @@ export interface ChartPart {
   caption?: string;
 }
 
+// --- the learn form factor's assessment unit (see docs/learn-form-factor.md) ---
+// A checkpoint is DATA the trusted viewer renders as an interactive component
+// (option buttons, a free-text box, a confidence slider) — never markup, so
+// nothing here can execute in the trusted origin (C1). `reveal` is rendered
+// only AFTER an attempt is committed; the viewer enforces this structurally
+// (the reveal never enters the DOM pre-attempt). `prompt`/`reveal` are plain
+// text with light inline emphasis, rendered as React text nodes.
+
+export type CheckpointKind = "predict" | "mcq" | "completion" | "explain" | "trace" | "apply";
+
+export const CHECKPOINT_KINDS: readonly CheckpointKind[] = [
+  "predict",
+  "mcq",
+  "completion",
+  "explain",
+  "trace",
+  "apply",
+];
+
+export const isCheckpointKind = (v: unknown): v is CheckpointKind =>
+  typeof v === "string" && (CHECKPOINT_KINDS as string[]).includes(v);
+
+export interface CheckpointOption {
+  id: string;
+  label: string;
+  correct?: boolean;
+  // Which wrong mental model this distractor diagnoses — a miss on it tells the
+  // agent WHAT the learner believes, not just that they missed (P10).
+  misconception?: string;
+}
+
+export interface Checkpoint {
+  id: string;
+  conceptId: string;
+  kind: CheckpointKind;
+  prompt: string;
+  // Optional code the prompt asks about (trace/completion kinds).
+  code?: { code: string; language?: string };
+  // Choice kinds (mcq / predict-with-options). At least 2; exactly one correct.
+  options?: CheckpointOption[];
+  // Exact-match expected answer for client-graded free-text kinds (trace).
+  // Compared whitespace/case-normalized; absent -> the agent grades.
+  expected?: string;
+  // Collect a confidence rating alongside the answer — for calibration feedback
+  // only, never as a mastery signal (P3).
+  askConfidence?: boolean;
+  // The resolution: correct answer + why. Rendered only post-attempt.
+  reveal: string;
+  // This checkpoint gates the html part that FOLLOWS it in the parts list (an
+  // explorable): the viewer keeps that iframe locked until an attempt lands
+  // (predict-before-manipulate, P4/P7).
+  gate?: boolean;
+}
+
+export interface CheckpointPart {
+  kind: "checkpoint";
+  checkpoint: Checkpoint;
+}
+
+// --- the code-walkthrough part (the codebase-explainer flagship) ---
+// A step player the trusted viewer renders: each step is one hop of a call
+// path / data flow, pairing an annotation with a REAL code excerpt whose
+// relevant lines highlight (the rest dim), plus an optional shared mermaid
+// diagram whose active node tracks the step. Like json/chart/checkpoint it is
+// DATA, not markup: the viewer renders annotations as text nodes and code as
+// shiki TOKENS (never HTML strings), so nothing here can execute in the
+// trusted origin. Prev/next, clickable step dots, and arrow keys drive it; an
+// "I'm lost here" affordance posts a confusion_flag telemetry event anchored
+// to the exact step, so the agent knows where the explanation lost the reader.
+
+export interface WalkthroughStep {
+  // One line naming the hop, e.g. "The cursor lock serializes readers".
+  title: string;
+  // The annotation for this step — why this code matters, what to notice.
+  // Plain text with `backtick` spans, rendered as text nodes.
+  body: string;
+  // Path label for the excerpt, e.g. "packages/server/app.ts".
+  file?: string;
+  // The excerpt shown for this step (real source, kept tight).
+  code?: string;
+  // Shiki language id; omit or "text" for plain monospace.
+  language?: string;
+  // 1-based line number the excerpt starts at, so numbering matches the file.
+  lineStart?: number;
+  // ABSOLUTE [from, to] line ranges (inclusive) to emphasize; everything else
+  // in the excerpt dims. Omit to show the excerpt undimmed.
+  highlight?: [number, number][];
+  // Node id in the shared `mermaid` diagram to mark active for this step
+  // (rendered with the accent class).
+  node?: string;
+}
+
+export interface WalkthroughPart {
+  kind: "walkthrough";
+  // Heading above the player, e.g. "How a comment reaches the agent".
+  title?: string;
+  // Optional shared diagram (flowchart/sequence source). Steps reference its
+  // node ids via `node`; the active node renders accented.
+  mermaid?: string;
+  steps: WalkthroughStep[];
+}
+
 export type SurfacePart =
   | HtmlPart
   | DiffPart
@@ -203,7 +307,9 @@ export type SurfacePart =
   | MermaidPart
   | JsonPart
   | CodePart
-  | ChartPart;
+  | ChartPart
+  | CheckpointPart
+  | WalkthroughPart;
 
 // A short, colored chip on a surface's header. Deliberately generic (not
 // PR-specific), but the driver is review **finding cards**: `tone` picks the
@@ -348,6 +454,20 @@ export interface CreateReviewInput {
   warnings?: string[];
 }
 
+// Where on a surface a comment points — the plannotator-style anchor. A
+// comment without one is a whole-card remark (legacy shape, still valid).
+// `partIndex` locates the part; the rest is per-kind precision: a quoted text
+// selection (any sandboxed part — markdown, diff, code, html), a line number
+// (walkthrough/code panes), a file (multi-file diffs), a walkthrough step.
+// Everything is short bounded DATA: quotes are capped and render as text.
+export interface CommentAnchor {
+  partIndex: number;
+  quote?: string;
+  line?: number;
+  file?: string;
+  step?: number;
+}
+
 export interface Comment {
   id: string;
   seq: number;
@@ -357,6 +477,14 @@ export interface Comment {
   author: string;
   text: string;
   createdAt: string;
+  // Anchored feedback (see CommentAnchor). Absent on whole-card comments.
+  anchor?: CommentAnchor;
+  // Threading: the comment this one replies to. An agent reply carries the id
+  // of the user's anchored comment, so the thread renders at the anchor.
+  replyTo?: string;
+  // Local adjudication: the user marked this thread handled. Lives on the
+  // ROOT comment of a thread.
+  resolved?: boolean;
 }
 
 // An uploaded blob (image, trace file, arbitrary file) the agent pushes once and
@@ -433,6 +561,39 @@ export interface CreateCommentInput {
   surfaceId?: string;
   author: string;
   text: string;
+  anchor?: CommentAnchor;
+  replyTo?: string;
+}
+
+// Validate/normalize an anchor from request input: bounded fields only, fresh
+// object out, undefined for anything malformed (an invalid anchor degrades to
+// a whole-card comment rather than rejecting the text with it).
+export function coerceCommentAnchor(raw: unknown): CommentAnchor | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const a = raw as Record<string, unknown>;
+  if (typeof a.partIndex !== "number" || !Number.isInteger(a.partIndex) || a.partIndex < 0) {
+    return undefined;
+  }
+  const out: CommentAnchor = { partIndex: a.partIndex };
+  if (typeof a.quote === "string" && a.quote.trim()) {
+    out.quote = a.quote.replace(/\s+/g, " ").trim().slice(0, 300);
+  }
+  if (typeof a.line === "number" && Number.isInteger(a.line) && a.line >= 1) out.line = a.line;
+  if (typeof a.file === "string" && a.file.trim()) out.file = a.file.trim().slice(0, 300);
+  if (typeof a.step === "number" && Number.isInteger(a.step) && a.step >= 0) out.step = a.step;
+  return out;
+}
+
+// The anchor as the agent reads it in a feedback line: "app.ts:704", "step 3",
+// or the quoted selection.
+export function formatCommentAnchor(a: CommentAnchor): string {
+  const loc = [
+    ...(a.file ? [a.file] : []),
+    ...(a.line !== undefined ? [`line ${a.line}`] : []),
+    ...(a.step !== undefined ? [`step ${a.step + 1}`] : []),
+  ].join(" ");
+  const quote = a.quote ? `"${a.quote.length > 120 ? a.quote.slice(0, 119) + "…" : a.quote}"` : "";
+  return [loc, quote].filter(Boolean).join(" ") || `part ${a.partIndex + 1}`;
 }
 
 export interface CommentQuery {
@@ -485,6 +646,9 @@ export interface Store {
 
   listComments(query: CommentQuery): Promise<Comment[]>;
   createComment(input: CreateCommentInput): Promise<Comment | null>;
+  // Flip the local resolved flag on a thread's root comment. Returns the
+  // updated comment, or null when the id is unknown.
+  setCommentResolved(id: string, resolved: boolean): Promise<Comment | null>;
 
   // The decision-queue review for a session (one per session; replaces it on
   // re-publish). putReview returns null only if the session is missing.
@@ -593,6 +757,10 @@ export function partsByteLength(parts: SurfacePart[]): number {
         bytes(p.xLabel) +
         bytes(p.yLabel) +
         bytes(p.caption);
+    } else if (p.kind === "checkpoint") {
+      n += bytes(JSON.stringify(p.checkpoint));
+    } else if (p.kind === "walkthrough") {
+      n += bytes(JSON.stringify(p.steps)) + bytes(p.title) + bytes(p.mermaid);
     } else {
       n += bytes(p.assetId) + bytes(p.title);
       for (const s of p.steps ?? []) {

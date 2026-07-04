@@ -46,6 +46,7 @@ export default defineConfig({
     env: {
       PORT: String(PORT),
       SHOWCASE_DATA: "/tmp/showcase-e2e.json",
+      SHOWCASE_MASTERY: "/tmp/showcase-e2e-mastery.json",
       SHOWCASE_VERSION: "",
     },
   },

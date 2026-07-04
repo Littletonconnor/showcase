@@ -99,4 +99,39 @@ const watch = defineCommand({
   },
 });
 
-export const feedbackCommands: Command[] = [wait, watch];
+// The agent's half of an anchored thread: answer a comment (by id, from
+// wait/watch output) so the reply renders in the thread at the user's anchor.
+const reply = defineCommand({
+  name: "reply",
+  group: "Feedback",
+  summary: "reply to a user's comment in its thread on the board",
+  usage: "showcase reply <text> [--to commentId] [--surface id]",
+  positionals: true,
+  options: {
+    to: { type: "string", placeholder: "id", desc: "comment id being answered (from wait/watch)" },
+    surface: { type: "string", placeholder: "id", desc: "surface to comment on (no thread)" },
+    session: { type: "string", placeholder: "id", desc: "session (default: auto)" },
+    agent: { type: "string", placeholder: "name", desc: "author label (default: agent)" },
+  },
+  async run({ flags, positionals }) {
+    const text = positionals.join(" ").trim();
+    if (!text) fail('usage: showcase reply "your answer" --to <commentId>');
+    const session = flags.to || flags.surface ? undefined : await resolveSession(flags);
+    if (!flags.to && !flags.surface && !session) {
+      fail("no thread target — pass --to <commentId>, --surface <id>, or have an active session");
+    }
+    const result = await api("/api/comments", {
+      method: "POST",
+      body: JSON.stringify({
+        text,
+        replyTo: flags.to,
+        surface: flags.surface,
+        session,
+        author: flags.agent ?? "agent",
+      }),
+    });
+    emit(result, () => `Replied${result.replyTo ? ` in thread ${result.replyTo}` : ""}.`);
+  },
+});
+
+export const feedbackCommands: Command[] = [wait, watch, reply];

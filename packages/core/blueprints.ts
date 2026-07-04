@@ -86,6 +86,29 @@ export const BLUEPRINTS: Blueprint[] = [
     defaults: { badge: { tone: "info", label: "Explainer" } },
   },
   {
+    // Learn — a lesson session (docs/learn-form-factor.md). The structure is the
+    // session's arc, not one card's: syllabus -> concept beats -> recap. The
+    // lesson renderer (core/lesson.ts) owns the per-beat layout; this blueprint
+    // pins the look and gives explorable html parts their kit defaults.
+    id: "learn",
+    label: "Lesson",
+    summary:
+      "Teach a topic or codebase — syllabus map, concept beats with checkpoints, spaced review",
+    theme: "neutral",
+    kits: ["animate"],
+    structure: [
+      { id: "syllabus", label: "Syllabus", hint: "The concept graph, badged by mastery" },
+      {
+        id: "beat",
+        label: "Concept beat",
+        hint: "Hook prediction -> mental model -> worked example -> gated explorable -> checkpoints -> recap",
+        required: true,
+      },
+      { id: "recap", label: "Session recap", hint: "Solid vs shaky, what review covers and when" },
+    ],
+    defaults: { badge: { tone: "info", label: "Lesson" } },
+  },
+  {
     // Design doc — an RFC/technical-design session. Every doc reads the same:
     // summary → context → goals → design → alternatives → risks → rollout. Mostly
     // markdown + mermaid parts; the mockup kit styles any html callouts/panels.

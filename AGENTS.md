@@ -24,7 +24,10 @@ behind enforced boundaries. `core` ← everyone; `cli` talks to `server` over HT
   html part), `surfacePage.ts` / `themes.ts` / `kits.ts` (sandboxed rendering,
   theme registry, opt-in html-part style bundles `issues`/`slides`/`animate`/
   `review`/`mockup`), `blueprints.ts` (explainer blueprints), `events.ts`, `mcpSpec.ts`
-  (the single MCP tool-schema source both transports import), `export.ts`.
+  (the single MCP tool-schema source both transports import), `export.ts`,
+  `lesson.ts` / `telemetry.ts` / `mastery.ts` (the learn form factor: lesson
+  wire types + the deterministic lesson renderer, the closed telemetry union,
+  the spaced-review scheduler — see `docs/learn-form-factor.md`).
 - `@showcase/server` (`packages/server/`) — Node HTTP runtime. `app.ts` (Hono
   app: all routes, SSE `/api/events`, long-poll `/api/comments`, renderer
   `/s/:id`, asset upload/serve, and the shared flow functions both REST and MCP
@@ -32,7 +35,9 @@ behind enforced boundaries. `core` ← everyone; `cli` talks to `server` over HT
   (`JsonFileStore`, the only store in this fork — Cloudflare SqlStore removed),
   `index.ts` (Node wiring), `userConfig.ts` (local-config loader layering
   user/repo themes/kits/blueprints over the built-ins — see
-  `docs/themable-explainers.md`), `presetRenders.ts`, `public.ts`.
+  `docs/themable-explainers.md`), `presetRenders.ts`, `masteryStore.ts`
+  (learner mastery persistence at `~/.showcase/mastery.json`, JsonFileStore
+  pattern), `public.ts`.
 - `@showcase/mcp` (`packages/mcp/server.ts`) — the stdio MCP server (a thin
   client over the HTTP API; imports the shared schema from core).
 - `@showcase/cli` (`packages/cli/`) — `bin/showcase.js` is a thin launcher; the

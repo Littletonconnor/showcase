@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { viewerIndexHtmlPath } from "@showcase/viewer";
 import { createApp } from "./app.ts";
+import { MasteryStore } from "./masteryStore.ts";
 import { JsonFileStore } from "./storage.ts";
 import {
   type BoardDefaults,
@@ -96,8 +97,13 @@ if (!process.env.SHOWCASE_DATA) {
   }
 }
 
+// Learner mastery lives beside the board data but in its own file — it is
+// learner state, not board content (docs/learn-form-factor.md).
+const masteryPath = process.env.SHOWCASE_MASTERY ?? join(homedir(), ".showcase", "mastery.json");
+
 const app = createApp({
   store: new JsonFileStore(dataPath),
+  masteryStore: new MasteryStore(masteryPath),
   viewerHtml,
   guideMarkdown,
   setupText,

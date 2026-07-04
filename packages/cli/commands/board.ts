@@ -122,7 +122,9 @@ const demo = defineCommand({
   summary: "seed example sessions to explore the viewer",
   usage: "showcase demo",
   async run() {
-    const { DEMO_SESSIONS } = await import(new URL("../demoData.js", import.meta.url).href);
+    const { DEMO_SESSIONS, DEMO_LESSONS } = await import(
+      new URL("../demoData.js", import.meta.url).href
+    );
     for (const d of DEMO_SESSIONS) {
       const session = await api("/api/sessions", {
         method: "POST",
@@ -169,7 +171,19 @@ const demo = defineCommand({
         }
       }
     }
-    console.log(`Seeded ${DEMO_SESSIONS.length} demo sessions — open ${BASE} to look around.`);
+    // Demo lessons go through the REAL lesson pipeline, so what you explore is
+    // exactly what publish_lesson produces (checkpoints, gated explorables,
+    // the syllabus card).
+    for (const lesson of DEMO_LESSONS) {
+      const { sessionTitle, ...plan } = lesson;
+      await api("/api/lessons", {
+        method: "POST",
+        body: JSON.stringify({ ...plan, sessionTitle, agent: "demo" }),
+      });
+    }
+    console.log(
+      `Seeded ${DEMO_SESSIONS.length + DEMO_LESSONS.length} demo sessions (${DEMO_LESSONS.length} lessons) — open ${BASE} to look around.`,
+    );
   },
 });
 

@@ -9,6 +9,60 @@ import { useSurfaceTheme, useResolvedMode } from "./theme.ts";
 const MERMAID_CSS = `
 body { margin: 0; padding: 14px 16px; background: transparent; text-align: center; }
 svg { max-width: 100%; height: auto; }
+.mmd-vp { touch-action: none; }
+.mmd-vp.pannable { cursor: grab; }
+.mmd-vp.panning { cursor: grabbing; }
+.mmd-vp svg { transform-origin: 0 0; }
+`;
+
+// Pan/zoom for the diagram, running INSIDE the sandbox doc (this script is
+// ours — trusted string building, same standing as BRIDGE_JS — never agent
+// markup). Deliberately unobtrusive: plain wheel keeps scrolling the page;
+// zoom is ctrl/cmd+wheel (the browser-zoom gesture, incl. trackpad pinch),
+// drag pans once zoomed, double-click resets. Big architecture maps become
+// explorable instead of a squint.
+const PANZOOM_JS = `
+(function(){
+  var vp = document.querySelector('.mmd-vp');
+  var svg = vp && vp.querySelector('svg');
+  if (!vp || !svg) return;
+  var scale = 1, tx = 0, ty = 0;
+  function apply(){
+    svg.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
+    vp.classList.toggle('pannable', scale > 1);
+  }
+  vp.addEventListener('wheel', function(e){
+    if (!e.ctrlKey && !e.metaKey) return; // plain scroll stays page scroll
+    e.preventDefault();
+    var rect = svg.getBoundingClientRect();
+    var next = Math.min(6, Math.max(1, scale * (e.deltaY < 0 ? 1.12 : 1/1.12)));
+    if (next === scale) return;
+    var px = e.clientX - rect.left, py = e.clientY - rect.top;
+    tx -= (px / scale) * (next - scale);
+    ty -= (py / scale) * (next - scale);
+    scale = next;
+    if (scale === 1) { tx = 0; ty = 0; }
+    apply();
+  }, { passive: false });
+  var drag = null;
+  vp.addEventListener('pointerdown', function(e){
+    if (scale <= 1) return;
+    drag = { x: e.clientX, y: e.clientY };
+    vp.classList.add('panning');
+    vp.setPointerCapture(e.pointerId);
+  });
+  vp.addEventListener('pointermove', function(e){
+    if (!drag) return;
+    tx += e.clientX - drag.x;
+    ty += e.clientY - drag.y;
+    drag = { x: e.clientX, y: e.clientY };
+    apply();
+  });
+  ['pointerup','pointercancel'].forEach(function(t){
+    vp.addEventListener(t, function(){ drag = null; vp.classList.remove('panning'); });
+  });
+  vp.addEventListener('dblclick', function(){ scale = 1; tx = 0; ty = 0; apply(); });
+})();
 `;
 
 // mermaid.render namespaces the SVG's internal ids with this; it must be unique
@@ -146,8 +200,16 @@ export function MermaidPart(props: { part: MermaidPartData }) {
       const src = props.part.mermaid ?? "";
       try {
         // Lazy-load mermaid (a heavy dep) only when a mermaid part actually
-        // mounts. mermaid is the default export.
-        const mermaid = (await import("mermaid")).default;
+        // mounts. mermaid is the default export. The ELK layout engine loads
+        // alongside it: agents opt a complex flowchart into it per diagram via
+        // frontmatter (---\nconfig:\n  layout: elk\n---) — orthogonal edges and
+        // far fewer crossings on big architecture maps; small diagrams keep the
+        // softer dagre default.
+        const [mermaid, elkLayouts] = await Promise.all([
+          import("mermaid").then((m) => m.default),
+          import("@mermaid-js/layout-elk").then((m) => m.default),
+        ]);
+        mermaid.registerLayoutLoaders(elkLayouts);
         // securityLevel 'sandbox' makes mermaid do ALL its DOM work (parse +
         // layout) inside a scriptless sandboxed iframe it creates — agent-
         // authored diagram text never becomes live DOM in the trusted viewer
@@ -206,7 +268,13 @@ export function MermaidPart(props: { part: MermaidPartData }) {
       ) : (
         // The SVG string is produced here (trusted), then parsed inside an
         // opaque-origin iframe — a second boundary behind mermaid's DOMPurify.
-        <SandboxedPart class="block w-full border-0 bg-transparent" body={svg} css={MERMAID_CSS} />
+        // The pan/zoom wrapper + script are our own strings, same trust
+        // standing as the bridge.
+        <SandboxedPart
+          class="block w-full border-0 bg-transparent"
+          body={`<div class="mmd-vp" title="ctrl/cmd + scroll to zoom, drag to pan, double-click to reset">${svg}</div><script>${PANZOOM_JS}</script>`}
+          css={MERMAID_CSS}
+        />
       )}
     </div>
   );

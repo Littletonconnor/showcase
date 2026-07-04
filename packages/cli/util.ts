@@ -164,12 +164,30 @@ export function normalizeKits(flag: string | string[] | undefined): string[] | u
 
 // One streamed comment → one line (one monitor notification). Newlines are
 // collapsed so a multi-line comment stays a single notification.
-export function watchLine(c: { text?: string; surfaceId?: string; surfaceTitle?: string }): string {
+export function watchLine(c: {
+  id?: string;
+  text?: string;
+  surfaceId?: string;
+  surfaceTitle?: string;
+  anchor?: { quote?: string; line?: number; file?: string; step?: number };
+}): string {
   const text = String(c.text ?? "")
     .replace(/\s+/g, " ")
     .trim();
   const where = c.surfaceId
     ? `on “${c.surfaceTitle ?? "a surface"}” (surface ${c.surfaceId})`
     : "on the session";
+  // An anchored comment names its exact spot and carries the reply handle so
+  // `showcase reply --to <id>` lands in the thread.
+  if (c.anchor && c.id) {
+    const a = c.anchor;
+    const loc = [
+      ...(a.file ? [a.file] : []),
+      ...(a.line !== undefined ? [`line ${a.line}`] : []),
+      ...(a.step !== undefined ? [`step ${a.step + 1}`] : []),
+    ].join(" ");
+    const quote = a.quote ? ` “${a.quote.length > 80 ? a.quote.slice(0, 79) + "…" : a.quote}”` : "";
+    return `showcase comment ${where} at ${loc || "a selection"}${quote}: “${text}” — reply with: showcase reply "…" --to ${c.id}`;
+  }
   return `showcase comment ${where}: “${text}”`;
 }
