@@ -22,6 +22,36 @@ server, and a zero-dependency CLI. It runs entirely on your machine.
 > then `node packages/cli/bin/showcase.js demo` and open <http://localhost:8229>.
 > Every screenshot in this README is a real `showcase demo` session.
 
+## The commands
+
+Everything day-to-day is these:
+
+```sh
+# once
+pnpm install && pnpm build:viewer
+
+# run it
+showcase serve            # the board on :8229 (auto-started by most commands too)
+showcase demo             # seed real example sessions: reviews, explainers, lessons
+showcase open             # jump your browser to the current session
+
+# then just ASK YOUR AGENT (with the MCP server connected):
+#   "explain this repo on showcase"        "explain packages/server"
+#   "diff my branch and review it"          "teach me Redis eviction"
+#   "recap our conversation on showcase"
+
+# the loop
+showcase wait             # block until the user comments (anchored, exactly-once)
+showcase reply "..." --to <id>   # answer INTO a thread at its anchor
+showcase review-due       # spaced-review queue across topics
+showcase mastery          # inspect learn-mode progress
+```
+
+`showcase help` lists the rest (publish, diff, lesson, decisions, gc, doctor, ...).
+In the browser: select text or click a line number on any card to leave an
+anchored comment; a check appears when it is sent and flips to a double check
+the moment the agent has actually read it.
+
 ---
 
 ## What it's for

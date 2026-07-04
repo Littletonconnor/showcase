@@ -731,6 +731,9 @@ export function createApp({
       const fresh = await store.listComments({ sessionId, afterSeq: cur.agentSeq });
       if (fresh.length === 0) return undefined;
       await store.markAgentSeen(sessionId, fresh[fresh.length - 1].seq);
+      // The viewer shows per-message delivery receipts off agentSeq — tell it
+      // the cursor moved so "sent" flips to "seen by agent" live.
+      bus.broadcast({ type: "session-updated", id: sessionId });
       const feedback = fresh.filter((cm) => cm.author === "user");
       return feedback.length > 0 ? feedback.map(feedbackView) : undefined;
     });
@@ -1350,6 +1353,7 @@ export function createApp({
       // comments. collectFeedback already does this; mirror it here.
       if (q.author === "user" && q.sessionId && all.length > 0) {
         await store.markAgentSeen(q.sessionId, all[all.length - 1].seq);
+        bus.broadcast({ type: "session-updated", id: q.sessionId });
       }
       return all;
     };

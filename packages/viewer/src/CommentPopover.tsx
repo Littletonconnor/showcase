@@ -91,7 +91,7 @@ export function CommentPopover() {
       <div className="mt-1.5 flex items-center justify-between">
         <span className="text-[10.5px] text-faint">Enter to send · Esc to dismiss</span>
         <Button size="sm" variant="outline" disabled={!text.trim() || sending} onClick={send}>
-          Comment
+          {sending ? "Sending…" : "Comment"}
         </Button>
       </div>
     </div>

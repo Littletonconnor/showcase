@@ -13,7 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { WalkthroughPart as WalkthroughPartData, WalkthroughStep } from "@showcase/core/types";
 import { themeById } from "@showcase/core/themes";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, HelpCircle } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, HelpCircle } from "lucide-react";
 import { cx } from "./cx.ts";
 import { isReadonly } from "./api.ts";
 import { InlineText } from "./CheckpointPart.tsx";
@@ -21,7 +21,6 @@ import { loadLangs, setCurrentThemes, tokenize, type TokenLine } from "./highlig
 import { postTelemetry } from "./learn.ts";
 import { openComposer } from "./threads.ts";
 import { MermaidPart } from "./MermaidPart.tsx";
-import { toast } from "./state.ts";
 import { useResolvedMode, useSurfaceTheme } from "./theme.ts";
 
 // Append the active-node accent to the shared diagram source. `class` (not
@@ -161,6 +160,7 @@ export function WalkthroughPart(props: {
   const { part } = props;
   const steps = part.steps;
   const [index, setIndex] = useState(0);
+  const [flagged, setFlagged] = useState(false);
   const step = steps[Math.min(index, steps.length - 1)];
   const readonly = isReadonly();
 
@@ -172,7 +172,8 @@ export function WalkthroughPart(props: {
       type: "confusion_flag",
       anchor: `${part.title ?? "walkthrough"} step ${index + 1}: ${step.title}`.slice(0, 200),
     });
-    toast("Flagged for the agent — it will pick this up and clarify");
+    setFlagged(true);
+    setTimeout(() => setFlagged(false), 2500);
   };
 
   return (
@@ -225,8 +226,12 @@ export function WalkthroughPart(props: {
             title="Tell the agent this step lost you — it gets the exact step"
             className="inline-flex flex-none items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-faint transition-colors hover:bg-muted/50 hover:text-muted-foreground"
           >
-            <HelpCircle className="size-3.5" />
-            I&rsquo;m lost here
+            {flagged ? (
+              <Check className="size-3.5 text-emerald-500" />
+            ) : (
+              <HelpCircle className="size-3.5" />
+            )}
+            {flagged ? "Sent to the agent" : "I\u2019m lost here"}
           </button>
         ) : null}
         <Button

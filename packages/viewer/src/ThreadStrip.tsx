@@ -6,9 +6,31 @@ import { useState } from "react";
 import type { Comment } from "./api.ts";
 import { relTime } from "./api.ts";
 import { Button } from "@/components/ui/button";
-import { Check, CornerDownRight, RotateCcw } from "lucide-react";
+import { Check, CheckCheck, CornerDownRight, RotateCcw } from "lucide-react";
 import { cx } from "./cx.ts";
+import { useBoard } from "./state.ts";
 import { replyInThread, setResolved, type Thread } from "./threads.ts";
+
+// Honest delivery state for the user's messages, from the server's own agent
+// cursor: one check = persisted on the board; double check = the agent has
+// actually CONSUMED it (its seq is behind session.agentSeq). No toasts — the
+// message appearing in the thread is the send confirmation, and this glyph is
+// the delivery receipt.
+function DeliveryState(props: { comment: Comment }) {
+  const agentSeq = useBoard(
+    (s) => s.sessions.find((x) => x.id === props.comment.sessionId)?.agentSeq ?? 0,
+  );
+  const seen = props.comment.seq <= agentSeq;
+  return (
+    <span
+      data-delivery={seen ? "seen" : "sent"}
+      title={seen ? "Seen by the agent" : "Sent; the agent picks it up on its next check-in"}
+      className={cx("flex-none", seen ? "text-blue-500/80" : "text-faint")}
+    >
+      {seen ? <CheckCheck className="size-3" /> : <Check className="size-3" />}
+    </span>
+  );
+}
 
 function anchorLabel(c: Comment): string {
   const a = c.anchor;
@@ -43,6 +65,7 @@ function Message(props: { comment: Comment }) {
       <span className="ml-auto flex-none text-[10px] text-faint tabular-nums">
         {relTime(c.createdAt)}
       </span>
+      {isUser ? <DeliveryState comment={c} /> : null}
     </div>
   );
 }

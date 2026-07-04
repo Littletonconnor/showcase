@@ -52,7 +52,6 @@ export async function postAnchoredComment(target: ComposerTarget, text: string):
         },
       }),
     });
-    toast("Sent — the agent reads this on its next check-in");
     return true;
   } catch {
     toast("Couldn't send the comment");
