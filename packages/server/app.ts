@@ -1275,7 +1275,7 @@ export function createApp({
     // can't split across cards and the reply renders at the same spot.
     let parent: Comment | null = null;
     if (input.replyTo) {
-      parent = (await store.listComments({})).find((cm) => cm.id === input.replyTo) ?? null;
+      parent = await store.getComment(input.replyTo);
       if (!parent) return { error: `no comment ${input.replyTo} to reply to`, status: 404 };
       if (!input.surface && parent.surfaceId) input.surface = parent.surfaceId;
       if (!input.session) input.session = parent.sessionId;

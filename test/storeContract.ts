@@ -434,6 +434,40 @@ export function runStoreContract(name: string, makeStore: () => Store | Promise<
     assert.equal(ghost?.surfaceId, null);
   });
 
+  contract("getComment returns the comment by id, detached; unknown id is null", async (store) => {
+    const session = await store.createSession({ agent: "pi" });
+    const created = await store.createComment({
+      sessionId: session.id,
+      author: "user",
+      text: "hi",
+    });
+    assert.ok(created);
+    assert.deepEqual(await store.getComment(created.id), created);
+    assert.equal(await store.getComment("missing"), null);
+
+    // detached snapshot, not the live object
+    const got = await store.getComment(created.id);
+    got!.text = "mutated";
+    assert.equal((await store.getComment(created.id))?.text, "hi");
+  });
+
+  contract("setCommentResolved flips the flag; unknown id is null", async (store) => {
+    const session = await store.createSession({ agent: "pi" });
+    const comment = await store.createComment({ sessionId: session.id, author: "user", text: "x" });
+    assert.ok(comment);
+    assert.equal(comment.resolved, undefined);
+
+    const resolved = await store.setCommentResolved(comment.id, true);
+    assert.equal(resolved?.resolved, true);
+    assert.equal((await store.getComment(comment.id))?.resolved, true);
+
+    // reopening clears the flag entirely rather than storing false
+    const reopened = await store.setCommentResolved(comment.id, false);
+    assert.equal(reopened?.resolved, undefined);
+
+    assert.equal(await store.setCommentResolved("missing", true), null);
+  });
+
   contract("comment seq is strictly monotonic, even across deletes", async (store) => {
     const first = await store.createSession({ agent: "a" });
     const c1 = await store.createComment({ sessionId: first.id, author: "user", text: "1" });

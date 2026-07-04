@@ -399,6 +399,11 @@ export class JsonFileStore implements Store {
       .map(clone);
   }
 
+  async getComment(id: string) {
+    await this.load();
+    return cloneOrNull(this.comments.find((c) => c.id === id));
+  }
+
   async createComment(input: CreateCommentInput) {
     await this.load();
     if (!this.sessions.has(input.sessionId)) return null;

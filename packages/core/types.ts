@@ -645,6 +645,7 @@ export interface Store {
   removeSurface(id: string): Promise<boolean>;
 
   listComments(query: CommentQuery): Promise<Comment[]>;
+  getComment(id: string): Promise<Comment | null>;
   createComment(input: CreateCommentInput): Promise<Comment | null>;
   // Flip the local resolved flag on a thread's root comment. Returns the
   // updated comment, or null when the id is unknown.
