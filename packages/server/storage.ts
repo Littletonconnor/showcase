@@ -1,5 +1,3 @@
-import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 import {
   type Asset,
   collectAssetIds,
@@ -24,6 +22,7 @@ import {
   type Surface,
   type UpdateSurfaceInput,
 } from "@showcase/core/types";
+import { readJsonFile, writeJsonFile } from "./jsonFile.ts";
 
 export type * from "@showcase/core/types";
 
@@ -152,28 +151,10 @@ export class JsonFileStore implements Store {
     this.loaded = true;
   }
 
-  // Read the live file, falling back to the .bak mirror if the live one is
-  // missing or has been corrupted/truncated. A missing file (fresh board) is
-  // not an error; only a corrupt .bak is fatal. Returns null when neither
-  // exists, so a brand-new board starts empty.
-  private async readStoredShape(): Promise<LegacyShape | null> {
-    const bak = `${this.filePath}.bak`;
-    for (const path of [this.filePath, bak]) {
-      let raw: string;
-      try {
-        raw = await readFile(path, "utf8");
-      } catch (err: any) {
-        if (err?.code === "ENOENT") continue;
-        throw err;
-      }
-      try {
-        return JSON.parse(raw) as LegacyShape;
-      } catch (err) {
-        if (path === bak) throw err;
-        console.error(`showcase: ${this.filePath} is unreadable, recovering from ${bak}`);
-      }
-    }
-    return null;
+  // Strict recovery: only a corrupt .bak is fatal (the board must not
+  // silently drop data); a missing file is a fresh board.
+  private readStoredShape(): Promise<LegacyShape | null> {
+    return readJsonFile<LegacyShape>(this.filePath, "strict");
   }
 
   private serialize(): string {
@@ -212,16 +193,7 @@ export class JsonFileStore implements Store {
         // Clear BEFORE serializing: a mutation landing after this snapshot but
         // before the write finishes must schedule a fresh flush of its own.
         this.pendingFlush = null;
-        const data = this.serialize();
-        await mkdir(dirname(this.filePath), { recursive: true });
-        const tmp = `${this.filePath}.tmp`;
-        await writeFile(tmp, data, "utf8");
-        await rename(tmp, this.filePath);
-        // Mirror the just-written good state to .bak. We copy AFTER the rename, so
-        // the backup only ever holds validated data and can't be poisoned by a
-        // corrupt live file — readStoredShape recovers from it if the live file is
-        // later lost or truncated.
-        await copyFile(this.filePath, `${this.filePath}.bak`);
+        await writeJsonFile(this.filePath, this.serialize());
       });
     this.writeQueue = this.pendingFlush;
     return this.writeQueue;
