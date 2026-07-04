@@ -123,7 +123,7 @@ const demo = defineCommand({
   usage: "showcase demo",
   async run() {
     const { DEMO_SESSIONS, DEMO_LESSONS } = await import(
-      new URL("../demoData.js", import.meta.url).href
+      new URL("../demo/index.js", import.meta.url).href
     );
     for (const d of DEMO_SESSIONS) {
       const session = await api("/api/sessions", {
