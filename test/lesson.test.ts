@@ -9,6 +9,7 @@ import {
 } from "@showcase/core/lesson";
 import {
   formatTelemetryComment,
+  parseCheckpointComment,
   isTelemetryText,
   SANDBOX_TELEMETRY_TYPES,
   validateTelemetryEvent,
@@ -303,6 +304,61 @@ test("formatTelemetryComment produces fixed, prefixed lines", () => {
 
 test("the sandbox allowlist contains only explorable_interaction", () => {
   assert.deepEqual([...SANDBOX_TELEMETRY_TYPES], ["explorable_interaction"]);
+});
+
+test("parseCheckpointComment round-trips the formatter's checkpoint lines", () => {
+  const attempt = parseCheckpointComment(
+    formatTelemetryComment({
+      v: 1,
+      type: "checkpoint_attempt",
+      checkpointId: "cp-1",
+      conceptId: "lru",
+      kind: "mcq",
+      answer: ["b"],
+      correct: false,
+      misconception: "true LRU",
+      confidence: 0.9,
+      latencyMs: 8200,
+    }),
+  );
+  assert.deepEqual(attempt, { checkpointId: "cp-1", answer: "b", correct: false, confidence: 0.9 });
+
+  // Free text with quotes/backslashes survives the JSON escaping; ungraded
+  // attempts come back with `correct` absent, not false.
+  const tricky = parseCheckpointComment(
+    formatTelemetryComment({
+      v: 1,
+      type: "checkpoint_attempt",
+      checkpointId: "cp-2",
+      conceptId: "lru",
+      kind: "explain",
+      answer: 'it evicts the "coldest" key \\ sample',
+      latencyMs: 100,
+    }),
+  );
+  assert.deepEqual(tricky, {
+    checkpointId: "cp-2",
+    answer: 'it evicts the "coldest" key \\ sample',
+  });
+
+  const skipped = parseCheckpointComment(
+    formatTelemetryComment({
+      v: 1,
+      type: "checkpoint_skipped",
+      checkpointId: "cp-3",
+      conceptId: "lru",
+    }),
+  );
+  assert.deepEqual(skipped, { checkpointId: "cp-3", answer: "", skipped: true });
+
+  // Non-checkpoint telemetry and human prose are not attempts.
+  assert.equal(
+    parseCheckpointComment(
+      formatTelemetryComment({ v: 1, type: "explorable_gate_passed", checkpointId: "cp-1" }),
+    ),
+    null,
+  );
+  assert.equal(parseCheckpointComment("looks good to me"), null);
 });
 
 // --- walkthrough part ---------------------------------------------------------

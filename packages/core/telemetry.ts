@@ -170,3 +170,42 @@ export function formatTelemetryComment(e: TelemetryEvent): string {
 // renders these as compact chips instead of chat bubbles).
 export const isTelemetryText = (text: string): boolean =>
   /^\[(checkpoint|explorable|confused)\] /.test(text);
+
+// The inverse of formatTelemetryComment for the checkpoint events: parse a
+// machine-built `[checkpoint]` line back into the attempt it recorded. This is
+// how a fresh browser rebuilds reveal state from the session's comments (the
+// durable copy) — keep it in lockstep with the formatter above.
+export interface ParsedCheckpointAttempt {
+  checkpointId: string;
+  answer: string;
+  correct?: boolean;
+  skipped?: boolean;
+  confidence?: number;
+}
+
+export function parseCheckpointComment(text: string): ParsedCheckpointAttempt | null {
+  const m = /^\[checkpoint\] ([\w.-]{1,80}) \([^)]*\): (.*)$/.exec(text);
+  if (!m) return null;
+  const [, checkpointId, rest] = m;
+  if (rest.startsWith("skipped")) return { checkpointId, answer: "", skipped: true };
+  const correct = rest.startsWith("correct")
+    ? true
+    : rest.startsWith("INCORRECT")
+      ? false
+      : undefined;
+  const answerMatch = /answer=("(?:[^"\\]|\\.)*")/.exec(rest);
+  if (!answerMatch) return null;
+  let answer: string;
+  try {
+    answer = JSON.parse(answerMatch[1]) as string;
+  } catch {
+    return null;
+  }
+  const confMatch = / confidence=([0-9.]+)/.exec(rest);
+  return {
+    checkpointId,
+    answer,
+    ...(correct !== undefined ? { correct } : {}),
+    ...(confMatch ? { confidence: Number(confMatch[1]) } : {}),
+  };
+}

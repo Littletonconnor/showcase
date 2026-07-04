@@ -132,6 +132,13 @@ test("reveal is structurally absent pre-attempt, shown with the misconception af
   await expect(remedCard).toBeVisible();
   await expect(remedCard).toContainText("Remediation");
   await expect(remedCard.locator('[data-checkpoint="e2e-remed"]')).toBeVisible();
+
+  // A fresh load rebuilds the attempt from the server's telemetry comment
+  // (there is no localStorage copy), so the earned reveal stays unlocked.
+  await page.evaluate(() => localStorage.clear());
+  await page.goto(`/?surface=${beatId}`);
+  await expect(checkpoint.locator("[data-reveal]")).toContainText("SECRET-REVEAL-TEXT");
+  await expect(checkpoint).toContainText("not quite");
 });
 
 test("an explorable stays locked until its gate checkpoint is attempted", async ({
