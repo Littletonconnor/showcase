@@ -4,7 +4,7 @@
 // learner already earned — the durable record is the telemetry comment
 // server-side; this is only the local render state.
 import { create } from "zustand";
-import { api } from "./api.ts";
+import { postJson } from "./postJson.ts";
 import type { TelemetryEvent } from "@showcase/core/telemetry";
 
 export interface AttemptState {
@@ -50,18 +50,12 @@ export function markAttempt(checkpointId: string, state: AttemptState): void {
 // a failed post must not block the learner's reveal — the attempt still
 // happened; only the agent's copy is lost, and they can re-ask.
 export function postTelemetry(surfaceId: string, event: TelemetryEvent): void {
-  void api("/api/telemetry", {
-    method: "POST",
-    body: JSON.stringify({ surface: surfaceId, event }),
-  }).catch(() => {});
+  void postJson("/api/telemetry", { surface: surfaceId, event });
 }
 
 // Forward one event a sandboxed frame emitted via showcase.emit. The caller
 // (bridge.ts) has already validated it against the closed union and the
 // sandbox allowlist; the server re-checks both (sandbox: true).
 export function postSandboxTelemetry(surfaceId: string, event: TelemetryEvent): void {
-  void api("/api/telemetry", {
-    method: "POST",
-    body: JSON.stringify({ surface: surfaceId, event, sandbox: true }),
-  }).catch(() => {});
+  void postJson("/api/telemetry", { surface: surfaceId, event, sandbox: true });
 }
