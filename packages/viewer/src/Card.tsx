@@ -3,32 +3,17 @@ import { renderHtmlPage } from "@showcase/core/surfacePage";
 import { DEFAULT_THEME_ID, THEMES, themeById } from "@showcase/core/themes";
 import {
   api,
-  appPath,
   exportBundle,
   inlineAssetRefs,
   isReadonly,
   relTime,
-  type ChartPart as ChartPartData,
-  type DiffPart as DiffPartData,
   type HtmlPart as HtmlPartData,
-  type ImagePart as ImagePartData,
-  type JsonPart as JsonPartData,
-  type CodePart as CodePartData,
-  type MarkdownPart as MarkdownPartData,
-  type MermaidPart as MermaidPartData,
   type Surface,
   type SurfaceBadge,
-  type TerminalPart as TerminalPartData,
-  type TracePart as TracePartData,
   surfaceLink,
 } from "./api.ts";
-import { ChartPart } from "./ChartPart.tsx";
-import { ThreadStrip } from "./ThreadStrip.tsx";
 import { threadsFor } from "./threads.ts";
-import { CheckpointPart, ExplorableLock } from "./CheckpointPart.tsx";
-import { useLearn } from "./learn.ts";
-import { CodePart } from "./CodePart.tsx";
-import { WalkthroughPart } from "./WalkthroughPart.tsx";
+import { PartRenderer } from "./PartRenderer.tsx";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -49,13 +34,7 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cx } from "./cx.ts";
-import { DiffPart } from "./DiffPart.tsx";
 import { BookOpen, Check, Copy, ExternalLink, Link2, MoreHorizontal, Trash2 } from "lucide-react";
-import { ImagePart } from "./ImagePart.tsx";
-import { JsonPart } from "./JsonPart.tsx";
-import { MarkdownPart } from "./MarkdownPart.tsx";
-import { MermaidPart } from "./MermaidPart.tsx";
-import { TerminalPart } from "./TerminalPart.tsx";
 import {
   useActiveTheme,
   useResolvedMode,
@@ -63,7 +42,6 @@ import {
   resolvedMode,
   SurfaceThemeContext,
 } from "./theme.ts";
-import { TracePart } from "./TracePart.tsx";
 import { enterReading, focusSurface, setScrollTarget, toast, useBoard } from "./state.ts";
 
 // Card registry keyed by surface id: the "new surface" pill scrolls to the
@@ -350,9 +328,6 @@ export function Card(props: { surface: Surface }) {
   const activeTheme = useActiveTheme();
   const mode = useResolvedMode();
   const scrollTarget = useBoard((s) => s.scrollTarget);
-  // Checkpoint attempts drive explorable gating, so a committed attempt
-  // re-renders the card and mounts the unlocked iframe.
-  const learnAttempts = useLearn((s) => s.attempts);
   // Anchored threads, grouped by the part they point at — rendered in place
   // under that part (see ThreadStrip).
   const comments = useBoard((s) => s.comments);
@@ -526,100 +501,24 @@ export function Card(props: { surface: Surface }) {
             {relTime(props.surface.updatedAt)}
           </span>
         </div>
-        {/* Parts render in order, dispatched by kind. The fallback is reserved for
-          a kind this viewer build doesn't know — which happens when a long-open
-          tab predates a newly added part type. It must NOT assume diff (an
-          unknown part is not a broken diff), so it shows a neutral refresh hint
-          instead. An html iframe src changes only when the version, the active
-          theme, or the resolved light/dark mode does, so unrelated refetches
-          never reload it. The parts sit in a positioned wrapper so the line
-          comment composer can layer over them. */}
+        {/* Parts render in order, dispatched by kind (see PartRenderer). An html
+          iframe src changes only when the version, the active theme, or the
+          resolved light/dark mode does, so unrelated refetches never reload it.
+          The parts sit in a positioned wrapper so the line comment composer can
+          layer over them. */}
         <div className="relative">
-          {props.surface.parts.map((part, i) => {
-            const partEl = (() => {
-              switch (part.kind) {
-                case "html": {
-                  // Explorable gating (learn mode): the lesson renderer places a
-                  // gate checkpoint immediately before its explorable html part.
-                  // Until that checkpoint records an attempt, the iframe never
-                  // mounts — a locked placeholder stands in (P4: predict before
-                  // you manipulate).
-                  const prev = props.surface.parts[i - 1];
-                  if (
-                    prev?.kind === "checkpoint" &&
-                    prev.checkpoint.gate &&
-                    !learnAttempts[prev.checkpoint.id]
-                  ) {
-                    return <ExplorableLock key={i} gateId={prev.checkpoint.id} />;
-                  }
-                  const exportDoc = exportHtmlDocs?.get(i);
-                  return (
-                    <iframe
-                      key={i}
-                      ref={htmlFrameRef(i)}
-                      className="block h-[120px] w-full border-0 border-t-[0.5px] border-border bg-transparent"
-                      sandbox="allow-scripts"
-                      title={
-                        props.surface.parts.length > 1
-                          ? `${props.surface.title} (part ${i + 1})`
-                          : props.surface.title
-                      }
-                      {...(exportDoc !== undefined
-                        ? { srcDoc: exportDoc }
-                        : {
-                            src: appPath(
-                              `/s/${surfaceId}?part=${i}&ver=${props.surface.version}&cb=${props.surface.version}&theme=${surfaceTheme}&mode=${mode}`,
-                            ),
-                          })}
-                    ></iframe>
-                  );
-                }
-                case "markdown":
-                  return <MarkdownPart key={i} part={part as MarkdownPartData} />;
-                case "mermaid":
-                  return <MermaidPart key={i} part={part as MermaidPartData} />;
-                case "diff":
-                  return <DiffPart key={i} part={part as DiffPartData} />;
-                case "image":
-                  return <ImagePart key={i} part={part as ImagePartData} />;
-                case "trace":
-                  return <TracePart key={i} part={part as TracePartData} />;
-                case "terminal":
-                  return <TerminalPart key={i} part={part as TerminalPartData} />;
-                case "json":
-                  return <JsonPart key={i} part={part as JsonPartData} />;
-                case "code":
-                  return <CodePart key={i} part={part as CodePartData} />;
-                case "chart":
-                  return <ChartPart key={i} part={part as ChartPartData} />;
-                case "checkpoint":
-                  return (
-                    <CheckpointPart key={i} surfaceId={surfaceId} checkpoint={part.checkpoint} />
-                  );
-                case "walkthrough":
-                  return (
-                    <WalkthroughPart key={i} surfaceId={surfaceId} partIndex={i} part={part} />
-                  );
-                default:
-                  return (
-                    <div
-                      className="border-t-[0.5px] border-border px-3.5 py-2.5 text-xs text-faint"
-                      key={i}
-                    >
-                      Can&rsquo;t show this part — refresh showcase to update the viewer.
-                    </div>
-                  );
-              }
-            })();
-            // data-part-anchor lets the sandbox-selection bridge resolve which
-            // part a selection came from (frame -> closest wrapper).
-            return (
-              <div key={i} data-part-anchor data-part-index={i}>
-                {partEl}
-                <ThreadStrip threads={threadsByPart.get(i) ?? []} />
-              </div>
-            );
-          })}
+          {props.surface.parts.map((_, i) => (
+            <PartRenderer
+              key={i}
+              surface={props.surface}
+              index={i}
+              threads={threadsByPart.get(i) ?? []}
+              frameRef={htmlFrameRef(i)}
+              exportDoc={exportHtmlDocs?.get(i)}
+              theme={surfaceTheme}
+              mode={mode}
+            />
+          ))}
         </div>
         {/* Footer toolbar: the reply line (the browser half of the comment
           loop) plus per-surface utilities. Interactive chrome — hidden when the
