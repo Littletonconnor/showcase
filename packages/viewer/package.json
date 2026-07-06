@@ -14,7 +14,8 @@
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "gallery": "vite --open /gallery.html"
   },
   "dependencies": {
     "@mermaid-js/layout-elk": "^0.2.2",

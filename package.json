@@ -20,7 +20,8 @@
     "format:check": "oxfmt --check .",
     "test:e2e": "playwright test",
     "test:e2e:chrome": "E2E_CHROME=1 playwright test --project=chrome",
-    "test:viewer": "pnpm --filter @showcase/viewer test"
+    "test:viewer": "pnpm --filter @showcase/viewer test",
+    "gallery": "pnpm --filter @showcase/viewer gallery"
   },
   "devDependencies": {
     "@hono/node-server": "^1.14.0",
