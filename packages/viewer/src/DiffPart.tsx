@@ -9,21 +9,79 @@ import {
   type SupportedLanguages,
 } from "@pierre/diffs";
 import { preloadFileDiff } from "@pierre/diffs/ssr";
-import type { DiffPart as DiffPartData } from "./api.ts";
+import { isReadonly, type DiffPart as DiffPartData } from "./api.ts";
+import { escapeHtml } from "@showcase/core/surfacePage";
 import { themeById } from "@showcase/core/themes";
 import { detectMovedBlocks, type MovedBlock } from "./movedCode.ts";
 import { SandboxedPart } from "./SandboxedPart.tsx";
 import { useSurfaceTheme, useResolvedMode } from "./theme.ts";
+import { openComposer } from "./threads.ts";
 
 // Wrapper styles for the sandbox iframe. Each file's diff is a @pierre/diffs SSR
 // fragment mounted in its OWN declarative shadow root (it ships its own scoped
 // stylesheet, keyed off :host), so the iframe body only spaces the files.
 const DIFF_CSS = `
 body { margin: 0; padding: 0; background: transparent; font-size: 12.5px; }
-/* cursor inherits into the @pierre/diffs shadow root, so this is the one hint
-   that lines are clickable (the bridge turns a line click into a comment). */
-diffs-container { display: block; cursor: pointer; }
+diffs-container { display: block; }
 diffs-container + diffs-container { border-top: 0.5px solid var(--border); }
+`;
+
+// Injected INSIDE each file's shadow root (outer CSS can't pierce it): the
+// plannotator-style gutter affordance — line numbers read as clickable and
+// light up on hover. Our own trusted string, never agent markup.
+const GUTTER_CSS = `<style>
+[data-gutter] [data-line-type] { cursor: pointer; border-radius: 3px; }
+[data-gutter] [data-line-type]:hover { background: rgba(59, 130, 246, 0.16); }
+[data-gutter] [data-line-type]:hover [data-line-number-content] { color: #3b82f6; font-weight: 600; }
+</style>`;
+
+// Line-click forwarding, running inside the diff iframe (same trust standing
+// as BRIDGE_JS — our string, not agent content). composedPath crosses the open
+// declarative shadow roots, so a click on a gutter cell resolves to its line
+// number, side, and owning <diffs-container data-file>; the matching content
+// row supplies the quoted line. Only capped strings and rect numbers cross to
+// the host, which re-validates before opening the composer.
+const DIFF_LINE_JS = `
+// A gutter mouseup must not reach BRIDGE_JS's selection handler: with nothing
+// selected it reports selection-cleared, which would close the composer the
+// click below just opened. Capture phase, so it wins regardless of order.
+document.addEventListener('mouseup', function (e) {
+  var p = e.composedPath ? e.composedPath() : [];
+  for (var i = 0; i < p.length; i++) {
+    var el = p[i];
+    if (el && el.nodeType === 1 && el.matches && el.matches('[data-gutter] [data-line-type]')) {
+      e.stopImmediatePropagation();
+      return;
+    }
+  }
+}, true);
+document.addEventListener('click', function (e) {
+  var path = e.composedPath ? e.composedPath() : [];
+  var cell = null, container = null;
+  for (var i = 0; i < path.length; i++) {
+    var el = path[i];
+    if (!el || el.nodeType !== 1) continue;
+    if (!cell && el.matches && el.matches('[data-gutter] [data-line-type]')) cell = el;
+    if (el.tagName === 'DIFFS-CONTAINER') { container = el; break; }
+  }
+  if (!cell || !container) return;
+  var line = parseInt((cell.textContent || '').trim(), 10);
+  if (!line || line < 1) return;
+  var idx = cell.getAttribute('data-line-index') || '';
+  var row = idx && container.shadowRoot
+    ? container.shadowRoot.querySelector('[data-content] [data-line-index="' + idx + '"]')
+    : null;
+  var rect = cell.getBoundingClientRect();
+  parent.postMessage({
+    __showcase: true,
+    type: 'diff-line-click',
+    file: container.getAttribute('data-file') || '',
+    line: line,
+    side: cell.getAttribute('data-line-type') || '',
+    text: row ? (row.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 300) : '',
+    rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
+  }, '*');
+});
 `;
 
 // A small base set of langs the highlighter always loads; the rest are
@@ -199,9 +257,17 @@ function MovedNote(props: { moves: MovedBlock[]; multiFile: boolean }) {
   );
 }
 
-export function DiffPart(props: { part: DiffPartData }) {
+export function DiffPart(props: {
+  part: DiffPartData;
+  // Present when the diff renders on a surface card (PartRenderer): line-gutter
+  // clicks open the anchored-comment composer. Absent in review evidence panes
+  // (a decision isn't a surface), where the gutter stays inert.
+  surfaceId?: string;
+  partIndex?: number;
+}) {
   const activeTheme = useSurfaceTheme();
   const mode = useResolvedMode();
+  const interactive = props.surfaceId !== undefined && !isReadonly();
   const dark = mode === "dark";
   const [error, setError] = useState<string | null>(null);
   // The rendered diff splits into a manifest (multi-file only), the hot files'
@@ -285,12 +351,15 @@ export function DiffPart(props: { part: DiffPartData }) {
             generated: isGenerated(fd.name),
           };
         });
-        const wrap = (html: string) =>
-          `<diffs-container><template shadowrootmode="open">${html}</template></diffs-container>`;
+        // data-file names the container for the line-click bridge; the gutter
+        // style rides inside the shadow root (outer CSS can't pierce it) and
+        // only when clicking actually does something.
+        const wrap = (html: string, file: string) =>
+          `<diffs-container data-file="${escapeHtml(file)}"><template shadowrootmode="open">${interactive ? GUTTER_CSS : ""}${html}</template></diffs-container>`;
         const hot: string[] = [];
         const cold: string[] = [];
         rendered.forEach((r, i) => {
-          (info[i].generated ? cold : hot).push(wrap(r.prerenderedHTML));
+          (info[i].generated ? cold : hot).push(wrap(r.prerenderedHTML, diffs[i].name ?? ""));
         });
 
         setError(null);
@@ -313,6 +382,38 @@ export function DiffPart(props: { part: DiffPartData }) {
 
   const coldCount = manifest.filter((f) => f.generated).length;
 
+  // A gutter click arrived from the sandbox. The payload is agent-reachable
+  // data, so re-validate every field host-side before it becomes an anchor;
+  // the typed comment itself never leaves this trusted origin.
+  const onBridge = interactive
+    ? (d: Record<string, unknown>, frame: HTMLIFrameElement) => {
+        if (d.type !== "diff-line-click") return;
+        const line = Number(d.line);
+        if (!Number.isInteger(line) || line < 1 || line > 10_000_000) return;
+        const file = typeof d.file === "string" ? d.file.slice(0, 300) : "";
+        const quote = typeof d.text === "string" && d.text.trim() ? d.text.slice(0, 300) : "";
+        const rect = (d.rect ?? {}) as {
+          top?: number;
+          left?: number;
+          width?: number;
+          height?: number;
+        };
+        const fr = frame.getBoundingClientRect();
+        const x = fr.left + (Number(rect.left) || 0) + (Number(rect.width) || 0) / 2;
+        const y = fr.top + (Number(rect.top) || 0) + (Number(rect.height) || 0);
+        openComposer({
+          surfaceId: props.surfaceId!,
+          partIndex: props.partIndex ?? 0,
+          line,
+          ...(file ? { file } : {}),
+          ...(quote ? { quote } : {}),
+          x: Math.max(0, Math.min(window.innerWidth, x)),
+          y: Math.max(0, Math.min(window.innerHeight, y)),
+        });
+      }
+    : undefined;
+  const lineScript = interactive ? `<script>${DIFF_LINE_JS}</script>` : "";
+
   return (
     <div className="border-t-[0.5px] border-border">
       {error ? (
@@ -332,9 +433,10 @@ export function DiffPart(props: { part: DiffPartData }) {
           {moved.length > 0 ? <MovedNote moves={moved} multiFile={manifest.length > 1} /> : null}
           <SandboxedPart
             class="block w-full border-0 bg-transparent"
-            body={hotBody ?? ""}
+            body={hotBody ? hotBody + lineScript : ""}
             css={DIFF_CSS}
             title="Diff"
+            onBridgeMessage={onBridge}
           />
           {coldBody ? (
             <div className="border-t-[0.5px] border-border">
@@ -350,9 +452,10 @@ export function DiffPart(props: { part: DiffPartData }) {
               {showCold ? (
                 <SandboxedPart
                   class="block w-full border-0 bg-transparent"
-                  body={coldBody}
+                  body={coldBody + lineScript}
                   css={DIFF_CSS}
                   title="Diff — generated files"
+                  onBridgeMessage={onBridge}
                 />
               ) : null}
             </div>

@@ -59,7 +59,9 @@ type SandboxedPartProps = {
   // Bridge messages from THIS frame's contentWindow (already source-checked and
   // __showcase-tagged), beyond the resize the frame handles itself. The payload
   // is still agent-reachable data — callers must validate every field they use.
-  onBridgeMessage?: (data: Record<string, unknown>) => void;
+  // The frame element rides along so callers can translate in-frame rects to
+  // viewport coordinates (e.g. positioning the comment popover).
+  onBridgeMessage?: (data: Record<string, unknown>, frame: HTMLIFrameElement) => void;
 };
 
 // Dispatcher: the PDF export flattens rich parts into the document so they
@@ -118,7 +120,7 @@ function FramePart(props: SandboxedPartProps) {
       if (d.type === "resize") {
         applyFrameHeight(frame, d.height);
       } else {
-        onBridgeRef.current?.(d as Record<string, unknown>);
+        onBridgeRef.current?.(d as Record<string, unknown>, frame);
       }
     };
     window.addEventListener("message", onMessage);

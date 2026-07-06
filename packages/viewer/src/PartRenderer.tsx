@@ -89,7 +89,7 @@ export function PartRenderer(props: {
       case "mermaid":
         return <MermaidPart part={part as MermaidPartData} />;
       case "diff":
-        return <DiffPart part={part as DiffPartData} />;
+        return <DiffPart part={part as DiffPartData} surfaceId={surface.id} partIndex={i} />;
       case "image":
         return <ImagePart part={part as ImagePartData} />;
       case "trace":
