@@ -15,8 +15,11 @@ unstaged); a branch name means `main...<branch>` (or the repo's default base).
 3. Render the whole review in ONE `publish_decisions` call (never a markdown
    wall): brief + verdict + risk-ranked decisions + the COMPLETE changed-file
    manifest. Include evidence diffs and a `proposal` wherever a concrete fix
-   exists. At most one review-depth chart (minimap/bubble/matrix/arc), only if
-   the PR's shape earns it.
+   exists. For a big or multi-concern PR, add `chapters` — the guided read
+   (importance-ordered: the heart of the change first, consequences next, glue
+   last; every changed file in a chapter, with its live diff). At most one
+   review-depth chart (minimap/bubble/matrix/arc), only if the PR's shape
+   earns it.
 4. Give the user the review URL, then park on `wait_for_feedback` — pushback
    arrives as comments or pasted decision refs. Revise with a re-publish; the
    decision updates in place.

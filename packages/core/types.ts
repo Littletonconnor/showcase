@@ -438,11 +438,36 @@ export interface ManifestFile {
   note?: string; // one-line "what it is / why it was skipped"
 }
 
+// One chapter of a guided read (the plannotator-v0.22 "Guided Review" idea,
+// showcase-shaped): the agent organizes the WHOLE changeset into importance-
+// ordered chapters — the heart of the change first, its consequences next,
+// glue last — each pairing a prose overview and per-file summaries with the
+// live diffs it covers. The decision queue stays the judgment layer; chapters
+// are the reading layer. Coverage is validated against the manifest at publish
+// (see coerceReview): a chapter can never name a file outside the diff, and
+// changed files no chapter covers are surfaced, never silently dropped.
+export interface ChapterFile {
+  path: string; // must exist in the manifest
+  summary?: string; // one line: what changed here, why it's in this chapter
+}
+
+export interface ReviewChapter {
+  // Short, stable, copy-pasteable ref (e.g. "ch-…"), same contract as a
+  // decision id: it survives re-publishes and scopes chat pushback.
+  id?: string;
+  title: string; // e.g. "The heart: streaming cap replaces buffering"
+  overview: string; // prose (markdown) — what this chapter is, why read it now
+  files: ChapterFile[]; // what it covers, each ⊆ the manifest
+  parts?: SurfacePart[]; // the live artifacts (usually ONE diff over `files`)
+}
+
 export interface Review {
   sessionId: string;
   brief: string; // ≤4 sentences, plain English, no identifiers
   verdict: "block" | "approve" | "comment"; // the bottom line (a consequence of the decisions)
   decisions: Decision[]; // risk-ranked; decisions[0] is the lede
+  // Optional guided read — importance-ordered chapters over the same diff.
+  chapters?: ReviewChapter[];
   // The complete changed-file manifest — EVERY file in the diff, each tagged with
   // its disposition, so nothing the agent triaged away is hidden. Optional on the
   // type for older stored reviews; required for new publishes (see coerceReview).
@@ -469,6 +494,7 @@ export interface CreateReviewInput {
   verdict?: "block" | "approve" | "comment";
   decisions: Decision[];
   manifest?: ManifestFile[];
+  chapters?: ReviewChapter[];
   briefWarning?: string;
   warnings?: string[];
 }

@@ -264,10 +264,15 @@ export function DiffPart(props: {
   // (a decision isn't a surface), where the gutter stays inert.
   surfaceId?: string;
   partIndex?: number;
+  // Overrides the composer: the caller handles the gutter click itself (e.g. a
+  // guided-review chapter turning file:line into scoped pushback). Wins over
+  // surfaceId when both are set.
+  onLineClick?: (at: { file: string; line: number; quote: string }) => void;
 }) {
   const activeTheme = useSurfaceTheme();
   const mode = useResolvedMode();
-  const interactive = props.surfaceId !== undefined && !isReadonly();
+  const interactive =
+    (props.onLineClick !== undefined || props.surfaceId !== undefined) && !isReadonly();
   const dark = mode === "dark";
   const [error, setError] = useState<string | null>(null);
   // The rendered diff splits into a manifest (multi-file only), the hot files'
@@ -398,6 +403,10 @@ export function DiffPart(props: {
           width?: number;
           height?: number;
         };
+        if (props.onLineClick) {
+          props.onLineClick({ file, line, quote });
+          return;
+        }
         const fr = frame.getBoundingClientRect();
         const x = fr.left + (Number(rect.left) || 0) + (Number(rect.width) || 0) / 2;
         const y = fr.top + (Number(rect.top) || 0) + (Number(rect.height) || 0);

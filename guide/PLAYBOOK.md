@@ -100,6 +100,16 @@ This is showcase's flagship review workflow, designed for the age of agents and 
 - **`evidence`** — surface parts for the synced right pane (usually a `diff`, maybe a control-flow `mermaid`). **Effectively required for any decision about specific code** — a `changed-line`/`whole-file` call with nothing to look at is unadjudicable (the reviewer can't see what you're judging), and the server warns on it. Omit only for a genuinely codeless call (a process/architecture point); then it renders full-width. **Diff format matters:** a `diff` part is either a REAL unified diff (`{kind:"diff", patch}` from `git diff`, with `@@ -n,m +n,m @@` hunk headers) or before/after pairs (`{kind:"diff", files:[{filename, before, after}]}`). Do NOT hand-write a pseudo-patch (prose `@@` markers, no line numbers) — it won't parse and renders blank. When you're constructing the snippet yourself rather than pasting `git diff` output, use `files` — it's the robust path.
 - **`proposal`** — a concrete fix `{before, after, filename?, note?}` (current code → your fix). Renders under the evidence as a **"Suggested fix"** diff, so a `block`/`decide` shows the change _and_ how to unblock it. **Populate it whenever a concrete fix exists** — a blocked decision without one leaves the reviewer guessing.
 
+**`chapters` — the guided read (optional, for big or multi-concern PRs).** The decision queue is the judgment layer; `chapters` adds the reading layer: organize the WHOLE changeset into **importance-ordered chapters** — the heart of the change first, its consequences next, glue last. Each chapter is `{id?, title, overview, files:[{path, summary?}], parts?}`:
+
+- **`title`** names the idea, not the files ("The heart: reject before you read").
+- **`overview`** — 2-4 sentences of prose (markdown): what this chapter is and why it's read now.
+- **`files`** — what it covers, each with a one-line `summary`. **Every path must be in the manifest** (an invented file rejects the publish); non-mechanical files no chapter covers get a warning and render in an automatic "Everything else" section — never silently dropped. Aim for every changed file in exactly one chapter.
+- **`parts`** — the LIVE diff for those files (one `diff` part; real `git diff` output or `files:[{before,after}]`). The reviewer reads the actual hunks inside the chapter, marks it read, and can click any line to scope pushback to `file:line`.
+- **`id`** — stable across re-publishes, like a decision id (`"ch-heart"`); it scopes pushback ("revise ch-heart: …") and preserves read-state when you revise.
+
+Skip chapters on a small single-concern PR — the queue alone reads faster.
+
 **`manifest` is REQUIRED — the complete changed-file list (trust).** Risk-ranked decisions hide the files you triaged out; a reviewer who can't see _that's everything_ stops trusting the review. So list **every file in the diff**, each `{path, disposition, added, removed, decisionId?, note?}`:
 
 - **`disposition`** — `has-decision` (surfaced above — set `decisionId` to that decision's `id`) · `reviewed-no-comment` (you read it, nothing to flag) · `mechanical-skipped` (lockfile/generated/formatting — put the reason in `note`).

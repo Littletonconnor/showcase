@@ -115,5 +115,36 @@ export const reviewSession = {
         note: "generated / vendored — glance only",
       },
     ],
+    // The guided read — importance-ordered chapters over the same diff: the
+    // heart first, consequences next. Read-state and per-line pushback render
+    // in the viewer beneath the decision queue.
+    chapters: [
+      {
+        id: "ch-heart",
+        title: "The heart: reject before you read",
+        overview:
+          "Everything else in this PR hangs off one move — the size guard now runs on the `content-length` header **before** the body is buffered. Read this hunk first; if you agree with the ordering, the rest is consequences.",
+        files: [{ path: "server/app.ts", summary: "the guard moves above the arrayBuffer read" }],
+        parts: [{ kind: "diff", patch: REVIEW_BUG_DIFF }],
+      },
+      {
+        id: "ch-consequences",
+        title: "Consequences: one mime parser, one covering test",
+        overview:
+          "With the guard in place the content-type split gets extracted into a shared helper, and the new test pins the 413 path. Mechanical churn (the lockfile) is accounted for in the manifest.",
+        files: [
+          { path: "server/mime.ts", summary: "the extracted parseMime helper" },
+          { path: "test/assets.test.ts", summary: "covers the new size guard" },
+        ],
+        parts: [
+          {
+            kind: "diff",
+            files: [
+              { filename: "server/mime.ts", before: REVIEW_NIT_BEFORE, after: REVIEW_NIT_AFTER },
+            ],
+          },
+        ],
+      },
+    ],
   },
 };

@@ -43,11 +43,13 @@ import type { MasteryStore } from "./masteryStore.ts";
 import {
   type Asset,
   type AssetKind,
+  type ChapterFile,
   type Comment,
   type CreateReviewInput,
   type Decision,
   type DecisionProposal,
   type ManifestFile,
+  type ReviewChapter,
   coerceCommentAnchor,
   formatCommentAnchor,
   htmlPart,
@@ -550,14 +552,106 @@ export function coerceReview(raw: any): { review: CreateReviewInput } | { error:
       };
     }
   }
+
+  // Optional guided read. The manifest is the coverage oracle: a chapter file
+  // that isn't in the manifest is an invented file (reject — the guide must
+  // never describe code that isn't in the diff); changed files no chapter
+  // covers become a warning + the viewer's automatic trailing section (never a
+  // silent drop). Ids follow the decision-id contract (stable, unique, minted
+  // when omitted) so chat pushback can scope to a chapter.
+  const manifestPaths = new Set(manifest.map((f) => f.path));
+  let chapters: ReviewChapter[] | undefined;
+  const chapterWarnings: string[] = [];
+  if (raw.chapters != null) {
+    if (!Array.isArray(raw.chapters) || raw.chapters.length === 0) {
+      return { error: '"chapters" must be a non-empty array when present' };
+    }
+    chapters = [];
+    const chapterIds = new Set<string>();
+    for (let i = 0; i < raw.chapters.length; i++) {
+      const ch = raw.chapters[i];
+      if (!ch || typeof ch !== "object") return { error: `chapter ${i}: must be an object` };
+      let id: string;
+      if (ch.id != null) {
+        if (typeof ch.id !== "string" || !ch.id.trim())
+          return { error: `chapter ${i}: "id" must be a non-empty string when present` };
+        id = ch.id.trim();
+        if (chapterIds.has(id)) return { error: `chapter ${i}: duplicate id "${id}"` };
+      } else {
+        do {
+          id = `ch-${newId()}`;
+        } while (chapterIds.has(id));
+      }
+      chapterIds.add(id);
+      if (typeof ch.title !== "string" || !ch.title.trim())
+        return { error: `chapter ${i}: "title" is required` };
+      if (typeof ch.overview !== "string" || !ch.overview.trim())
+        return { error: `chapter ${i}: "overview" is required` };
+      if (!Array.isArray(ch.files) || ch.files.length === 0)
+        return { error: `chapter ${i} ("${ch.title}"): "files" must be a non-empty array` };
+      const files: ChapterFile[] = [];
+      for (const f of ch.files) {
+        const path = typeof f === "string" ? f : f && typeof f === "object" ? f.path : undefined;
+        if (typeof path !== "string" || !path.trim())
+          return { error: `chapter ${i} ("${ch.title}"): every file needs a "path"` };
+        if (!manifestPaths.has(path)) {
+          return {
+            error: `chapter ${i} ("${ch.title}"): file "${path}" is not in the manifest — a guide cannot invent files`,
+          };
+        }
+        const summary =
+          typeof f === "object" && typeof f.summary === "string" && f.summary.trim()
+            ? f.summary
+            : undefined;
+        files.push({ path, ...(summary ? { summary } : {}) });
+      }
+      let parts: SurfacePart[] | undefined;
+      if (ch.parts != null) {
+        const parsed = validateSurfaceParts(ch.parts);
+        if (!parsed.ok) return { error: `chapter ${i} ("${ch.title}") parts: ${parsed.error}` };
+        for (const p of parsed.parts) {
+          if (p.kind === "diff" && Array.isArray(p.files)) {
+            for (const f of p.files) {
+              f.before = endWithNewline(f.before);
+              f.after = endWithNewline(f.after);
+            }
+          }
+        }
+        parts = parsed.parts;
+      }
+      chapters.push({
+        id,
+        title: ch.title,
+        overview: ch.overview,
+        files,
+        ...(parts ? { parts } : {}),
+      });
+    }
+    const covered = new Set(chapters.flatMap((c) => c.files.map((f) => f.path)));
+    const uncovered = manifest.filter(
+      (f) => !covered.has(f.path) && f.disposition !== "mechanical-skipped",
+    );
+    if (uncovered.length > 0) {
+      chapterWarnings.push(
+        `Guided read leaves ${uncovered.length} changed file${uncovered.length === 1 ? "" : "s"} unchaptered (${uncovered
+          .slice(0, 5)
+          .map((f) => f.path)
+          .join(
+            ", ",
+          )}${uncovered.length > 5 ? ", …" : ""}) — they render in an automatic "Everything else" section; add them to a chapter or mark them mechanical-skipped.`,
+      );
+    }
+  }
+
   const briefWarning = checkBriefFormat(raw.brief);
-  const warnings = reviewEvidenceWarnings(decisions);
+  const warnings = [...reviewEvidenceWarnings(decisions), ...chapterWarnings];
   return {
     review: {
       brief: raw.brief,
       verdict,
       decisions,
       manifest,
+      ...(chapters ? { chapters } : {}),
       ...(briefWarning ? { briefWarning } : {}),
       ...(warnings.length > 0 ? { warnings } : {}),
     },
@@ -850,6 +944,7 @@ export function createApp({
     verdict?: string;
     decisions?: unknown;
     manifest?: unknown;
+    chapters?: unknown;
     session?: string;
     sessionTitle?: string;
     agent?: string;
@@ -863,6 +958,7 @@ export function createApp({
       verdict: input.verdict,
       decisions: input.decisions,
       manifest: input.manifest,
+      chapters: input.chapters,
     });
     if ("error" in parsed) return { error: parsed.error, status: 400 };
 
@@ -1979,6 +2075,7 @@ export function createApp({
       verdict: body?.verdict,
       decisions: body?.decisions,
       manifest: body?.manifest,
+      chapters: body?.chapters,
       session: id,
     });
     if ("error" in result) return c.json({ error: result.error }, result.status);

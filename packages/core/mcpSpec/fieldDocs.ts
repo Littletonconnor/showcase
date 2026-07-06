@@ -135,6 +135,22 @@ export const d = {
     "Optional — 'flips to ✅/⛔ if …'. ONLY when there's a real fork (an unverified gap that could change the call, or a load-bearing assumption). Omit on a clean ship — never noise.",
   decisionEvidence:
     "Right-pane artifacts for this decision: surface parts (usually a `diff`, plus maybe a `mermaid` control-flow or `code`). EFFECTIVELY REQUIRED for any decision about specific code — a changed-line / whole-file call with no evidence is unadjudicable (the reviewer can't see what you're judging) and the server warns on it. Omit ONLY for a genuinely codeless call (a process/architecture point), where it renders full-width.",
+  reviewChapters:
+    "Optional guided read — organize the WHOLE changeset into importance-ordered chapters: the " +
+    "heart of the change first, its consequences next, glue last. Each chapter is {id?, title, " +
+    "overview (prose/markdown: what this chapter is, why read it now), files:[{path, summary?}], " +
+    "parts? (the live diffs it covers — usually ONE diff part over those files)}. Every chapter " +
+    "file MUST be in the manifest (an invented file rejects the publish); changed files no " +
+    "chapter covers are surfaced in an automatic trailing section and warned on, never dropped. " +
+    "Use it when the PR is big or multi-concern — it gives the reviewer a reading order; the " +
+    "decision queue stays the judgment layer.",
+  chapterId:
+    "Optional short, stable ref for this chapter (e.g. 'ch-heart'). Same contract as a decision " +
+    "id: keep it stable across re-publishes so read-state and chat pushback survive a revise.",
+  chapterParts:
+    "chapter parts: the live artifacts this chapter covers — usually ONE diff part (real `git " +
+    "diff` patch or files:[{before,after}]) spanning the chapter's files; a mermaid/code part " +
+    "when the shape needs it.",
   decisionProposal:
     "Optional concrete fix as {before, after, filename?, note?}: `before` is the current (changed) code, `after` is your proposed fix. Renders under the evidence as a 'Suggested fix' diff, so the reviewer sees the change AND the fix side by side. POPULATE IT whenever a concrete fix exists — especially on a block/decide — so a blocked decision shows how to unblock it.",
 };

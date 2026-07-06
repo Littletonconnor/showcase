@@ -20,6 +20,7 @@ import type {
   FileDisposition,
   ManifestFile,
   Review,
+  ReviewChapter,
 } from "@showcase/core/types";
 import {
   api,
@@ -471,6 +472,263 @@ function EvidencePane(props: { decision: Decision; index: number }) {
   );
 }
 
+// ---- the guided read (plannotator-v0.22 "Guided Review", showcase-shaped) ----
+// Importance-ordered chapters over the SAME diff the queue judges: the heart of
+// the change first, consequences next, glue last. Each pairs an overview and
+// per-file summaries with the live diffs it covers. Read-state is local and
+// content-keyed (like Accepts); pushback is the same revise-by-ref comment the
+// queue uses — clicking a line in a chapter diff pre-scopes it to file:line.
+const chapterKey = (c: ReviewChapter) => c.id ?? c.title;
+
+// Chapter-level pushback: one input posting "revise ch-…: …" as a session
+// comment. A gutter click in the chapter's diff seeds it with file:line + the
+// quoted line, so a line-level note lands in the same feedback state as
+// everything else.
+function ChapterFeedback(props: {
+  sessionId: string;
+  chapterId?: string;
+  seed: string;
+  seedKey: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // A new gutter-click seed opens the input pre-scoped to that line.
+  useEffect(() => {
+    if (props.seedKey === 0) return;
+    setOpen(true);
+    setText((prev) => (prev.trim() ? prev : props.seed));
+    // Focus after the conditional input mounts.
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, [props.seedKey, props.seed]);
+  const send = async () => {
+    const trimmed = text.trim();
+    if (!trimmed || sending) return;
+    setSending(true);
+    try {
+      await api("/api/comments", {
+        method: "POST",
+        body: JSON.stringify({
+          session: props.sessionId,
+          text: props.chapterId ? `revise ${props.chapterId}: ${trimmed}` : trimmed,
+        }),
+      });
+      setText("");
+      setOpen(false);
+      toast("Sent — the agent revises and re-publishes this chapter");
+    } catch {
+      toast("Couldn't send the note");
+    } finally {
+      setSending(false);
+    }
+  };
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center rounded-md px-2.5 py-1 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-hover hover:text-foreground"
+      >
+        Push back…
+      </button>
+    );
+  }
+  return (
+    <input
+      ref={inputRef}
+      autoFocus
+      type="text"
+      value={text}
+      disabled={sending}
+      placeholder="What should change? (click a line in the diff to scope it)"
+      aria-label="Push back on this chapter"
+      spellCheck={false}
+      className="h-7 min-w-0 flex-1 rounded-md bg-muted/40 px-2 text-[12.5px] text-foreground ring-1 ring-brand/30 placeholder:text-faint focus:outline-none"
+      onChange={(e) => setText(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") void send();
+        else if (e.key === "Escape") setOpen(false);
+      }}
+      onBlur={() => {
+        if (!text.trim()) setOpen(false);
+      }}
+    />
+  );
+}
+
+function ChapterSection(props: {
+  chapter: ReviewChapter;
+  index: number;
+  total: number;
+  read: boolean;
+  interactive: boolean;
+  showVerbs: boolean;
+  sessionId?: string;
+  onToggleRead: () => void;
+}) {
+  const c = props.chapter;
+  const [seed, setSeed] = useState({ text: "", key: 0 });
+  return (
+    <section
+      data-chapter={c.id ?? props.index}
+      className={cx(
+        "rounded-lg border-[0.5px] border-border bg-card/40",
+        props.read && "opacity-70",
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-2 border-b-[0.5px] border-border/60 px-4 py-2.5">
+        <span className="text-[11px] text-faint tabular-nums">
+          Chapter {props.index + 1} / {props.total}
+        </span>
+        <h3 className="text-[14px] font-semibold text-foreground">{c.title}</h3>
+        {c.id ? <CopyRef id={c.id} /> : null}
+        {props.read ? (
+          <Chip className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+            ✓ Read
+          </Chip>
+        ) : null}
+        {props.showVerbs ? (
+          <div className="ml-auto flex min-w-0 flex-1 items-center justify-end gap-2">
+            {props.interactive && props.sessionId ? (
+              <ChapterFeedback
+                sessionId={props.sessionId}
+                chapterId={c.id}
+                seed={seed.text}
+                seedKey={seed.key}
+              />
+            ) : null}
+            <button
+              type="button"
+              onClick={props.onToggleRead}
+              disabled={!props.interactive}
+              aria-label={`Mark chapter ${props.index + 1} ${props.read ? "unread" : "read"}`}
+              className="inline-flex shrink-0 items-center rounded-md px-2.5 py-1 text-[12px] font-medium text-emerald-700 transition-colors hover:bg-emerald-50 disabled:pointer-events-none disabled:opacity-40 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+            >
+              {props.read ? "Unread" : "Mark read"}
+            </button>
+          </div>
+        ) : null}
+      </div>
+      <div className="flex flex-col gap-3 px-4 py-3">
+        <div className="max-w-[75ch] text-[13.5px] leading-relaxed text-foreground">
+          <MarkdownPart part={{ kind: "markdown", markdown: c.overview }} />
+        </div>
+        <ul className="flex flex-col gap-0.5">
+          {c.files.map((f, i) => (
+            <li key={i} className="flex items-baseline gap-2 text-[12.5px]">
+              <span className="shrink-0 font-mono text-[12px] text-foreground">{f.path}</span>
+              {f.summary ? (
+                <span className="truncate text-[12px] text-muted-foreground">— {f.summary}</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+        {c.parts && c.parts.length > 0 ? (
+          <div className="overflow-hidden rounded-lg border-[0.5px] border-border bg-card">
+            {c.parts.map((p, i) =>
+              p.kind === "diff" && props.interactive && props.sessionId ? (
+                <DiffPart
+                  key={i}
+                  part={p as DiffPartData}
+                  onLineClick={({ file, line, quote }) =>
+                    setSeed((s) => ({
+                      text: `${file}:${line}${quote ? ` "${quote}"` : ""} — `,
+                      key: s.key + 1,
+                    }))
+                  }
+                />
+              ) : (
+                <EvidencePart key={i} part={p} />
+              ),
+            )}
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function GuidedRead(props: {
+  chapters: ReviewChapter[];
+  manifest?: ManifestFile[];
+  sessionId?: string;
+  interactive: boolean;
+  showVerbs: boolean;
+}) {
+  const [read, setRead] = useState<Set<string>>(() => new Set());
+  const done = props.chapters.reduce((n, c) => n + (read.has(chapterKey(c)) ? 1 : 0), 0);
+  // The server warns about these at publish; the viewer ALSO renders them so a
+  // guide can never silently drop a changed file (mechanical-skipped churn is
+  // accounted for in the manifest instead).
+  const covered = new Set(props.chapters.flatMap((c) => c.files.map((f) => f.path)));
+  const uncovered = (props.manifest ?? []).filter(
+    (f) => !covered.has(f.path) && f.disposition !== "mechanical-skipped",
+  );
+  return (
+    <section aria-label="Guided read" className="mt-2 max-w-[980px] pb-16">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <h2 className="text-[15px] font-semibold text-foreground">Guided read</h2>
+        <span className="text-[12px] text-faint" aria-live="polite">
+          {props.showVerbs
+            ? done === props.chapters.length
+              ? `all ${props.chapters.length} chapters read`
+              : `${done} / ${props.chapters.length} read`
+            : `${props.chapters.length} chapters`}
+        </span>
+        <span className="text-[12px] text-faint">
+          · importance-ordered: the heart of the change first, glue last
+        </span>
+      </div>
+      <div className="flex flex-col gap-4">
+        {props.chapters.map((c, i) => (
+          <ChapterSection
+            key={chapterKey(c)}
+            chapter={c}
+            index={i}
+            total={props.chapters.length}
+            read={read.has(chapterKey(c))}
+            interactive={props.interactive}
+            showVerbs={props.showVerbs}
+            sessionId={props.sessionId}
+            onToggleRead={() =>
+              setRead((prev) => {
+                const n = new Set(prev);
+                const k = chapterKey(c);
+                if (n.has(k)) n.delete(k);
+                else n.add(k);
+                return n;
+              })
+            }
+          />
+        ))}
+        {uncovered.length > 0 ? (
+          <section
+            data-chapter="everything-else"
+            className="rounded-lg border-[0.5px] border-dashed border-border px-4 py-3"
+          >
+            <h3 className="text-[13px] font-semibold text-muted-foreground">
+              Everything else — {uncovered.length} changed file{uncovered.length === 1 ? "" : "s"}{" "}
+              no chapter covers
+            </h3>
+            <ul className="mt-1.5 flex flex-col gap-0.5">
+              {uncovered.map((f, i) => (
+                <li key={i} className="flex items-center gap-2 text-[12.5px]">
+                  <span className="truncate font-mono text-[12px] text-foreground">{f.path}</span>
+                  <span className="ml-auto shrink-0 tabular-nums text-[11px]">
+                    <span className="text-emerald-600 dark:text-emerald-400">+{f.added}</span>{" "}
+                    <span className="text-red-600 dark:text-red-400">−{f.removed}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 export function ReviewView(props: {
   review: Review;
   sessionId?: string;
@@ -685,8 +943,12 @@ export function ReviewView(props: {
         {/* The decision region: left scrolls, right is sticky and snaps to active. */}
         <div className="mt-6 grid gap-x-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
           {/* Trailing space so the LAST decisions can still scroll up into the
-              active band (otherwise the snap traps you before reaching them). */}
-          <ol aria-label="Decision queue, riskiest first" className="-ml-5 pb-[55vh]">
+              active band (otherwise the snap traps you before reaching them).
+              A guided read below already provides that scroll room. */}
+          <ol
+            aria-label="Decision queue, riskiest first"
+            className={cx("-ml-5", r.chapters && r.chapters.length > 0 ? "pb-10" : "pb-[55vh]")}
+          >
             {r.decisions.map((d, i) => (
               <DecisionSection
                 key={i}
@@ -710,6 +972,17 @@ export function ReviewView(props: {
             </div>
           </div>
         </div>
+
+        {/* The guided read — the reading layer under the judgment layer. */}
+        {r.chapters && r.chapters.length > 0 ? (
+          <GuidedRead
+            chapters={r.chapters}
+            manifest={r.manifest}
+            sessionId={props.sessionId}
+            interactive={interactive}
+            showVerbs={showVerbs}
+          />
+        ) : null}
       </div>
     </div>
   );

@@ -48,6 +48,23 @@ The last open roadmap items, landed one commit each, all gates green
    registry, publish→get_surface round-trip, in-band -32602 validation,
    resources, prompts, wait_for_feedback exactly-once. The Move 2 remainder.
 
+Follow-up (July 2026, plannotator round 3 — their v0.22 "Guided Review"):
+✅ **the guided read** — `Review.chapters`: the agent organizes the WHOLE
+changeset into importance-ordered chapters (the heart first, consequences
+next, glue last), each `{id, title, overview, files:[{path, summary}], parts}`
+with its live diff rendered inline beneath the decision queue. The manifest is
+the coverage oracle: a chapter naming a file outside the manifest REJECTS the
+publish ("a guide can never invent files"); non-mechanical files no chapter
+covers get a warning + an automatic "Everything else" section (never a silent
+drop). Chapter ids follow the decision-id contract (stable, copy-ref chip,
+`revise ch-…:` pushback); Mark-read drives a chapter burndown; clicking a line
+in a chapter diff pre-scopes the pushback input to `file:line "quote"`. On
+both MCP transports + REST; recipe in the PLAYBOOK; the demo review is
+chaptered; covered by `test/reviewChapters.test.ts`, ReviewView component
+tests, and `e2e/guidedReview.spec.ts`. Their commits-panel ("linear history
+rail") was considered and cut: the server has no repo access and chronological
+order is what importance-ordered chapters deliberately replace.
+
 Follow-up (July 2026, plannotator round 2): ✅ **inline diff line comments** —
 clicking a line's gutter inside the sandboxed @pierre/diffs render opens the
 anchored composer with file:line + the quoted line (composedPath through the

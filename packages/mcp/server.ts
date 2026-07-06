@@ -147,11 +147,11 @@ server.registerTool(
     description: MCP_TOOL_DESCRIPTIONS.publishDecisions,
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.publishDecisions,
   },
-  async ({ brief, verdict, decisions, manifest, sessionTitle }) => {
+  async ({ brief, verdict, decisions, manifest, chapters, sessionTitle }) => {
     const result = await withSession(sessionTitle, (session) =>
       api(`/api/sessions/${session}/review`, {
         method: "POST",
-        body: JSON.stringify({ brief, verdict, decisions, manifest }),
+        body: JSON.stringify({ brief, verdict, decisions, manifest, chapters }),
       }).then(JSON.parse),
     );
     return text({ ...result, url: `${API}/?review=${result.sessionId}` });
