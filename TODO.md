@@ -531,10 +531,17 @@ deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
 
 **Quality & trust**
 
-- **Accessibility pass** — for a product whose premise is _visual_ surfaces in
-  sandboxed iframes, there's no a11y story: iframe titles, focus order across
-  cards, contrast on the tone chips, screen-reader labels on the decision queue. A
-  deliberate WCAG pass is table stakes. _Effort: medium._
+- **✅ Shipped — Accessibility pass.** Every sandboxed part iframe carries a
+  title (`SandboxedPart` requires one); each card is an `<article>` named by
+  its surface title so screen readers jump card-to-card; the decision queue
+  got an aria-label, an aria-live burndown, and accessible names on Accept /
+  copy-ref. Contrast was audited computationally against the composited
+  chip tints: the tone chips already passed 4.5:1 in both modes; the real
+  failure was the `faint` tertiary text (~3.2:1), so every theme's faint
+  token was minimally shifted to clear WCAG AA against the card surface
+  (still lighter than `muted` — hierarchy preserved; the constraint is now
+  documented on the `ThemePalette.faint` field). Covered by component tests
+  (`partTitles.test.tsx`, ReviewView a11y assertions).
 - **✅ Shipped — Operational observability.** The CLI installs showcase as a
   launchd/systemd service but had no liveness signal. Now an owner-scoped
   **`GET /api/health`** reports `{ status, uptimeMs, version, board, lastError }`
@@ -768,12 +775,16 @@ Already React 19 + zustand + Tailwind v4 + vendored shadcn, Vite → one self-co
   viewer build.
 - **Keep the single-file artifact** — it's a feature (the server serves one file); do
   _not_ code-split. Note the tension with bundle growth and revisit only if it bites.
-- **Component/unit tests** — add `vitest` + Testing Library for the part renderers
-  (`*Part.tsx`) and the review views; the Playwright oracle stays the integration
-  gate but per-component tests are missing today.
-- Folds in two existing roadmap items as viewer-package work: the **accessibility
-  pass** (iframe titles, focus order, contrast, SR labels on the decision queue) and
-  a **part gallery / Storybook-like** harness for the renderers.
+- **✅ Component/unit tests** — `vitest` + Testing Library (jsdom) live in
+  `@showcase/viewer`: 34 tests over CheckpointPart (reveal gating, grading,
+  server-hydrated attempts), PartRenderer (dispatch, sandbox, explorable
+  gate), ThreadStrip (threads, delivery receipts, resolve), JsonPart,
+  ReviewView (brief/verdict/burndown/manifest + SR labels), and the part
+  iframe titles. `pnpm test:viewer` at the root; the Playwright oracle stays
+  the integration gate.
+- Folds in two existing roadmap items as viewer-package work: the
+  **accessibility pass** (✅ shipped — see Quality & trust) and a **part
+  gallery / Storybook-like** harness for the renderers (still open).
 
 ##### Sequencing & open decisions
 
