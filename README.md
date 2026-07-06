@@ -40,6 +40,13 @@ showcase open             # jump your browser to the current session
 #   "diff my branch and review it"          "teach me Redis eviction"
 #   "recap our conversation on showcase"
 
+# or, with the plugin installed, one verb each (plannotator-style):
+#   /review [branch]     a decision-queue review of the diff
+#   /explain <thing>     a walkthrough / animated explainer
+#   /teach <topic>       a lesson with checkpoints + spaced review
+#   /last                put the agent's previous answer on the board to mark up
+#   /watch               park the agent on the feedback loop
+
 # the loop
 showcase wait             # block until the user comments (anchored, exactly-once)
 showcase reply "..." --to <id>   # answer INTO a thread at its anchor
@@ -368,12 +375,20 @@ follow the standard agent-skills layout, so any of these works:
 # the skills CLI (Claude Code, Codex, Cursor, OpenCode, Copilot - shared .agents/skills/):
 npx skills@latest add Littletonconnor/showcase --skill teach
 
-# Claude Code plugin marketplace (managed + updatable, namespaced /showcase:* skills):
+# Claude Code plugin marketplace (managed + updatable — the /review, /explain,
+# /teach, /last, /watch commands plus the namespaced /showcase:* skills):
 /plugin marketplace add Littletonconnor/showcase
 
 # or plain copy:
 cp -r skills/teach ~/.agents/skills/
 ```
+
+The plugin's slash commands are the memorable spine — one verb per loop
+(`commands/*.md`): `/review [branch]` publishes a decision-queue review,
+`/explain <thing>` a walkthrough or animated explainer, `/teach <topic>` a
+lesson, `/last` puts the agent's previous answer on the board to mark up, and
+`/watch` parks the agent on the feedback loop. Each command bootstraps from the
+live playbook, so the recipe text stays server-owned.
 
 Each skill's README states when to use it and, just as important, when to skip
 it. For always-on triggering guidance, add this managed block to your

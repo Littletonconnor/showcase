@@ -52,7 +52,11 @@ behind enforced boundaries. `core` ← everyone; `cli` talks to `server` over HT
   wire contract is type-checked. `server-entry.js` resolves the built html for
   the server to read across the workspace boundary.
 - `guide/` — runtime agent instructions (repo-level, not a package). `test/`,
-  `e2e/`, `scripts/`, `docs/` stay repo-level too.
+  `e2e/`, `scripts/`, `docs/` stay repo-level too. `skills/` + `commands/` are
+  the installable plugin surface (`.claude-plugin/`): the skills, and the
+  one-verb slash commands (`/review`, `/explain`, `/teach`, `/last`, `/watch`)
+  that front the flagship loops — each bootstraps from the live `/playbook`,
+  so recipe text stays server-owned.
 
 ## Invariants worth keeping
 
