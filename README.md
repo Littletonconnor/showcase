@@ -52,6 +52,11 @@ showcase wait             # block until the user comments (anchored, exactly-onc
 showcase reply "..." --to <id>   # answer INTO a thread at its anchor
 showcase review-due       # spaced-review queue across topics
 showcase mastery          # inspect learn-mode progress
+
+# plan review that just happens (Claude Code)
+showcase install-plan-hook   # ExitPlanMode now opens the plan on the board and
+                             # BLOCKS: annotate, then Approve plan or Request
+                             # changes — the verdict returns in the hook response
 ```
 
 `showcase help` lists the rest (publish, diff, lesson, decisions, gc, doctor, ...).
@@ -389,6 +394,16 @@ The plugin's slash commands are the memorable spine — one verb per loop
 lesson, `/last` puts the agent's previous answer on the board to mark up, and
 `/watch` parks the agent on the feedback loop. Each command bootstraps from the
 live playbook, so the recipe text stays server-owned.
+
+Plan review needs no command at all: `showcase install-plan-hook` wires a
+`PreToolUse` hook on `ExitPlanMode`, so every plan the agent proposes opens on
+the board automatically and the agent **blocks** until you annotate and submit
+a verdict — **Approve plan** allows it to proceed; **Request changes** returns
+your anchored notes in the hook response, the agent revises, and the review
+reopens as a new version of the same card. If the board is unreachable or you
+never answer (30-minute ceiling), the hook steps aside and Claude Code's
+normal permission prompt takes over. `showcase plan <file|->` runs the same
+blocking review from any script or agent.
 
 Each skill's README states when to use it and, just as important, when to skip
 it. For always-on triggering guidance, add this managed block to your

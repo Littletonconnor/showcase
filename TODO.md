@@ -48,6 +48,24 @@ The last open roadmap items, landed one commit each, all gates green
    registry, publish→get_surface round-trip, in-band -32602 validation,
    resources, prompts, wait_for_feedback exactly-once. The Move 2 remainder.
 
+Follow-up (July 2026, plannotator round 4 — the founding feature):
+✅ **the blocking plan-review hook.** `showcase install-plan-hook` wires a
+Claude Code `PreToolUse` hook on `ExitPlanMode` (project or `--user` scope;
+command pinned to the installing node binary): the plan publishes as a badged
+markdown surface (one card per cwd, re-versioned per round), the browser
+auto-opens (round 1 only; SSE live-updates after), and `showcase plan-hook`
+BLOCKS on the comment pipe until the footer verdicts the "Plan review" badge
+unlocks — **Approve plan** → `allow`; **Request changes** → `deny` with the
+anchored-annotation batch as the reason, so the agent revises and re-enters
+the loop. Typed `lgtm`/`approve` in the reply line also approves. Failure
+posture: wrong tool, dead board, or a 30-min timeout all exit silently and
+defer to the normal permission flow (the cursor is drained per round so a
+stale comment can never verdict a new plan). `showcase plan <file|->` is the
+same blocking review for scripts/other agents (exit 0/2/3 = approve/changes/
+timeout). This resolves the parked "agent wake/notify" question from the
+blocking side — the agent is parked, not notified. Covered by
+`test/planHook.test.ts` (4 process-level tests) and `e2e/planReview.spec.ts`.
+
 Follow-up (July 2026, plannotator round 3 — their v0.22 "Guided Review"):
 ✅ **the guided read** — `Review.chapters`: the agent organizes the WHOLE
 changeset into importance-ordered chapters (the heart first, consequences

@@ -293,6 +293,60 @@ function surfaceRef(id: string, title: string): string {
   return title.trim() ? `showcase surface ${id} "${title.trim()}"` : `showcase surface ${id}`;
 }
 
+// Plan-review verbs — the explicit submit the blocking ExitPlanMode hook
+// waits on. Rendered only when the surface carries the "Plan review" badge
+// (published by `showcase plan` / the plan hook): annotate the plan first,
+// then one of these posts a plain author=user signal comment on the pipe —
+// [plan] approve allows the tool call, [plan] request-changes denies it with
+// the annotation batch as the agent's feedback.
+function PlanVerbs(props: { surfaceId: string }) {
+  const [sent, setSent] = useState<"approve" | "changes" | null>(null);
+  const send = async (kind: "approve" | "changes") => {
+    try {
+      await api("/api/comments", {
+        method: "POST",
+        body: JSON.stringify({
+          surface: props.surfaceId,
+          text: kind === "approve" ? "[plan] approve" : "[plan] request-changes",
+        }),
+      });
+      setSent(kind);
+      toast(
+        kind === "approve"
+          ? "Plan approved — the agent proceeds"
+          : "Sent — the agent revises the plan",
+      );
+    } catch {
+      toast("Couldn't send the verdict");
+    }
+  };
+  if (sent) {
+    return (
+      <span className="flex-none px-1.5 text-[11.5px] text-faint" data-plan-verdict={sent}>
+        {sent === "approve" ? "✓ Approved" : "Changes requested"}
+      </span>
+    );
+  }
+  return (
+    <span className="flex flex-none items-center gap-1" data-plan-verbs>
+      <button
+        type="button"
+        onClick={() => void send("changes")}
+        className="inline-flex items-center rounded-md px-2 py-1 text-[12px] font-medium text-amber-700 transition-colors hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950/40"
+      >
+        Request changes
+      </button>
+      <button
+        type="button"
+        onClick={() => void send("approve")}
+        className="inline-flex items-center rounded-md px-2 py-1 text-[12px] font-medium text-emerald-700 transition-colors hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+      >
+        Approve plan
+      </button>
+    </span>
+  );
+}
+
 function CardIdChip(props: { id: string; title: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -535,11 +589,16 @@ export function Card(props: { surface: Surface }) {
           <TooltipProvider delayDuration={300}>
             {!isReadonly() && !exportBundle() ? (
               <span className="flex-1 pl-1.5 text-[11px] text-faint select-none">
-                Select text (or click a line number) to comment
+                {props.surface.badge?.label === "Plan review"
+                  ? "Annotate the plan, then submit a verdict →"
+                  : "Select text (or click a line number) to comment"}
               </span>
             ) : (
               <span className="flex-1" />
             )}
+            {props.surface.badge?.label === "Plan review" && !isReadonly() && !exportBundle() ? (
+              <PlanVerbs surfaceId={surfaceId} />
+            ) : null}
             {surfaceActions}
           </TooltipProvider>
         </div>
