@@ -6,10 +6,49 @@ section 6 is the roadmap (what to build); sections 7–8 are open decisions and
 how to pick up work autonomously. Architecture detail lives in `AGENTS.md`.
 
 **👉 All three form factors are built and dogfooded — decision reviews, learn
-mode, and walkthrough explainers with anchored comments — and the
-simplification pass that followed them is shipped too (see immediately
-below).** The shipped summaries follow it; sections 1–8 are the stable
-guide/roadmap underneath.
+mode, and walkthrough explainers with anchored comments — and the passes that
+followed them are shipped too: the simplification pass and the
+remaining-backlog pass (see immediately below), which cleared the roadmap.**
+The shipped summaries follow; sections 1–8 are the stable guide/roadmap
+underneath.
+
+---
+
+## ✅ Remaining-backlog pass — SHIPPED (July 2026)
+
+The last open roadmap items, landed one commit each, all gates green
+(typecheck / test / viewer tests / lint / oracle):
+
+1. ✅ **Review-depth chart types** — the chart part gained the opt-in per-PR
+   visuals on the audited trusted path (Recharts + hand-rolled trusted SVG, no
+   D3, no new deps): `bubble` (churn×complexity hotspots, point area from the
+   new `z` field), `minimap` (one-strip file heat-map), `matrix` (co-change
+   adjacency over the new `x2` field), `arc` (layered arc diagram). Strict
+   validation rejects an unplottable matrix/arc; loose drops it; rendering caps
+   disclose truncation. PLAYBOOK/DESIGN_GUIDE teach one-visual-per-PR, matched
+   to the PR's shape.
+2. ✅ **Diagram-node → walkthrough-step jump** — the step↔diagram sync runs
+   both ways: clicking a step's node in the shared mermaid jumps the player to
+   that step (cycling through steps that share a node). Allowlisted node ids
+   only; the host re-validates the bridge message before acting.
+3. ✅ **In-file moved-code detection** — `movedCode.ts` pairs identical
+   deletion/addition runs within a file; DiffPart labels them "↕ N lines moved
+   within the file, unchanged (a–b → c–d)" above the hunks. Renderer spiked
+   first: annotating @pierre/diffs' SSR HTML would couple to library internals,
+   so the strip lives in the trusted origin like the manifest.
+4. ✅ **Part gallery** — `pnpm gallery` serves a dev-only /gallery.html: every
+   part kind through the real PartRenderer with fixture data (html parts via
+   the export-style pre-rendered sandbox doc). The Move 3 "Storybook-like
+   harness" item.
+5. ✅ **CLI color + tables** — zero-dep `style.ts` (TTY-gated ANSI, NO_COLOR /
+   FORCE_COLOR, ANSI-width-aware tables) applied across list/sessions/kits/
+   blueprints/health/board/publish/errors/help. The Move 1 "optional polish".
+6. ✅ **stdio MCP per-tool test matrix** — `test/mcpStdio.test.ts` drives the
+   real stdio server process over newline-delimited JSON-RPC: handshake, tool
+   registry, publish→get_surface round-trip, in-band -32602 validation,
+   resources, prompts, wait_for_feedback exactly-once. The Move 2 remainder.
+
+Still parked (a user decision, not built): the agent wake/notify path.
 
 ---
 
@@ -230,9 +269,9 @@ walkthrough part with line-gutter comments, and the "The commands" README
 cheat sheet. Diagram polish shipped alongside the walkthrough part: ELK layout engine
 (opt-in per diagram via frontmatter `config.layout: elk` - documented in the
 design guide) and pan/zoom on every mermaid part (ctrl/cmd+scroll, drag,
-double-click reset). Still open: click a diagram node to jump the walkthrough
-to that step; D2 as an alternative renderer was evaluated and skipped (new
-heavy dep; mermaid+ELK covers the need locally).
+double-click reset). ✅ Click-a-diagram-node-to-jump shipped in the
+remaining-backlog pass (see top); D2 as an alternative renderer was evaluated
+and skipped (new heavy dep; mermaid+ELK covers the need locally).
 
 ### Anti-goals (unchanged from the plan)
 
@@ -450,11 +489,10 @@ complete. The stable base everything below assumes:
 
 ### 🔨 What's actually left
 
-Everything in §1's two flagship workflows is shipped. Two things remain, neither
-load-bearing:
-
-1. **Review-depth visuals** — the opt-in per-PR chart track below.
-2. **In-file moved-code detection** + an optional **Tour surface** — both below.
+Everything in §1's two flagship workflows is shipped, and the
+remaining-backlog pass (top of this file) closed the last open items here —
+the review-depth chart track and in-file moved-code detection are both
+**shipped**. What follows is kept as the design record.
 
 #### Review depth — fancier review visualizations (a track to develop)
 
@@ -473,18 +511,24 @@ Recharts lacks (matrix, arc, minimap). **No sandboxed D3 kit**: Recharts is
 already in the app, D3 would add ~250KB + a brand-new sandboxed-iframe attack
 surface for zero benefit, and treemap/scatter were already added this way.
 
-- **Opt-in depth visuals** — each extends the trusted chart path:
-  - **churn×complexity hotspot bubble** — Recharts scatter + a size (Z) axis.
-  - **coupling-delta bar** — Recharts stacked bar (already possible).
-  - **file minimap / heat-strip** — small custom-SVG React part.
-  - **adjacency / co-change matrix** — custom-SVG rect grid.
-  - **layered arc diagram** — custom-SVG `<path>` arcs.
+- ✅ **Opt-in depth visuals — SHIPPED** (remaining-backlog pass), each on the
+  trusted chart path:
+  - ✅ **churn×complexity hotspot bubble** — `chartType:"bubble"` (Recharts
+    scatter + a `z` size axis).
+  - ✅ **coupling-delta bar** — Recharts stacked bar (already possible; the
+    PLAYBOOK documents the recipe).
+  - ✅ **file minimap / heat-strip** — `chartType:"minimap"` (custom trusted
+    SVG).
+  - ✅ **adjacency / co-change matrix** — `chartType:"matrix"` (custom SVG,
+    `x2` column field).
+  - ✅ **layered arc diagram** — `chartType:"arc"` (custom-SVG `<path>` arcs).
   - **overview blast radius** — mermaid (already have).
     Swap in per PR (a big refactor wants the matrix; a one-file fix wants the
-    minimap) — never all at once.
-- **In-file moved-code detection** — `@pierre/diffs` detects file-level renames but
-  not in-file block moves; label "moved, unchanged" instead of delete+add. Spike
-  the renderer first. _Effort:_ unknown (renderer-gated).
+    minimap) — never all at once; the PLAYBOOK enforces one-visual-per-PR.
+- ✅ **In-file moved-code detection — SHIPPED** (remaining-backlog pass) —
+  `viewer/src/movedCode.ts` + the DiffPart "↕ moved, unchanged" strip. The
+  renderer spike concluded: label above the hunks (trusted origin, like the
+  manifest) rather than annotating @pierre/diffs' SSR HTML.
 - **✅ Tour surface — superseded by the `walkthrough` part** (a native step
   player with real excerpts, per-step line highlights, a synced diagram, and
   anchored comments), which covers the complex-PR narrative use directly; the
@@ -700,8 +744,8 @@ Things that must survive the split:
 (`packages/cli`, relocated as part of Move 0). The old single ~1400-line
 `bin/showcase.js` was reworked into a real CLI modeled on curly. It is strictly
 zero-dep and imports nothing from other packages (talks to the server over HTTP),
-so the package boundary holds without effort. _Optional polish remaining: add
-color/tables to the human output._ The shipped shape:
+so the package boundary holds without effort. _The color/tables polish shipped
+in the remaining-backlog pass (`cli/style.ts`)._ The shipped shape:
 
 - **Command router** ✅ — `bin/showcase.js` is now a thin launcher into
   `cli/main.ts`; a **command registry** (`cli/registry.ts`) holds one `Command`
@@ -753,12 +797,12 @@ already advertises **resources** (`showcase://surface/<id>`) and **prompts**
   asset listing (the thin client can't reach the store); stdio asset reads fetch
   the bytes via an authed binary `fetchAssetBlob`. `get_surface` + `update_surface`
   remain the read→revise iterate path.
-- _Remaining (optional):_ extend the per-tool test matrix to the stdio transport
-  process directly (the HTTP transport + shared core are covered in
-  `test/api.test.ts`), and keep tool descriptions sharp.
-- **Per-tool tests** ✅ (HTTP) — `test/api.test.ts` covers the input-validation
-  gate (missing field, bad enum, loose-part pass-through) and the session/asset
-  resource list + read; the stdio-process matrix is the optional remainder above.
+- ✅ **Per-tool tests, both transports** — `test/api.test.ts` covers the HTTP
+  input-validation gate (missing field, bad enum, loose-part pass-through) and
+  the session/asset resource list + read; `test/mcpStdio.test.ts` (remaining-
+  backlog pass) drives the real stdio process over newline-delimited JSON-RPC
+  (handshake, registry, round-trip, -32602 validation, resources, prompts,
+  wait_for_feedback exactly-once).
 - Consider, only if a need shows up: **elicitation/sampling** for the comment→agent
   loop. (An MCP-level health probe is now covered by `/api/health` / `showcase
 health`.)
@@ -783,8 +827,10 @@ Already React 19 + zustand + Tailwind v4 + vendored shadcn, Vite → one self-co
   iframe titles. `pnpm test:viewer` at the root; the Playwright oracle stays
   the integration gate.
 - Folds in two existing roadmap items as viewer-package work: the
-  **accessibility pass** (✅ shipped — see Quality & trust) and a **part
-  gallery / Storybook-like** harness for the renderers (still open).
+  **accessibility pass** (✅ shipped — see Quality & trust) and ✅ the **part
+  gallery** harness (shipped in the remaining-backlog pass — `pnpm gallery`
+  serves /gallery.html, every part kind through the real PartRenderer with
+  fixture data, dev-only).
 
 ##### Sequencing & open decisions
 
@@ -840,9 +886,10 @@ pending a call on whether to pursue it.
 2. `git branch --show-current` — if not on a task branch, branch from `main`.
 3. Both flagship workflows are shipped — Workflow 1 (visual PR review, R1–R4) and
    Workflow 2 (learning & explainers, L1–L3); the supporting **static export** is
-   shipped too. Remaining work is the **review-depth / fancier-visualizations**
-   track (opt-in per-PR chart types). If an item is an "open decision" in §7,
-   confirm it first.
+   shipped too, and the **remaining-backlog pass** (top of this file) closed the
+   review-depth chart track, moved-code detection, the part gallery, the CLI
+   polish, and the stdio test matrix. The roadmap is clear; new work starts from
+   a fresh idea or an "open decision" in §7 — confirm those with the user first.
 4. Build in small commits; after each, run the §5 verify suite. For UI, screenshot
    and look.
 5. Keep the oracle green; if you change behavior it covers, update the oracle in
