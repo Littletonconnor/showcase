@@ -19,9 +19,21 @@ export const green = style(32, 39);
 export const yellow = style(33, 39);
 export const cyan = style(36, 39);
 
-// Visible width — styled cells must not skew their column.
-const ANSI_RE = /\u001b\[\d+m/g;
-const width = (s: string) => s.replace(ANSI_RE, "").length;
+// Visible width — styled cells must not skew their column. A scanner rather
+// than a regex: a control character in a regex (literal or constructed) trips
+// no-control-regex. Skips ESC…m sequences, counts the rest.
+const ESC = "\u001b";
+function width(s: string): number {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === ESC) {
+      while (i < s.length && s[i] !== "m") i++;
+    } else {
+      n++;
+    }
+  }
+  return n;
+}
 
 // Align rows into columns, two spaces apart, last column unpadded. Cells may
 // already carry ANSI styles.
