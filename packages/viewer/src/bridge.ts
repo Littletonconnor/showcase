@@ -1,11 +1,34 @@
 import { api, isReadonly, layoutMode } from "./api.ts";
-import { SANDBOX_TELEMETRY_TYPES, validateTelemetryEvent } from "@showcase/core/telemetry";
+import {
+  SANDBOX_TELEMETRY_TYPES,
+  type TelemetryEvent,
+  validateTelemetryEvent,
+} from "@showcase/core/telemetry";
 import { frameForSource } from "./Card.tsx";
 import { root } from "./host.ts";
 import { postSandboxTelemetry } from "./learn.ts";
 import { closeComposer, openComposer } from "./threads.ts";
 import { applyFrameHeight } from "./SandboxedPart.tsx";
 import { selectAdjacent, toast } from "./state.ts";
+
+// A slider drag inside an explorable can emit dozens of interaction events a
+// second, and every one would land as a comment on the feedback pipe.
+// Trailing-edge debounce per surface+control: only the settled value posts.
+const interactionTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const INTERACTION_DEBOUNCE_MS = 400;
+
+function postInteractionDebounced(surfaceId: string, event: TelemetryEvent): void {
+  const key = event.type === "explorable_interaction" ? `${surfaceId}:${event.name}` : surfaceId;
+  const prev = interactionTimers.get(key);
+  if (prev !== undefined) clearTimeout(prev);
+  interactionTimers.set(
+    key,
+    setTimeout(() => {
+      interactionTimers.delete(key);
+      postSandboxTelemetry(surfaceId, event);
+    }, INTERACTION_DEBOUNCE_MS),
+  );
+}
 
 // Messages from sandboxed surface iframes (see server/surfacePage.ts bridge).
 export async function onBridgeMessage(ev: MessageEvent) {
@@ -99,7 +122,7 @@ export async function onBridgeMessage(ev: MessageEvent) {
     if (isReadonly()) return;
     const event = validateTelemetryEvent((d as { event?: unknown }).event);
     if (!event || !SANDBOX_TELEMETRY_TYPES.includes(event.type)) return;
-    postSandboxTelemetry(src.id, event);
+    postInteractionDebounced(src.id, event);
   } else if (d.type === "open-link" && isOwnFrame(ev.source)) {
     // Only ever open real external links. The in-frame click handler forwards
     // just http(s) hrefs, but a surface can call openLink() directly (or post

@@ -305,6 +305,7 @@ export function DiffPart(props: { part: DiffPartData }) {
             class="block w-full border-0 bg-transparent"
             body={hotBody ?? ""}
             css={DIFF_CSS}
+            title="Diff"
           />
           {coldBody ? (
             <div className="border-t-[0.5px] border-border">
@@ -322,6 +323,7 @@ export function DiffPart(props: { part: DiffPartData }) {
                   class="block w-full border-0 bg-transparent"
                   body={coldBody}
                   css={DIFF_CSS}
+                  title="Diff — generated files"
                 />
               ) : null}
             </div>

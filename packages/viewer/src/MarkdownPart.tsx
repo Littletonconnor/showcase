@@ -158,6 +158,7 @@ export function MarkdownPart(props: { part: MarkdownPartData }) {
       class="block w-full border-0 border-t-[0.5px] border-border bg-transparent"
       body={html}
       css={MD_CSS + shikiSchemeCss(mode)}
+      title="Markdown"
     />
   );
 }

@@ -187,6 +187,7 @@ function CopyRef(props: { id: string }) {
     <button
       type="button"
       title="Copy this decision's ref — paste it into chat to revise it"
+      aria-label={`Copy the ref for decision ${props.id}`}
       onClick={() => {
         void navigator.clipboard?.writeText(props.id);
         setCopied(true);
@@ -389,6 +390,7 @@ function DecisionSection(props: {
                 type="button"
                 onClick={props.onAccept}
                 disabled={!props.interactive}
+                aria-label={`Accept decision ${props.index + 1} of ${props.total}`}
                 className="inline-flex items-center rounded-md px-2.5 py-1 text-[12px] font-medium text-emerald-700 transition-colors hover:bg-emerald-50 disabled:pointer-events-none disabled:opacity-40 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
               >
                 Accept <Kbd>A</Kbd>
@@ -606,6 +608,7 @@ export function ReviewView(props: {
               </button>
             )}
             <span
+              aria-label={`Verdict: ${VERDICT_LABEL[r.verdict]}`}
               className={cx(
                 "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold",
                 r.verdict === "block"
@@ -617,7 +620,9 @@ export function ReviewView(props: {
             >
               {VERDICT_LABEL[r.verdict]}
             </span>
-            <span className="text-faint">
+            {/* aria-live: the burndown is the review's progress meter — announce
+                each Accept without moving focus. */}
+            <span className="text-faint" aria-live="polite">
               {showVerbs
                 ? settled === total
                   ? `Review complete · ${total} decision${total === 1 ? "" : "s"}`
@@ -681,7 +686,7 @@ export function ReviewView(props: {
         <div className="mt-6 grid gap-x-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
           {/* Trailing space so the LAST decisions can still scroll up into the
               active band (otherwise the snap traps you before reaching them). */}
-          <ol className="-ml-5 pb-[55vh]">
+          <ol aria-label="Decision queue, riskiest first" className="-ml-5 pb-[55vh]">
             {r.decisions.map((d, i) => (
               <DecisionSection
                 key={i}

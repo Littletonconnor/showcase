@@ -1,7 +1,7 @@
 // Per-learner mastery persistence — the learn vertical's memory across
 // sessions (docs/learn-form-factor.md). Follows the JsonFileStore pattern
-// (whole file in memory, atomic tmp+rename writes, a .bak mirror of the last
-// good state) but is its OWN small store: mastery is learner state, not board
+// (whole file in memory, the jsonFile.ts atomic write + .bak mirror) but is
+// its OWN small store: mastery is learner state, not board
 // content, so it lives in its own file (~/.showcase/mastery.json, override
 // SHOWCASE_MASTERY) and never touches the board's Store interface (C4).
 //
@@ -10,8 +10,6 @@
 // .bak, and an unreadable .bak falls back to EMPTY with a warning — a learn
 // session must never crash on a corrupt mastery file.
 
-import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
 import {
   applyAttempt,
   collectDue,
@@ -24,6 +22,7 @@ import {
   type SyllabusState,
 } from "@showcase/core/mastery";
 import type { CheckpointKind } from "@showcase/core/types";
+import { readJsonFile, writeJsonFile } from "./jsonFile.ts";
 
 export type {
   DueConcept,
@@ -62,44 +61,24 @@ export class MasteryStore {
     await this.loadPromise;
   }
 
+  // Lenient recovery: any unreadable file falls back to the .bak, then to
+  // EMPTY — a learn session must never crash on a corrupt mastery file.
   private async loadFromDisk() {
-    for (const path of [this.filePath, `${this.filePath}.bak`]) {
-      let raw: string;
-      try {
-        raw = await readFile(path, "utf8");
-      } catch (err: any) {
-        if (err?.code === "ENOENT") continue;
-        console.error(`showcase: cannot read ${path} (${err?.message}) — starting mastery empty`);
-        return;
-      }
-      try {
-        const data = JSON.parse(raw) as FileShape;
-        for (const [topic, t] of Object.entries(data.topics ?? {})) {
-          if (t && typeof t === "object" && t.conceptGraph) this.topics.set(topic, t);
-        }
-        return;
-      } catch {
-        console.error(`showcase: ${path} is unreadable mastery data — trying the backup`);
-      }
+    const data = await readJsonFile<FileShape>(this.filePath, "lenient");
+    for (const [topic, t] of Object.entries(data?.topics ?? {})) {
+      if (t && typeof t === "object" && t.conceptGraph) this.topics.set(topic, t);
     }
-    // Both unreadable/missing: warn once (unless simply absent) and start empty.
   }
 
   private persist(): Promise<void> {
     this.writeQueue = this.writeQueue
       .catch(() => {})
-      .then(async () => {
-        const data = JSON.stringify(
-          { topics: Object.fromEntries(this.topics) } satisfies FileShape,
-          null,
-          2,
-        );
-        await mkdir(dirname(this.filePath), { recursive: true });
-        const tmp = `${this.filePath}.tmp`;
-        await writeFile(tmp, data, "utf8");
-        await rename(tmp, this.filePath);
-        await copyFile(this.filePath, `${this.filePath}.bak`);
-      });
+      .then(() =>
+        writeJsonFile(
+          this.filePath,
+          JSON.stringify({ topics: Object.fromEntries(this.topics) } satisfies FileShape, null, 2),
+        ),
+      );
     return this.writeQueue;
   }
 

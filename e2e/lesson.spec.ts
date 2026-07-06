@@ -10,11 +10,10 @@ import { expect, test } from "@playwright/test";
 // html/markdown parts their text IS reachable from the page DOM — that is by
 // design, and it is what lets this oracle assert on reveal visibility.
 
-// Topic per test AND per run: mastery is keyed by topic and persists in the
-// mastery file across server restarts, so a reused topic would see stale state.
-const RUN = Date.now().toString(36);
+// Topic per test: mastery is keyed by topic, and globalSetup deletes the run's
+// mastery file, so a topic only has to be unique within this suite.
 const LESSON = (topic: string) => ({
-  topic: `${topic} ${RUN}`,
+  topic,
   learnerLevel: "novice",
   conceptGraph: {
     concepts: [{ id: "c1", label: "Concept One", misconceptions: ["the wrong model"] }],
@@ -132,6 +131,13 @@ test("reveal is structurally absent pre-attempt, shown with the misconception af
   await expect(remedCard).toBeVisible();
   await expect(remedCard).toContainText("Remediation");
   await expect(remedCard.locator('[data-checkpoint="e2e-remed"]')).toBeVisible();
+
+  // A fresh load rebuilds the attempt from the server's telemetry comment
+  // (there is no localStorage copy), so the earned reveal stays unlocked.
+  await page.evaluate(() => localStorage.clear());
+  await page.goto(`/?surface=${beatId}`);
+  await expect(checkpoint.locator("[data-reveal]")).toContainText("SECRET-REVEAL-TEXT");
+  await expect(checkpoint).toContainText("not quite");
 });
 
 test("an explorable stays locked until its gate checkpoint is attempted", async ({

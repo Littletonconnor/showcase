@@ -29,7 +29,6 @@ export type TelemetryEvent =
       latencyMs: number;
     }
   | { v: 1; type: "checkpoint_skipped"; checkpointId: string; conceptId: string }
-  | { v: 1; type: "explorable_gate_passed"; checkpointId: string }
   | { v: 1; type: "explorable_interaction"; name: string; value: string }
   | { v: 1; type: "confusion_flag"; anchor?: string };
 
@@ -103,11 +102,6 @@ export function validateTelemetryEvent(raw: unknown): TelemetryEvent | null {
       if (!checkpointId || !conceptId) return null;
       return { v: 1, type: "checkpoint_skipped", checkpointId, conceptId };
     }
-    case "explorable_gate_passed": {
-      const checkpointId = id(raw.checkpointId);
-      if (!checkpointId) return null;
-      return { v: 1, type: "explorable_gate_passed", checkpointId };
-    }
     case "explorable_interaction": {
       if (typeof raw.name !== "string" || !NAME_RE.test(raw.name)) return null;
       if (typeof raw.value !== "string") return null;
@@ -157,8 +151,6 @@ export function formatTelemetryComment(e: TelemetryEvent): string {
     }
     case "checkpoint_skipped":
       return `[checkpoint] ${e.checkpointId} (concept ${e.conceptId}): skipped (repeated skips mean change the approach, not mastery)`;
-    case "explorable_gate_passed":
-      return `[explorable] gate ${e.checkpointId} passed; the explorable is now unlocked`;
     case "explorable_interaction":
       return `[explorable] ${e.name}=${JSON.stringify(e.value)} (emitted by sandboxed card script, not typed by the user)`;
     case "confusion_flag":
@@ -170,3 +162,42 @@ export function formatTelemetryComment(e: TelemetryEvent): string {
 // renders these as compact chips instead of chat bubbles).
 export const isTelemetryText = (text: string): boolean =>
   /^\[(checkpoint|explorable|confused)\] /.test(text);
+
+// The inverse of formatTelemetryComment for the checkpoint events: parse a
+// machine-built `[checkpoint]` line back into the attempt it recorded. This is
+// how a fresh browser rebuilds reveal state from the session's comments (the
+// durable copy) — keep it in lockstep with the formatter above.
+export interface ParsedCheckpointAttempt {
+  checkpointId: string;
+  answer: string;
+  correct?: boolean;
+  skipped?: boolean;
+  confidence?: number;
+}
+
+export function parseCheckpointComment(text: string): ParsedCheckpointAttempt | null {
+  const m = /^\[checkpoint\] ([\w.-]{1,80}) \([^)]*\): (.*)$/.exec(text);
+  if (!m) return null;
+  const [, checkpointId, rest] = m;
+  if (rest.startsWith("skipped")) return { checkpointId, answer: "", skipped: true };
+  const correct = rest.startsWith("correct")
+    ? true
+    : rest.startsWith("INCORRECT")
+      ? false
+      : undefined;
+  const answerMatch = /answer=("(?:[^"\\]|\\.)*")/.exec(rest);
+  if (!answerMatch) return null;
+  let answer: string;
+  try {
+    answer = JSON.parse(answerMatch[1]) as string;
+  } catch {
+    return null;
+  }
+  const confMatch = / confidence=([0-9.]+)/.exec(rest);
+  return {
+    checkpointId,
+    answer,
+    ...(correct !== undefined ? { correct } : {}),
+    ...(confMatch ? { confidence: Number(confMatch[1]) } : {}),
+  };
+}

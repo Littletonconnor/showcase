@@ -126,7 +126,16 @@ export function CheckpointPart(props: { surfaceId: string; checkpoint: Checkpoin
 
   const attempted = !!attempt;
   const skipped = attempt?.skipped === true;
-  const chosenIds = new Set(Array.isArray(attempt?.answer) ? attempt.answer : []);
+  // A live attempt stores option choices as an array; a server-hydrated one
+  // carries the telemetry line's joined string — split it back (option ids
+  // can't contain ", ").
+  const chosenIds = new Set(
+    Array.isArray(attempt?.answer)
+      ? attempt.answer
+      : hasOptions && attempt?.answer
+        ? attempt.answer.split(", ")
+        : [],
+  );
   const calibration =
     attempt?.confidence !== undefined ? calibrationLine(attempt.confidence, attempt.correct) : null;
 

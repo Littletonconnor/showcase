@@ -73,6 +73,7 @@ export function TerminalPart(props: { part: TerminalPartData }) {
       class="block w-full border-0 border-t-[0.5px] border-border bg-transparent"
       body={body}
       css={TERM_CSS}
+      title={props.part.title ? `Terminal — ${props.part.title}` : "Terminal output"}
     />
   );
 }
