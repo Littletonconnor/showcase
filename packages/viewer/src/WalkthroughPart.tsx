@@ -271,11 +271,19 @@ export function WalkthroughPart(props: {
         </div>
       </div>
 
-      {/* the shared diagram, active node tracking the step */}
+      {/* the shared diagram, active node tracking the step — and the reverse:
+          clicking a step's node jumps the walkthrough there (cycling forward
+          through steps that share the node) */}
       {part.mermaid ? (
         <MermaidPart
           key={step.node ?? "_"}
           part={{ kind: "mermaid", mermaid: diagramForStep(part.mermaid, step.node) }}
+          clickableNodes={steps.flatMap((s) => (s.node ? [s.node] : []))}
+          onNodeClick={(node) => {
+            const hits = steps.flatMap((s, i) => (s.node === node ? [i] : []));
+            const next = hits.find((i) => i > index) ?? hits[0];
+            if (next !== undefined) go(next);
+          }}
         />
       ) : null}
 

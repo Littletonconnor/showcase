@@ -119,7 +119,9 @@ language, lineStart, highlight, node}` — `body` is the annotation (plain text
   `lineStart` keeps the numbering matching the file, `highlight` is absolute
   `[[from,to]]` ranges. An optional top-level `mermaid` diagram is shared
   across steps; each step's `node` marks the active node (accent-styled), so
-  the map and the code move together. The reader can flag "I'm lost here" on
+  the map and the code move together — and the sync runs both ways: clicking a
+  step's node in the diagram jumps the player to that step (cycling forward
+  when several steps share a node). The reader can flag "I'm lost here" on
   any step — it reaches you as a `[confused]` feedback line naming the exact
   step, so wait for feedback after publishing and clarify what lost them.
   Like json/chart it is data end to end (annotations render as text nodes,

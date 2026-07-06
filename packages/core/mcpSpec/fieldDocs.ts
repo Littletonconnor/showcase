@@ -71,7 +71,8 @@ export const d = {
     "walkthrough part: a step-through code explainer — THE part for 'explain how X works in this " +
     "codebase'. The viewer renders a step player: prev/next + arrow keys + clickable step dots, an " +
     "annotation panel, a code pane where each step's `highlight` line ranges glow while the rest dim, " +
-    "and an optional shared `mermaid` diagram whose node (per-step `node`) tracks the step. Each step " +
+    "and an optional shared `mermaid` diagram whose node (per-step `node`) tracks the step — clicking " +
+    "a step's node in the diagram jumps the player to that step. Each step " +
     "= ONE hop of the call path: {title, body (the annotation — why this code matters), file (path " +
     "label), code (the REAL excerpt, kept tight: 10-25 lines), language, lineStart (1-based, so " +
     "numbering matches the file), highlight ([[from,to]] ABSOLUTE line ranges), node}. 3-12 steps. " +

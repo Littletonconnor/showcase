@@ -65,6 +65,36 @@ const PANZOOM_JS = `
 })();
 `;
 
+// Node-click forwarding, running INSIDE the sandbox doc (our own trusted
+// string, same standing as PANZOOM_JS). Only ids on the injected allowlist —
+// already validated to [\w.-] tokens and JSON-encoded — become clickable;
+// mermaid names a flowchart node's <g> "…-<id>-<counter>", so each .node is
+// matched against the allowlist rather than parsed. A hit posts a bridge
+// message the host validates again before acting.
+const nodeClickJs = (nodes: string[]) => `
+(function(){
+  var wanted = ${JSON.stringify(nodes)};
+  function matches(el, id){
+    if (el.getAttribute('data-id') === id) return true;
+    var esc = id.replace(/[.-]/g, '\\\\$&');
+    return new RegExp('(^|-)' + esc + '-\\\\d+$').test(el.id || '');
+  }
+  document.querySelectorAll('.node').forEach(function(el){
+    for (var i = 0; i < wanted.length; i++) {
+      if (!matches(el, wanted[i])) continue;
+      var id = wanted[i];
+      el.style.cursor = 'pointer';
+      el.addEventListener('click', function(){
+        parent.postMessage({ __showcase: true, type: 'node-click', node: id }, '*');
+      });
+      break;
+    }
+  });
+})();
+`;
+
+const SAFE_NODE_RE = /^[\w.-]{1,80}$/;
+
 // mermaid.render namespaces the SVG's internal ids with this; it must be unique
 // per render across the whole document, so a module-level counter, not a uuid.
 let seq = 0;
@@ -182,11 +212,21 @@ function showcaseTheme() {
   };
 }
 
-export function MermaidPart(props: { part: MermaidPartData }) {
+export function MermaidPart(props: {
+  part: MermaidPartData;
+  // Diagram node ids that should act as links (e.g. a walkthrough's step
+  // nodes). Clicks come back through onNodeClick with the matched id.
+  clickableNodes?: string[];
+  onNodeClick?: (node: string) => void;
+}) {
   const activeTheme = useSurfaceTheme();
   const mode = useResolvedMode();
   const [svg, setSvg] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const clickable =
+    props.onNodeClick && props.clickableNodes
+      ? props.clickableNodes.filter((n) => SAFE_NODE_RE.test(n))
+      : [];
 
   // Initial paint, plus a re-render whenever the color scheme flips or the
   // board theme changes: mermaid bakes theme colors into the SVG at render time
@@ -272,9 +312,26 @@ export function MermaidPart(props: { part: MermaidPartData }) {
         // standing as the bridge.
         <SandboxedPart
           class="block w-full border-0 bg-transparent"
-          body={`<div class="mmd-vp" title="ctrl/cmd + scroll to zoom, drag to pan, double-click to reset">${svg}</div><script>${PANZOOM_JS}</script>`}
+          body={`<div class="mmd-vp" title="ctrl/cmd + scroll to zoom, drag to pan, double-click to reset">${svg}</div><script>${PANZOOM_JS}</script>${
+            clickable.length > 0 ? `<script>${nodeClickJs(clickable)}</script>` : ""
+          }`}
           css={MERMAID_CSS}
           title="Diagram"
+          onBridgeMessage={
+            clickable.length > 0
+              ? (d) => {
+                  // Re-validate on the trusted side: the frame is agent-reachable,
+                  // so only an allowlisted id may reach the caller.
+                  if (
+                    d.type === "node-click" &&
+                    typeof d.node === "string" &&
+                    clickable.includes(d.node)
+                  ) {
+                    props.onNodeClick?.(d.node);
+                  }
+                }
+              : undefined
+          }
         />
       )}
     </div>
