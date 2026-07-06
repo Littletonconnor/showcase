@@ -274,6 +274,7 @@ export function MermaidPart(props: { part: MermaidPartData }) {
           class="block w-full border-0 bg-transparent"
           body={`<div class="mmd-vp" title="ctrl/cmd + scroll to zoom, drag to pan, double-click to reset">${svg}</div><script>${PANZOOM_JS}</script>`}
           css={MERMAID_CSS}
+          title="Diagram"
         />
       )}
     </div>

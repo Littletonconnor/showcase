@@ -197,6 +197,7 @@ export function CodePart(props: { part: CodePartData }) {
       class="block w-full border-0 border-t-[0.5px] border-border bg-transparent"
       body={html}
       css={CODE_CSS + shikiSchemeCss(mode)}
+      title={props.part.title ? `Code — ${props.part.title}` : "Code"}
     />
   );
 }

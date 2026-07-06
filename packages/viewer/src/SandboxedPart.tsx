@@ -53,6 +53,9 @@ type SandboxedPartProps = {
   body: string;
   css: string;
   class?: string;
+  // Accessible name for the frame (WCAG: every iframe needs a title). Callers
+  // pass the part kind plus its own title where one exists.
+  title: string;
 };
 
 // Dispatcher: the PDF export flattens rich parts into the document so they
@@ -145,6 +148,7 @@ function FramePart(props: SandboxedPartProps) {
       ref={frameRef}
       className={props.class ?? "partframe"}
       sandbox="allow-scripts"
+      title={props.title}
       srcDoc={doc}
     ></iframe>
   );

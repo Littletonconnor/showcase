@@ -47,6 +47,15 @@ describe("ReviewView", () => {
     expect(container.textContent).toContain("Fairly sure");
   });
 
+  it("labels the queue for screen readers and announces the burndown", () => {
+    const { container } = render(<ReviewView review={review()} sessionId="sess1" />);
+    expect(screen.getByRole("list", { name: /Decision queue/ })).toBeInTheDocument();
+    expect(container.querySelector("[aria-live='polite']")).toHaveTextContent("0 / 2 accepted");
+    expect(
+      screen.getByRole("button", { name: "Copy the ref for decision d-guard" }),
+    ).toBeInTheDocument();
+  });
+
   it("Accept burns a decision down; undo restores it", async () => {
     const { container } = render(<ReviewView review={review()} sessionId="sess1" />);
     await userEvent.click(screen.getAllByRole("button", { name: /Accept/ })[0]);

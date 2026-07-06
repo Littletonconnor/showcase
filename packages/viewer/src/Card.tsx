@@ -48,7 +48,7 @@ import { enterReading, focusSurface, setScrollTarget, toast, useBoard } from "./
 // card element, and each card tracks its html-part iframes so the postMessage
 // bridge in App can resolve the source surface + iframe by contentWindow (a
 // surface may have more than one html part, so a card may own several frames).
-export const cardEls = new Map<string, { card: HTMLDivElement; iframes: Set<HTMLIFrameElement> }>();
+export const cardEls = new Map<string, { card: HTMLElement; iframes: Set<HTMLIFrameElement> }>();
 
 // Resolve which surface + iframe a postMessage came from, by contentWindow.
 export function frameForSource(source: unknown): { id: string; iframe: HTMLIFrameElement } | null {
@@ -319,7 +319,7 @@ function CardIdChip(props: { id: string; title: string }) {
 }
 
 export function Card(props: { surface: Surface }) {
-  const cardRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLElement>(null);
   const iframesRef = useRef<Set<HTMLIFrameElement>>(new Set());
   // Absolute part index -> its iframe, for html parts only. Lets the version
   // dropdown rebuild each `/s/:id?part=N` src across every html part.
@@ -450,7 +450,11 @@ export function Card(props: { surface: Surface }) {
 
   return (
     <SurfaceThemeContext.Provider value={props.surface.theme}>
-      <div
+      {/* An <article> with the surface title as its accessible name, so screen
+        readers can jump card-to-card with landmark/article navigation instead
+        of walking every part. */}
+      <article
+        aria-label={props.surface.title}
         className="card mb-4 animate-in overflow-hidden rounded-xl border-[0.5px] border-border bg-card fade-in-0 slide-in-from-bottom-1 shadow-[0_1px_2px_rgba(0,0,0,0.035),0_1px_3px_rgba(0,0,0,0.045)] transition-[box-shadow,border-color] duration-200 ease-out hover:border-[var(--border-2)] hover:shadow-[0_1px_2px_rgba(0,0,0,0.05),0_8px_20px_rgba(0,0,0,0.07)] motion-reduce:animate-none dark:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_1px_3px_rgba(0,0,0,0.3)] dark:hover:shadow-[0_1px_2px_rgba(0,0,0,0.4),0_8px_24px_rgba(0,0,0,0.45)]"
         data-id={surfaceId}
         ref={cardRef}
@@ -539,7 +543,7 @@ export function Card(props: { surface: Surface }) {
             {surfaceActions}
           </TooltipProvider>
         </div>
-      </div>
+      </article>
     </SurfaceThemeContext.Provider>
   );
 }
