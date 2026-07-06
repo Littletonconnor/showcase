@@ -48,6 +48,16 @@ The last open roadmap items, landed one commit each, all gates green
    registry, publish→get_surface round-trip, in-band -32602 validation,
    resources, prompts, wait_for_feedback exactly-once. The Move 2 remainder.
 
+Follow-up (July 2026, plannotator round 2): ✅ **inline diff line comments** —
+clicking a line's gutter inside the sandboxed @pierre/diffs render opens the
+anchored composer with file:line + the quoted line (composedPath through the
+open shadow roots; capture-phase mouseup guard; host-side re-validation;
+`e2e/diffComments.spec.ts` drives the loop). ✅ **One-verb slash commands** —
+the plugin ships `/review`, `/explain`, `/teach`, `/last`, `/watch` under
+`commands/`, each a thin bootstrap onto the live `/playbook` (the memorable
+command family plannotator has; `/last` is its "annotate my previous answer"
+equivalent).
+
 Still parked (a user decision, not built): the agent wake/notify path.
 
 ---
