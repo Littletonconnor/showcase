@@ -256,8 +256,26 @@ const looseCodePart = z.object({
 // mode rejects an unknown chartType, empty data, or a missing x/y; loose mode
 // coerces a bad chartType to "bar", drops non-object data rows, and drops the
 // whole part only when data/x/y can't yield a plottable chart.
-const chartTypeEnum = z.enum(["bar", "line", "area", "pie", "treemap", "scatter"]);
-const CHART_TYPES = ["bar", "line", "area", "pie", "treemap", "scatter"];
+const chartTypeEnum = z.enum([
+  "bar",
+  "line",
+  "area",
+  "pie",
+  "treemap",
+  "scatter",
+  "bubble",
+  "minimap",
+  "matrix",
+  "arc",
+]);
+const CHART_TYPES = chartTypeEnum.options as string[];
+// The relational forms need their second field to be plottable at all: a
+// matrix/arc row is an (x, x2) pair. Shared by strict (reject with the message)
+// and loose (drop the unplottable part). A bubble without `z` still plots
+// (uniform size), so z stays optional.
+const chartFieldsPlottable = (p: { chartType: string; x2?: string }) =>
+  (p.chartType !== "matrix" && p.chartType !== "arc") || !!p.x2;
+const CHART_X2_MESSAGE = 'matrix/arc chart requires "x2" (the second category field)';
 const strictChartDatum = z.record(z.union([z.string(), z.number(), z.null()]));
 const strictChartY = z.union([z.string().min(1), z.array(z.string().min(1)).nonempty()]);
 // A safe CSS color token: hex, an rgb/hsl function with only numeric content, or
@@ -265,18 +283,22 @@ const strictChartY = z.union([z.string().min(1), z.array(z.string().min(1)).none
 // agent-supplied color can't smuggle CSS into the chart's SVG attributes.
 const SAFE_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|(?:rgb|rgba|hsl|hsla)\([0-9.,%\s/]+\)|[a-zA-Z]{1,20})$/;
 const safeColor = z.string().regex(SAFE_COLOR_RE, "unsupported chart color");
-const strictChartPart = z.object({
-  kind: z.literal("chart"),
-  chartType: chartTypeEnum,
-  data: z.array(strictChartDatum).nonempty({ message: 'chart part requires non-empty "data"' }),
-  x: requiredString("x"),
-  y: strictChartY,
-  stacked: z.boolean().optional(),
-  colors: z.array(safeColor).optional(),
-  xLabel: z.string().optional(),
-  yLabel: z.string().optional(),
-  caption: z.string().optional(),
-});
+const strictChartPart = z
+  .object({
+    kind: z.literal("chart"),
+    chartType: chartTypeEnum,
+    data: z.array(strictChartDatum).nonempty({ message: 'chart part requires non-empty "data"' }),
+    x: requiredString("x"),
+    y: strictChartY,
+    x2: z.string().min(1).optional(),
+    z: z.string().min(1).optional(),
+    stacked: z.boolean().optional(),
+    colors: z.array(safeColor).optional(),
+    xLabel: z.string().optional(),
+    yLabel: z.string().optional(),
+    caption: z.string().optional(),
+  })
+  .refine(chartFieldsPlottable, { message: CHART_X2_MESSAGE });
 const looseChartPart = z
   .object({
     kind: z.literal("chart"),
@@ -290,6 +312,8 @@ const looseChartPart = z
     ),
     x: z.string(),
     y: z.union([z.string(), z.array(z.string())]),
+    x2: optionalLooseString,
+    z: optionalLooseString,
     stacked: z.preprocess((v) => (typeof v === "boolean" ? v : undefined), z.boolean().optional()),
     // Drop any unsafe/non-string color rather than reject the whole part.
     colors: z.preprocess((v) => {
@@ -304,7 +328,8 @@ const looseChartPart = z
   .refine(
     (p) => p.data.length > 0 && p.x.length > 0 && (Array.isArray(p.y) ? p.y.length > 0 : !!p.y),
     { message: 'chart part requires "data", "x", and "y"' },
-  );
+  )
+  .refine(chartFieldsPlottable, { message: CHART_X2_MESSAGE });
 
 // A checkpoint part carries the learn form factor's assessment unit as DATA
 // (see Checkpoint in types.ts) — the trusted viewer renders it interactively

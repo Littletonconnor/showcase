@@ -17,7 +17,7 @@ A surface is a card built from ordered **parts**, each with a `kind`:
 - **`trace`** — agent-run steps rendered as a vertical step list.
 - **`code`** — a source file rendered with syntax highlighting.
 - **`json`** — a JSON value rendered as a collapsible tree.
-- **`chart`** — row-oriented numeric data rendered as a native SVG chart (bar, line, area, pie, treemap, or scatter). Reach for it for metrics, distributions, before/after comparisons — anything a terminal can't draw.
+- **`chart`** — row-oriented numeric data rendered as a native SVG chart (bar, line, area, pie, treemap, scatter, plus the review-depth bubble / minimap / matrix / arc). Reach for it for metrics, distributions, before/after comparisons — anything a terminal can't draw.
 
 A surface can combine parts — `[html, diff]` is a diagram with its code review in one card. html parts are sandboxed (you author the markup); diff/markdown/mermaid/terminal/image/trace/code/json/chart parts are data rendered by the trusted viewer.
 
@@ -185,6 +185,16 @@ This is showcase's flagship review workflow, designed for the age of agents and 
 **The human adjudicates** each decision: **Accept** (ratify, burns down) is the one in-browser verb. To push back they chat with you normally, pasting a decision's `id` to scope the ask ("re-check `d-stale-token` against the no-length case"). You act, then re-publish.
 
 **The loop is live — stay parked after you publish.** Pushback reaches you in your terminal as ordinary chat naming a decision `id` (the human copies the decision's ref from its header and pastes it). Act on it, then **re-publish the whole review with `publish_decisions`** — the decision updates in place in front of the reviewer (the call may flip), and the burndown reflects it. Re-publishing is the resolution; keep the unchanged decisions as-is and revise only the one in question. (`wait_for_feedback` still delivers comments left on non-review surfaces.)
+
+**Optional depth visual — at most ONE per PR, matched to its shape.** The decision queue is the review; a chart part in a decision's `evidence` (or on a companion surface) adds an overview only when the PR's shape earns it. Pick from the review-depth `chart` types — never stack several:
+
+- **`minimap`** `{chartType:"minimap", data:[{file, lines, tone?}], x:"file", y:"lines"}` — one heat-strip of the whole diff, segment width = churn. The default for a small/medium PR: "where did this land?" in one glance.
+- **`bubble`** `{chartType:"bubble", x:"churn", y:"complexity", z:"loc", data:[{label, churn, complexity, loc, tone?}]}` — churn×complexity hotspots for a broad risk sweep over many files; the big red bubble is the file to read first.
+- **`matrix`** `{chartType:"matrix", x:"file", x2:"coupledWith", y:"count"}` — co-change adjacency for a refactor: which files move together, where the surprising coupling is.
+- **`arc`** `{chartType:"arc", x:"from", x2:"to", y:"weight"}` — layered dependency flow; long arcs crossing many nodes are the couplings worth a look.
+- A stacked **`bar`** (`y:["added","removed"], stacked:true, colors:["#2f9e44","#e03131"]`) still covers per-module churn deltas.
+
+Per-row `tone` (`sensitive` / `logic` / `mechanical`) colors segments/points/cells from the review palette — use it to route attention, not to decorate.
 
 ## Recipe: animated explainer
 

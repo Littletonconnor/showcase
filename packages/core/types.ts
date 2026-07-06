@@ -172,18 +172,37 @@ export interface CodePart {
 // (the x axis for bar/line/area, the slice label for pie); `y` names the numeric
 // series — one field, or several to plot multiple series / a stacked chart.
 //
-// Two review-oriented forms carry a second visual dimension (§8): a `treemap`
-// (area = `y` value, e.g. churn; `x` = the cell label) and a `scatter` (a
-// confidence×coverage quadrant; `x`/`y` are the two numeric axis fields). Both
-// read an optional per-row `tone` field ("sensitive"/"logic"/"mechanical" for a
-// treemap; "danger"/"normal" for a scatter point) to color the cell/point from a
+// Review-oriented forms carry a second visual dimension (§8): a `treemap`
+// (area = `y` value, e.g. churn; `x` = the cell label), a `scatter` (a
+// confidence×coverage quadrant; `x`/`y` are the two numeric axis fields), and
+// the opt-in per-PR depth visuals — `bubble` (churn×complexity hotspot: numeric
+// `x`/`y` axes, point size from the `z` field), `minimap` (a one-strip file
+// heat-map: segment width = `y` value per `x` label), `matrix` (a co-change
+// adjacency grid: rows = `x` values, columns = `x2` values, cell intensity =
+// `y`), and `arc` (a layered arc diagram: nodes from `x`/`x2`, arc weight =
+// `y`). All read an optional per-row `tone` field ("sensitive"/"logic"/
+// "mechanical"; "danger"/"normal") to color the cell/point/segment from a
 // fixed palette — no agent-supplied color, so nothing to sanitize.
 export interface ChartPart {
   kind: "chart";
-  chartType: "bar" | "line" | "area" | "pie" | "treemap" | "scatter";
+  chartType:
+    | "bar"
+    | "line"
+    | "area"
+    | "pie"
+    | "treemap"
+    | "scatter"
+    | "bubble"
+    | "minimap"
+    | "matrix"
+    | "arc";
   data: Array<Record<string, string | number | null>>;
   x: string;
   y: string | string[];
+  // Second category field: the matrix column / the arc target node.
+  x2?: string;
+  // Numeric size field for bubble points (area ∝ value).
+  z?: string;
   // Stack bars/areas instead of grouping them (ignored for line/pie).
   stacked?: boolean;
   // Explicit series colors (per `y` series, or per slice for a pie), overriding

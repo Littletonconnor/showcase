@@ -55,7 +55,13 @@ export const d = {
   traceTs: "ISO timestamp",
   terminalText: "terminal part: raw output (ANSI SGR color escapes are rendered)",
   terminalCols: "terminal part: optional render width in columns",
-  partChartType: "chart part: bar | line | area | pie | treemap | scatter",
+  partChartType:
+    "chart part: bar | line | area | pie | treemap | scatter | bubble | minimap | matrix | arc. " +
+    "The last four are opt-in review-depth visuals — pick AT MOST ONE per PR, matched to its shape: " +
+    "bubble (churn×complexity hotspots: numeric x/y, point size from z, per-row tone) for a broad " +
+    "risk sweep; minimap (a one-strip file heat-map: segment width = y per x label) for a small PR's " +
+    "where-did-it-land glance; matrix (rows = x, columns = x2, cell intensity = y) for a refactor's " +
+    "co-change coupling; arc (nodes from x/x2 on a line, arc weight = y) for layered dependency flow.",
   partChartData:
     "chart part: row-oriented data — an array of objects, one per row/category. json part: the JSON value to render as a collapsible tree.",
   partCode: "code part: the source text, shiki-highlighted",
@@ -93,6 +99,9 @@ export const d = {
     "feedback), reveal (the resolution, shown only after an attempt)}",
   partChartX: "chart part: the field naming the category (x axis / pie slice label)",
   partChartY: "chart part: the numeric series field, or an array of fields for multiple series",
+  partChartX2:
+    "chart part: the second category field — the matrix column / the arc target node (required for matrix/arc)",
+  partChartZ: "chart part: the numeric size field for bubble points (omit for uniform dots)",
   partChartStacked: "chart part: stack bars/areas instead of grouping (ignored for line/pie)",
   partChartColors: "chart part: explicit series/slice colors (safe CSS color tokens only)",
   partChartXLabel: "chart part: optional x-axis label",
@@ -144,10 +153,12 @@ export const MCP_PARTS_DESCRIPTION =
   "{kind:'trace', assetId} for an uploaded trace file (downloadable). terminal: {kind:'terminal', " +
   "text:'<output>', cols?, title?} renders monospace terminal output (ANSI SGR colors supported; " +
   "cursor-addressing TUIs are not resolved). chart: {kind:'chart', " +
-  "chartType:'bar'|'line'|'area'|'pie'|'treemap'|'scatter', data:[{…row}], x:'<categoryField>', " +
-  "y:'<numericField>'|['<f1>','<f2>'], stacked?, colors?, xLabel?, yLabel?, caption?} — row-oriented " +
-  "numeric data rendered with Recharts (data is an array of objects; x names the category field, y " +
-  "the numeric series — one field or several). json: {kind:'json', data:<any JSON value>} — a " +
+  "chartType:'bar'|'line'|'area'|'pie'|'treemap'|'scatter'|'bubble'|'minimap'|'matrix'|'arc', " +
+  "data:[{…row}], x:'<categoryField>', y:'<numericField>'|['<f1>','<f2>'], x2?, z?, stacked?, " +
+  "colors?, xLabel?, yLabel?, caption?} — row-oriented numeric data rendered by the trusted viewer " +
+  "(data is an array of objects; x names the category field, y the numeric series — one field or " +
+  "several; matrix/arc take the second category in x2, bubble sizes points from z). json: " +
+  "{kind:'json', data:<any JSON value>} — a " +
   "collapsible tree. code: {kind:'code', code:'<source>', language?, title?, lineStart?} — a " +
   "shiki-highlighted source file/excerpt. Optional diff layout " +
   "'unified'|'split'. Combine freely, e.g. [{kind:'html',...},{kind:'image',assetId},{kind:'trace',steps}].";

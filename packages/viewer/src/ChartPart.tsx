@@ -19,40 +19,14 @@ import {
   Treemap,
   XAxis,
   YAxis,
+  ZAxis,
 } from "recharts";
 import type { ChartPart as ChartPartData } from "./api.ts";
-import { type Mode, themeById } from "@showcase/core/themes";
+import { type Mode } from "@showcase/core/themes";
+import { readThemeColors, TONE_HUE } from "./chartTheme.ts";
+import { ArcChart, MatrixChart, MinimapChart } from "./SvgCharts.tsx";
 import { useSurfaceTheme, useResolvedMode } from "./theme.ts";
 
-// Tone → fixed hue for the review charts (treemap cells, scatter points). These
-// match the diff/severity palette (sensitive=red, logic=amber, mechanical=gray)
-// so the charts read with the rest of the review; an unknown tone falls back to
-// the board accent. Tones are a closed set the server emits — never an
-// agent-supplied color string — so there's nothing to sanitize. Each mode has
-// its own steps, machine-validated like REST_PALETTE (lightness band, ≥3:1
-// contrast on the mode's surface); the gray intentionally sits under the chroma
-// floor — it means neutral — and red↔amber CVD proximity is acceptable because
-// these are status hues whose identity comes from meaning, not adjacency.
-const TONE_HUE: Record<Mode, Record<string, string>> = {
-  light: {
-    sensitive: "#e03131",
-    danger: "#e03131",
-    logic: "#bd6f08",
-    warn: "#bd6f08",
-    mechanical: "#757c84",
-    cool: "#757c84",
-    normal: "#2f9e44",
-  },
-  dark: {
-    sensitive: "#e05252",
-    danger: "#e05252",
-    logic: "#c9821f",
-    warn: "#c9821f",
-    mechanical: "#8b9198",
-    cool: "#8b9198",
-    normal: "#3fa457",
-  },
-};
 const QUADRANT_TICKS = ["", "Low", "Med", "High"];
 
 // Categorical series palette, assigned in FIXED order (series 2 is always the
@@ -67,32 +41,6 @@ const REST_PALETTE: Record<Mode, string[]> = {
   dark: ["#3d97d1", "#3fa457", "#ae6cd6", "#d9548c", "#b38a1d", "#28a0b5"],
 };
 const OVERFLOW_GRAY: Record<Mode, string> = { light: "#8a8578", dark: "#7d786c" };
-
-interface ThemeColors {
-  text: string;
-  muted: string;
-  faint: string;
-  border: string;
-  surface: string;
-  accent: string;
-}
-
-// Resolve chart colors from the SURFACE's theme (not the document root), so a
-// chart on a themed surface — e.g. a data-viz preset pinned to `ocean` — uses
-// that surface's palette instead of the board chrome's. Mirrors how the
-// sandboxed parts pass themeById(surfaceTheme) into their frame; reading
-// document.body here would always yield the board theme and ignore the override.
-function readThemeColors(themeId: string, mode: Mode): ThemeColors {
-  const p = mode === "dark" ? themeById(themeId).dark : themeById(themeId).light;
-  return {
-    text: p.text,
-    muted: p.muted,
-    faint: p.faint,
-    border: p.border,
-    surface: p.surface,
-    accent: p.info.text,
-  };
-}
 
 export function ChartPart(props: { part: ChartPartData }) {
   const activeTheme = useSurfaceTheme();
@@ -218,6 +166,39 @@ export function ChartPart(props: { part: ChartPartData }) {
         <div style={{ color: c.muted }}>
           {part.xLabel ?? "confidence"}: {QUADRANT_TICKS[xv] ?? xv} · {part.yLabel ?? "coverage"}:{" "}
           {QUADRANT_TICKS[yv] ?? yv}
+        </div>
+      </div>
+    );
+  };
+
+  // Bubble tooltip: the point's label plus its x/y/z values under their field
+  // names — the generic axis tooltip would show bare numbers with no context.
+  const renderBubbleTip = (tip: {
+    active?: boolean;
+    payload?: Array<{ payload?: Record<string, unknown> }>;
+  }) => {
+    if (!tip.active || !tip.payload?.length) return null;
+    const row = tip.payload[0]?.payload ?? {};
+    const label =
+      typeof row.label === "string" ? row.label : typeof row.name === "string" ? row.name : "";
+    const yKey = Array.isArray(part.y) ? part.y[0] : part.y;
+    const fields = [part.x, yKey, ...(part.z ? [part.z] : [])];
+    return (
+      <div
+        style={{
+          background: c.surface,
+          border: `1px solid ${c.border}`,
+          borderRadius: 8,
+          padding: "6px 9px",
+          fontSize: 12,
+          color: c.text,
+          maxWidth: 240,
+          boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+        }}
+      >
+        {label ? <div style={{ marginBottom: 2 }}>{label}</div> : null}
+        <div style={{ color: c.muted }}>
+          {fields.map((f) => `${f}: ${String(row[f] ?? "")}`).join(" · ")}
         </div>
       </div>
     );
@@ -372,6 +353,35 @@ export function ChartPart(props: { part: ChartPartData }) {
           </ScatterChart>
         );
       }
+      case "bubble": {
+        // Churn×complexity hotspot bubble: generic numeric axes (unlike the
+        // fixed 1–3 quadrant scatter), point AREA from the `z` field, tone
+        // tint per point. The eye lands on the big red bubble — the hot,
+        // heavily-churned file.
+        const yKey = series[0];
+        return (
+          <ScatterChart margin={{ top: 10, right: 16, bottom: part.xLabel ? 24 : 10, left: 4 }}>
+            {grid}
+            <XAxis type="number" dataKey={part.x} {...axisProps} label={xLabel} />
+            <YAxis type="number" dataKey={yKey} width={44} {...axisProps} label={yLabel} />
+            {part.z ? <ZAxis type="number" dataKey={part.z} range={[40, 900]} /> : null}
+            <Tooltip
+              cursor={{ stroke: c.faint, strokeOpacity: 0.2 }}
+              content={renderBubbleTip as never}
+            />
+            <Scatter data={part.data} fill={c.accent} fillOpacity={0.55}>
+              {part.data.map((d, i) => (
+                <Cell
+                  key={i}
+                  fill={TONE_HUE[mode][String(d.tone ?? "")] ?? c.accent}
+                  fillOpacity={0.55}
+                  stroke={TONE_HUE[mode][String(d.tone ?? "")] ?? c.accent}
+                />
+              ))}
+            </Scatter>
+          </ScatterChart>
+        );
+      }
       default:
         return (
           <BarChart data={part.data} margin={margin}>
@@ -396,6 +406,22 @@ export function ChartPart(props: { part: ChartPartData }) {
         );
     }
   };
+
+  // The hand-rolled trusted-SVG shapes size themselves (percent widths / fixed
+  // cells / a viewBox), so they skip the Recharts ResponsiveContainer wrapper.
+  if (part.chartType === "minimap" || part.chartType === "matrix" || part.chartType === "arc") {
+    const Shape =
+      part.chartType === "minimap"
+        ? MinimapChart
+        : part.chartType === "matrix"
+          ? MatrixChart
+          : ArcChart;
+    return (
+      <div className="border-t-[0.5px] border-border px-2 pt-3 pb-1">
+        <Shape part={part} colors={c} mode={mode} />
+      </div>
+    );
+  }
 
   return (
     <div className="border-t-[0.5px] border-border px-2 pt-3 pb-1">

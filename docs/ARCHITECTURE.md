@@ -155,18 +155,18 @@ A **surface** is a card: an ordered list of **parts**, each declaring its own
 `kind` (`types.ts`). The surface is kind-agnostic; a part is the unit of
 rendering. Ten kinds:
 
-| Kind       | Rendered by                              | Sandboxed?     | Notes                                                                       |
-| ---------- | ---------------------------------------- | -------------- | --------------------------------------------------------------------------- |
-| `html`     | `/s/:id` in an iframe                    | **yes**        | Arbitrary agent markup. Opt-in style/JS **kits** (`packages/core/kits.ts`). |
-| `code`     | viewer (shiki) → iframe                  | **yes**        | Highlighted source; the HTML string is built by shiki then sandboxed.       |
-| `markdown` | viewer (markdown-it)                     | no — escaped   | Prose. Embedded raw HTML is escaped, not executed.                          |
-| `mermaid`  | viewer (mermaid, `securityLevel:strict`) | no — sanitized | Diagram source → SVG.                                                       |
-| `diff`     | viewer (`@pierre/diffs`)                 | no — data      | Unified patch and/or before/after file pairs.                               |
-| `image`    | viewer `<img>`                           | no — data      | References an uploaded asset by id.                                         |
-| `trace`    | viewer                                   | no — data      | A step timeline; inline steps and/or an asset file.                         |
-| `terminal` | viewer (ansi_up)                         | no — data      | Monospace output; ANSI SGR → styled spans, everything else escaped.         |
-| `json`     | viewer (text nodes)                      | no — data      | Collapsible tree; escapes by construction.                                  |
-| `chart`    | viewer (Recharts)                        | no — data      | bar/line/area/pie/treemap/scatter, themed from live tokens.                 |
+| Kind       | Rendered by                              | Sandboxed?     | Notes                                                                                |
+| ---------- | ---------------------------------------- | -------------- | ------------------------------------------------------------------------------------ |
+| `html`     | `/s/:id` in an iframe                    | **yes**        | Arbitrary agent markup. Opt-in style/JS **kits** (`packages/core/kits.ts`).          |
+| `code`     | viewer (shiki) → iframe                  | **yes**        | Highlighted source; the HTML string is built by shiki then sandboxed.                |
+| `markdown` | viewer (markdown-it)                     | no — escaped   | Prose. Embedded raw HTML is escaped, not executed.                                   |
+| `mermaid`  | viewer (mermaid, `securityLevel:strict`) | no — sanitized | Diagram source → SVG.                                                                |
+| `diff`     | viewer (`@pierre/diffs`)                 | no — data      | Unified patch and/or before/after file pairs.                                        |
+| `image`    | viewer `<img>`                           | no — data      | References an uploaded asset by id.                                                  |
+| `trace`    | viewer                                   | no — data      | A step timeline; inline steps and/or an asset file.                                  |
+| `terminal` | viewer (ansi_up)                         | no — data      | Monospace output; ANSI SGR → styled spans, everything else escaped.                  |
+| `json`     | viewer (text nodes)                      | no — data      | Collapsible tree; escapes by construction.                                           |
+| `chart`    | viewer (Recharts)                        | no — data      | bar/line/area/pie/treemap/scatter + bubble/minimap/matrix/arc (trusted SVG), themed. |
 
 A surface is **versioned**: every revise pushes the prior version onto `history`
 (capped at `HISTORY_LIMIT = 20`, `storage.ts`) and bumps `version`. It can
