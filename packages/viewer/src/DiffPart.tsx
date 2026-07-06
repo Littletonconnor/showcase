@@ -11,6 +11,7 @@ import {
 import { preloadFileDiff } from "@pierre/diffs/ssr";
 import type { DiffPart as DiffPartData } from "./api.ts";
 import { themeById } from "@showcase/core/themes";
+import { detectMovedBlocks, type MovedBlock } from "./movedCode.ts";
 import { SandboxedPart } from "./SandboxedPart.tsx";
 import { useSurfaceTheme, useResolvedMode } from "./theme.ts";
 
@@ -173,6 +174,31 @@ function DiffManifest(props: { files: DiffFileInfo[] }) {
   );
 }
 
+// The "moved, unchanged" strip (P4): in-file block moves the hunks render as
+// delete+add, labeled so the reviewer skips the re-read. Trusted React text
+// nodes, same standing as the manifest.
+function MovedNote(props: { moves: MovedBlock[]; multiFile: boolean }) {
+  return (
+    <div className="border-b-[0.5px] border-border bg-muted/30 px-3.5 py-1.5">
+      <ul className="flex flex-col gap-px">
+        {props.moves.map((m, i) => (
+          <li key={i} className="flex items-center gap-2 text-[11.5px] text-faint">
+            <span className="flex-none font-mono font-semibold text-sky-600 dark:text-sky-400">
+              ↕
+            </span>
+            <span className="min-w-0 truncate">
+              {m.lines} lines moved within {props.multiFile ? m.file : "the file"}, unchanged
+              <span className="ml-1.5 font-mono tabular-nums">
+                {m.fromStart}–{m.fromStart + m.lines - 1} → {m.toStart}–{m.toStart + m.lines - 1}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function DiffPart(props: { part: DiffPartData }) {
   const activeTheme = useSurfaceTheme();
   const mode = useResolvedMode();
@@ -182,6 +208,7 @@ export function DiffPart(props: { part: DiffPartData }) {
   // SSR HTML (rendered immediately), and the generated/vendored files' HTML
   // (collapsed behind a toggle so a 900-line lockfile doesn't render until asked).
   const [manifest, setManifest] = useState<DiffFileInfo[]>([]);
+  const [moved, setMoved] = useState<MovedBlock[]>([]);
   const [hotBody, setHotBody] = useState<string | null>(null);
   const [coldBody, setColdBody] = useState<string>("");
   const [showCold, setShowCold] = useState(false);
@@ -268,6 +295,7 @@ export function DiffPart(props: { part: DiffPartData }) {
 
         setError(null);
         setManifest(diffs.length > 1 ? info : []);
+        setMoved(diffs.flatMap(detectMovedBlocks));
         // If every file is generated there's no hot body — show them anyway so
         // the diff is never empty.
         setHotBody(hot.length > 0 ? hot.join("") : cold.join(""));
@@ -301,6 +329,7 @@ export function DiffPart(props: { part: DiffPartData }) {
       ) : (
         <>
           {manifest.length > 1 ? <DiffManifest files={manifest} /> : null}
+          {moved.length > 0 ? <MovedNote moves={moved} multiFile={manifest.length > 1} /> : null}
           <SandboxedPart
             class="block w-full border-0 bg-transparent"
             body={hotBody ?? ""}
