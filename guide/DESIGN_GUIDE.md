@@ -377,7 +377,10 @@ theme tokens, so kit output re-themes with the board.
   play/pause button, a scrub range, and a counter. Space toggles play, arrows
   step, the slider scrubs. Wrap a phrase in `.cue` to highlight it. This is the
   **explainer** kit — walk the reader through a concept; pair it with an `image`
-  part of the thing you're explaining.
+  part of the thing you're explaining. In the board, the control bar also carries
+  a per-step copy-ref chip: it copies `showcase surface <id> "<title>" step N:
+"<label>"`, so a reader can hand you the exact step to revise (give steps a
+  `data-label` for a clean label; the step's text is the fallback).
 - **`review`** — a PR-review **overview** vocabulary: a `.risk` band over four
   `.signal` sub-bars (size / surface / sensitivity / tests), a `.budget` line,
   and a priority-ranked `.manifest` whose rows carry a priority `.pri` dot

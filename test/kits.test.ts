@@ -44,6 +44,10 @@ test("the animate kit ships its stepper css + play/scrub behavior", () => {
   assert.match(js, /anim-ctl/); // injected controls
   assert.match(js, /setInterval/); // auto-play
   assert.match(js, /type='range'/); // the scrubber
+  // The per-step copy-ref chip posts to the host (which composes the ref in
+  // the trusted origin), and only when embedded — never on a standalone page.
+  assert.match(js, /copy-step/);
+  assert.match(js, /window\.parent!==window/);
   // In print/PDF a stepper can't be played, and steps default to hidden — so
   // print reveals every step stacked (else an exported explainer prints blank).
   assert.match(css, /@media print\{\.anim>\.step\{display:block/);

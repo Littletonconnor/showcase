@@ -4,12 +4,12 @@ import {
   type TelemetryEvent,
   validateTelemetryEvent,
 } from "@showcase/core/telemetry";
-import { frameForSource } from "./Card.tsx";
+import { frameForSource, surfaceRef } from "./Card.tsx";
 import { root } from "./host.ts";
 import { postSandboxTelemetry } from "./learn.ts";
 import { closeComposer, openComposer } from "./threads.ts";
 import { applyFrameHeight } from "./SandboxedPart.tsx";
-import { selectAdjacent, toast } from "./state.ts";
+import { selectAdjacent, surfacesNow, toast } from "./state.ts";
 
 // A slider drag inside an explorable can emit dozens of interaction events a
 // second, and every one would land as a comment on the feedback pipe.
@@ -42,6 +42,8 @@ export async function onBridgeMessage(ev: MessageEvent) {
     file?: string;
     done?: number;
     total?: number;
+    step?: unknown;
+    label?: unknown;
   } | null;
   if (!d || !d.__showcase) return;
   // Every host-affecting message must come from a frame the viewer actually
@@ -142,6 +144,24 @@ export async function onBridgeMessage(ev: MessageEvent) {
       window.open(link.href, "_blank", "noopener");
   } else if (d.type === "copy" && isOwnFrame(ev.source)) {
     void navigator.clipboard?.writeText(String(d.text)).catch(() => {});
+  } else if (d.type === "copy-step" && src) {
+    // The animate kit's per-step ref chip. The ref is composed HERE, in the
+    // trusted origin — the sandbox sends only a step number and a label, both
+    // treated as data (validated, capped, copied as text). The sandbox never
+    // learns the surface id/title, and a forged message can at worst put a
+    // capped plain string on the clipboard behind a visible toast.
+    const step = Number(d.step);
+    if (!Number.isInteger(step) || step < 1 || step > 9999) return;
+    const label =
+      typeof d.label === "string" ? d.label.replace(/\s+/g, " ").trim().slice(0, 80) : "";
+    const title = surfacesNow().find((s) => s.id === src.id)?.title ?? "";
+    const ref = `${surfaceRef(src.id, title)} step ${step}${label ? `: "${label}"` : ""}`;
+    try {
+      await navigator.clipboard.writeText(ref);
+      toast(`Step ${step} ref copied`);
+    } catch {
+      toast("Couldn't copy the step ref");
+    }
   } else if (d.type === "review-reviewed" && isOwnFrame(ev.source)) {
     // The overview kit ticked a manifest file reviewed (driven by the 'x' key);
     // confirm it with the running file burn-down count.

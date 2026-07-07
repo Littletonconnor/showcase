@@ -121,6 +121,8 @@ const ANIMATE_CSS = `
 .anim-play:hover{border-color:var(--color-border-primary)}
 .anim-range{flex:1;min-width:0;accent-color:var(--color-text-info);cursor:pointer}
 .anim-num{flex:none;font:400 13px/1 var(--font-mono);color:var(--color-text-tertiary);min-width:48px;text-align:right}
+.anim-ref{flex:none;width:26px;height:26px;border-radius:var(--border-radius-md);border:1px solid transparent;background:transparent;color:var(--color-text-tertiary);cursor:pointer;font:13px/1 var(--font-sans);display:inline-flex;align-items:center;justify-content:center}
+.anim-ref:hover{border-color:var(--color-border-secondary);color:var(--color-text-secondary)}
 /* Section eyebrow — shows the current step's data-label / data-section (a
    blueprint's structure skeleton). Empty when a step carries neither, so a plain
    .anim is untouched. */
@@ -142,6 +144,23 @@ const ANIMATE_JS = `
   var num=document.createElement('span');num.className='anim-num';
   var label=document.createElement('span');label.className='anim-label';
   ctl.appendChild(play);ctl.appendChild(label);ctl.appendChild(range);ctl.appendChild(num);
+  // Step-level copy-ref: posts the current step (number + its label/text) to
+  // the host, which composes the scoped ref in the trusted origin — this
+  // sandbox knows neither the surface id nor its title. Embedded only: a
+  // standalone /s/:id page has no host to copy for.
+  if(window.parent!==window){
+    var ref=document.createElement('button');ref.type='button';ref.className='anim-ref';
+    ref.setAttribute('aria-label','Copy a ref to this step');
+    ref.title='Copy a ref to this step \\u2014 paste it to your agent to revise it';
+    ref.textContent='\\u29C9';
+    ref.addEventListener('click',function(){
+      var cur=steps[i];
+      var l=cur.getAttribute('data-label')||cur.getAttribute('data-section')||
+        (cur.textContent||'').replace(/\\s+/g,' ').trim().slice(0,80);
+      parent.postMessage({__showcase:true,type:'copy-step',step:i+1,label:l},'*');
+    });
+    ctl.appendChild(ref);
+  }
   anim.appendChild(ctl);
   function render(){
     steps.forEach(function(s,k){s.classList.toggle('on',k<=i);s.classList.toggle('now',k===i);});

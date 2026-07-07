@@ -704,8 +704,12 @@ deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
   content, so when a ref lands the agent reads what's on it and `update_surface`s it
   in place; the old `MCP_INSTRUCTIONS` claim that `list_surfaces` returned content
   is fixed (it's the title index; `get_surface` is the content). The explainer
-  stays a plain document; the conversation stays in the editor. _Next refinement
-  (optional): per-step copy buttons inside the `animate` kit for step-level scope._
+  stays a plain document; the conversation stays in the editor. _The once-optional
+  next refinement is ✅ shipped too: the `animate` kit's control bar carries a
+  per-step copy chip — the sandbox posts only `{step, label}` (a new allowlisted
+  `copy-step` bridge message), and the HOST composes/copies
+  `showcase surface <id> "<title>" step N: "<label>"` in the trusted origin, so
+  explainer feedback scopes to the exact step._
 
 **Housekeeping**
 
