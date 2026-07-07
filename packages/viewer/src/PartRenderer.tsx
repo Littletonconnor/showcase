@@ -91,7 +91,14 @@ export function PartRenderer(props: {
       case "diff":
         return <DiffPart part={part as DiffPartData} surfaceId={surface.id} partIndex={i} />;
       case "image":
-        return <ImagePart part={part as ImagePartData} />;
+        return (
+          <ImagePart
+            part={part as ImagePartData}
+            surfaceId={surface.id}
+            partIndex={i}
+            threads={props.threads}
+          />
+        );
       case "trace":
         return <TracePart part={part as TracePartData} />;
       case "terminal":

@@ -305,6 +305,7 @@ function DecisionSection(props: {
     <li
       ref={props.refCb}
       data-idx={props.index}
+      data-decision-ref={d.id}
       className={cx(
         "scroll-mt-8 snap-start border-l-2 py-6 pl-5 transition-colors",
         props.active ? "border-brand" : "border-transparent",
@@ -472,6 +473,158 @@ function EvidencePane(props: { decision: Decision; index: number }) {
   );
 }
 
+// Annotatable review prose (plannotator's annotatable Overview): selecting
+// text anywhere in the brief, a decision, or a chapter shows a floating chip
+// that expands into a composer, posting the note as scoped pushback —
+// "revise <ref>: \"quote\" — note" on the session pipe, the same convention
+// as pasting a ref into chat. Trusted-origin text only; sandboxed parts keep
+// their own selection bridge.
+function ProsePushback(props: {
+  sessionId: string;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const [target, setTarget] = useState<{ x: number; y: number; quote: string; ref: string } | null>(
+    null,
+  );
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const openRef = useRef(open);
+  openRef.current = open;
+
+  useEffect(() => {
+    const onMouseUp = () => {
+      // Defer so the browser commits the selection first.
+      setTimeout(() => {
+        if (openRef.current) return;
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed) return;
+        const quote = String(sel).replace(/\s+/g, " ").trim();
+        if (!quote) return;
+        const range = sel.getRangeAt(0);
+        const node = range.commonAncestorContainer;
+        const el = node.nodeType === 1 ? (node as Element) : node.parentElement;
+        if (!el || !props.containerRef.current?.contains(el)) return;
+        if (el.closest("input, textarea, [data-prose-pushback]")) return;
+        const scope = el.closest("[data-decision-ref], [data-chapter-ref], [data-review-brief]");
+        if (!scope) return;
+        const ref =
+          scope.getAttribute("data-decision-ref") ??
+          scope.getAttribute("data-chapter-ref") ??
+          "the brief";
+        const rect = range.getBoundingClientRect();
+        setText("");
+        setTarget({
+          x: Math.max(8, Math.min(window.innerWidth - 180, rect.left + rect.width / 2)),
+          y: Math.min(window.innerHeight - 60, rect.bottom + 6),
+          quote: quote.slice(0, 200),
+          ref,
+        });
+      }, 0);
+    };
+    const onSelectionChange = () => {
+      // The chip follows the selection; the opened composer stands alone.
+      const sel = window.getSelection();
+      if ((!sel || sel.isCollapsed) && !openRef.current) setTarget(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setTarget(null);
+        setOpen(false);
+      }
+    };
+    const onDown = (e: PointerEvent) => {
+      if (openRef.current && boxRef.current && !boxRef.current.contains(e.target as Node)) {
+        setTarget(null);
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mouseup", onMouseUp);
+    document.addEventListener("selectionchange", onSelectionChange);
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown);
+    return () => {
+      document.removeEventListener("mouseup", onMouseUp);
+      document.removeEventListener("selectionchange", onSelectionChange);
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
+    };
+  }, [props.containerRef]);
+
+  if (!target) return null;
+
+  const send = async () => {
+    const trimmed = text.trim();
+    if (!trimmed || sending) return;
+    setSending(true);
+    try {
+      await api("/api/comments", {
+        method: "POST",
+        body: JSON.stringify({
+          session: props.sessionId,
+          text: `revise ${target.ref}: "${target.quote}" — ${trimmed}`,
+        }),
+      });
+      toast("Sent — the agent revises and re-publishes");
+      setTarget(null);
+      setOpen(false);
+    } catch {
+      toast("Couldn't send the pushback");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div
+      ref={boxRef}
+      data-prose-pushback
+      style={{ position: "fixed", left: target.x, top: target.y, zIndex: 60 }}
+      className="animate-in -translate-x-1/2 fade-in-0 zoom-in-95"
+    >
+      {open ? (
+        <div className="w-[320px] rounded-xl border-[0.5px] border-border bg-card p-2.5 shadow-[0_4px_12px_rgba(0,0,0,0.12),0_12px_32px_rgba(0,0,0,0.14)] dark:shadow-[0_4px_12px_rgba(0,0,0,0.5),0_12px_32px_rgba(0,0,0,0.5)]">
+          <div className="mb-1.5 flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className="flex-none font-mono">{target.ref}</span>
+            <span className="truncate italic">
+              “{target.quote.length > 50 ? `${target.quote.slice(0, 49)}…` : target.quote}”
+            </span>
+          </div>
+          <textarea
+            autoFocus
+            value={text}
+            disabled={sending}
+            rows={2}
+            placeholder="What should change here?"
+            aria-label={`Push back on ${target.ref}`}
+            spellCheck={false}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+            className="w-full resize-none rounded-lg border-[0.5px] border-border bg-transparent px-2.5 py-1.5 text-[13px] text-foreground placeholder:text-faint focus:border-brand/40 focus:outline-none"
+          />
+        </div>
+      ) : (
+        <button
+          type="button"
+          // preventDefault so the click doesn't collapse the selection before
+          // the composer captures the quote.
+          onPointerDown={(e) => e.preventDefault()}
+          onClick={() => setOpen(true)}
+          className="rounded-full border-[0.5px] border-border bg-card px-2.5 py-1 text-[11.5px] font-medium text-foreground shadow-md transition-colors hover:bg-hover"
+        >
+          Push back on this
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ---- the guided read (plannotator-v0.22 "Guided Review", showcase-shaped) ----
 // Importance-ordered chapters over the SAME diff the queue judges: the heart of
 // the change first, consequences next, glue last. Each pairs an overview and
@@ -572,6 +725,7 @@ function ChapterSection(props: {
   return (
     <section
       data-chapter={c.id ?? props.index}
+      data-chapter-ref={c.id}
       className={cx(
         "rounded-lg border-[0.5px] border-border bg-card/40",
         props.read && "opacity-70",
@@ -890,7 +1044,9 @@ export function ReviewView(props: {
           </div>
 
           {/* The Brief — plain English, for anyone. Full-width; scrolls away. */}
-          <p className="max-w-[68ch] text-[17px] leading-relaxed text-foreground">{r.brief}</p>
+          <p data-review-brief className="max-w-[68ch] text-[17px] leading-relaxed text-foreground">
+            {r.brief}
+          </p>
 
           {/* A non-blocking format nudge: the server flags a Brief that reads like
               code (jargon/identifiers), the skill resolves it on the next publish.
@@ -972,6 +1128,11 @@ export function ReviewView(props: {
             </div>
           </div>
         </div>
+
+        {/* Selection-anchored pushback over the review's own prose. */}
+        {interactive && props.sessionId ? (
+          <ProsePushback sessionId={props.sessionId} containerRef={scrollRef} />
+        ) : null}
 
         {/* The guided read — the reading layer under the judgment layer. */}
         {r.chapters && r.chapters.length > 0 ? (

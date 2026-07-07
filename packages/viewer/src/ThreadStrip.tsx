@@ -39,9 +39,31 @@ function anchorLabel(c: Comment): string {
     a.file,
     a.line !== undefined ? `line ${a.line}` : null,
     a.step !== undefined ? `step ${a.step + 1}` : null,
+    a.pos ? `at ${a.pos.x}%, ${a.pos.y}%` : null,
   ]
     .filter(Boolean)
     .join(" ");
+}
+
+// A reviewer-proposed edit rendered as plain −/+ rows (text nodes, no markup).
+function SuggestionRows(props: { suggestion: { before: string; after: string } }) {
+  return (
+    <div
+      data-thread-suggestion
+      className="my-1 overflow-hidden rounded-md border-[0.5px] border-border font-mono text-[11.5px]"
+    >
+      {props.suggestion.before.trim() ? (
+        <div className="flex gap-1.5 bg-red-500/10 px-2 py-0.5 text-red-800 dark:text-red-300">
+          <span className="flex-none select-none">−</span>
+          <span className="min-w-0 whitespace-pre-wrap">{props.suggestion.before}</span>
+        </div>
+      ) : null}
+      <div className="flex gap-1.5 bg-emerald-500/10 px-2 py-0.5 text-emerald-800 dark:text-emerald-300">
+        <span className="flex-none select-none">+</span>
+        <span className="min-w-0 whitespace-pre-wrap">{props.suggestion.after}</span>
+      </div>
+    </div>
+  );
 }
 
 function Message(props: { comment: Comment }) {
@@ -116,6 +138,7 @@ function ThreadCard(props: { thread: Thread }) {
       )}
       <div className="flex flex-col gap-1">
         <Message comment={root} />
+        {root.suggestion ? <SuggestionRows suggestion={root.suggestion} /> : null}
         {replies.map((r) => (
           <div key={r.id} className="flex gap-1.5 pl-1">
             <CornerDownRight className="mt-1 size-3 flex-none text-faint" />

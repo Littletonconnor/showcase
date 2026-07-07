@@ -418,6 +418,7 @@ export class JsonFileStore implements Store {
       text: input.text,
       createdAt: new Date().toISOString(),
       ...(input.anchor ? { anchor: input.anchor } : {}),
+      ...(input.suggestion ? { suggestion: input.suggestion } : {}),
       ...(input.replyTo ? { replyTo: input.replyTo } : {}),
     };
     this.comments.push(comment);

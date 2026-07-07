@@ -48,6 +48,24 @@ The last open roadmap items, landed one commit each, all gates green
    registry, publish→get_surface round-trip, in-band -32602 validation,
    resources, prompts, wait_for_feedback exactly-once. The Move 2 remainder.
 
+Follow-up (July 2026, plannotator round 5 — the annotation layer completed):
+✅ **Reviewer code suggestions** — the anchored composer grew a Suggest-edit
+mode (available whenever the anchor carries a quote): the quote prefills an
+editable monospace `after`, and the comment rides with `suggestion:{before,
+after}` (core-coerced, capped; empty `after` = propose deletion). Threads
+render it as −/+ rows; feedback delivery carries it verbatim on every channel
+(piggyback `Feedback.suggestion`, `showcase wait/watch` lines, stdio
+`wait_for_feedback` — which also got its missing `id`/`anchor` fields fixed);
+the PLAYBOOK tells agents to apply it with judgment.
+✅ **Annotatable review prose** — selecting text in the brief, a decision, or
+a chapter shows a floating "Push back on this" chip → composer, posting
+`revise <ref>: "quote" — note` (the brief scopes as `revise the brief:`).
+✅ **Image pin annotations** — `CommentAnchor.pos` (percent coordinates,
+validated/rounded server-side): clicking an image part opens the composer at
+that spot, pinned threads render as numbered dots, and the anchor reads
+`at 34%, 56%` in feedback. Covered by `test/commentExtras.test.ts`, ImagePart/
+ThreadStrip component tests, and `e2e/annotations.spec.ts` (all three flows).
+
 Follow-up (July 2026, plannotator round 4 — the founding feature):
 ✅ **the blocking plan-review hook.** `showcase install-plan-hook` wires a
 Claude Code `PreToolUse` hook on `ExitPlanMode` (project or `--user` scope;

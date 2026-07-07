@@ -51,6 +51,7 @@ import {
   type ManifestFile,
   type ReviewChapter,
   coerceCommentAnchor,
+  coerceCommentSuggestion,
   formatCommentAnchor,
   htmlPart,
   isAssetKind,
@@ -318,6 +319,9 @@ export interface CommentWait {
 export interface Feedback {
   id?: string;
   anchor?: string;
+  // A reviewer-proposed edit — apply it (with judgment; `before` is
+  // whitespace-collapsed context, not a mechanical patch).
+  suggestion?: { before: string; after: string };
   surfaceId: string | null;
   surfaceTitle: string | null;
   text: string;
@@ -336,6 +340,7 @@ const sessionNotFound = (id: string) =>
 // `anchor` is the human-readable location ("app.ts:704 \"the quoted lines\"").
 const feedbackView = (c: Comment): Feedback => ({
   ...(c.anchor ? { id: c.id, anchor: formatCommentAnchor(c.anchor) } : {}),
+  ...(c.suggestion ? { suggestion: c.suggestion } : {}),
   surfaceId: c.surfaceId,
   surfaceTitle: c.surfaceTitle,
   text: c.text,
@@ -1363,6 +1368,7 @@ export function createApp({
     session?: string;
     author: string;
     anchor?: unknown;
+    suggestion?: unknown;
     replyTo?: string;
   }): Promise<
     { comment: Comment; userFeedback?: Feedback[] } | { error: string; status: 400 | 404 }
@@ -1399,6 +1405,7 @@ export function createApp({
       author: input.author,
       text: input.text.trim().slice(0, MAX_COMMENT_TEXT),
       anchor: coerceCommentAnchor(input.anchor) ?? (parent?.anchor ? parent.anchor : undefined),
+      suggestion: coerceCommentSuggestion(input.suggestion),
       ...(parent ? { replyTo: parent.id } : {}),
     });
     if (!comment) return { error: "session not found", status: 404 };
@@ -2211,6 +2218,7 @@ export function createApp({
       session: typeof body.session === "string" ? body.session : undefined,
       author: typeof body.author === "string" ? body.author : "user",
       anchor: body.anchor,
+      suggestion: body.suggestion,
       replyTo: typeof body.replyTo === "string" ? body.replyTo : undefined,
     });
     if ("error" in result) return c.json({ error: result.error }, result.status);

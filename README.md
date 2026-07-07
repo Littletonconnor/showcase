@@ -60,9 +60,11 @@ showcase install-plan-hook   # ExitPlanMode now opens the plan on the board and
 ```
 
 `showcase help` lists the rest (publish, diff, lesson, decisions, gc, doctor, ...).
-In the browser: select text or click a line number on any card to leave an
-anchored comment; a check appears when it is sent and flips to a double check
-the moment the agent has actually read it.
+In the browser: select text, click a line number on any card (diffs included),
+or click a spot on an image to leave an anchored comment — with a **Suggest
+edit** mode that sends a concrete before→after the agent applies. A check
+appears when a comment is sent and flips to a double check the moment the
+agent has actually read it.
 
 ---
 

@@ -511,6 +511,19 @@ export interface CommentAnchor {
   line?: number;
   file?: string;
   step?: number;
+  // A point on an image part (percent of rendered width/height) — the
+  // plannotator-style pin. Bounded numbers, rendered as a positioned dot.
+  pos?: { x: number; y: number };
+}
+
+// A reviewer-proposed edit riding on a comment (plannotator's "suggest code"):
+// `before` is the anchored quote for context, `after` is the replacement the
+// reviewer typed. DATA end to end — rendered as text rows in the thread and
+// delivered verbatim in feedback; the agent applies it with judgment (the
+// quote is whitespace-collapsed, so it is intent, not a mechanical patch).
+export interface CommentSuggestion {
+  before: string;
+  after: string;
 }
 
 export interface Comment {
@@ -524,6 +537,8 @@ export interface Comment {
   createdAt: string;
   // Anchored feedback (see CommentAnchor). Absent on whole-card comments.
   anchor?: CommentAnchor;
+  // A proposed edit attached by the reviewer (see CommentSuggestion).
+  suggestion?: CommentSuggestion;
   // Threading: the comment this one replies to. An agent reply carries the id
   // of the user's anchored comment, so the thread renders at the anchor.
   replyTo?: string;
@@ -607,6 +622,7 @@ export interface CreateCommentInput {
   author: string;
   text: string;
   anchor?: CommentAnchor;
+  suggestion?: CommentSuggestion;
   replyTo?: string;
 }
 
@@ -626,7 +642,36 @@ export function coerceCommentAnchor(raw: unknown): CommentAnchor | undefined {
   if (typeof a.line === "number" && Number.isInteger(a.line) && a.line >= 1) out.line = a.line;
   if (typeof a.file === "string" && a.file.trim()) out.file = a.file.trim().slice(0, 300);
   if (typeof a.step === "number" && Number.isInteger(a.step) && a.step >= 0) out.step = a.step;
+  const pos = a.pos as { x?: unknown; y?: unknown } | undefined;
+  if (
+    pos &&
+    typeof pos === "object" &&
+    typeof pos.x === "number" &&
+    typeof pos.y === "number" &&
+    Number.isFinite(pos.x) &&
+    Number.isFinite(pos.y) &&
+    pos.x >= 0 &&
+    pos.x <= 100 &&
+    pos.y >= 0 &&
+    pos.y <= 100
+  ) {
+    out.pos = { x: Math.round(pos.x * 10) / 10, y: Math.round(pos.y * 10) / 10 };
+  }
   return out;
+}
+
+// Validate/normalize a reviewer suggestion: bounded strings, `after` required
+// (an empty `after` proposes a deletion of the quoted `before`, so only a
+// fully empty pair is meaningless). Undefined for anything malformed — the
+// comment text still lands without it.
+export function coerceCommentSuggestion(raw: unknown): CommentSuggestion | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const s = raw as Record<string, unknown>;
+  if (typeof s.after !== "string") return undefined;
+  const before = typeof s.before === "string" ? s.before.slice(0, 2000) : "";
+  const after = s.after.slice(0, 2000);
+  if (!before.trim() && !after.trim()) return undefined;
+  return { before, after };
 }
 
 // The anchor as the agent reads it in a feedback line: "app.ts:704", "step 3",
@@ -636,6 +681,7 @@ export function formatCommentAnchor(a: CommentAnchor): string {
     ...(a.file ? [a.file] : []),
     ...(a.line !== undefined ? [`line ${a.line}`] : []),
     ...(a.step !== undefined ? [`step ${a.step + 1}`] : []),
+    ...(a.pos ? [`at ${a.pos.x}%, ${a.pos.y}%`] : []),
   ].join(" ");
   const quote = a.quote ? `"${a.quote.length > 120 ? a.quote.slice(0, 119) + "…" : a.quote}"` : "";
   return [loc, quote].filter(Boolean).join(" ") || `part ${a.partIndex + 1}`;

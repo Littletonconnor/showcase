@@ -169,7 +169,14 @@ export function watchLine(c: {
   text?: string;
   surfaceId?: string;
   surfaceTitle?: string;
-  anchor?: { quote?: string; line?: number; file?: string; step?: number };
+  anchor?: {
+    quote?: string;
+    line?: number;
+    file?: string;
+    step?: number;
+    pos?: { x: number; y: number };
+  };
+  suggestion?: { before?: string; after?: string };
 }): string {
   const text = String(c.text ?? "")
     .replace(/\s+/g, " ")
@@ -177,6 +184,14 @@ export function watchLine(c: {
   const where = c.surfaceId
     ? `on “${c.surfaceTitle ?? "a surface"}” (surface ${c.surfaceId})`
     : "on the session";
+  // A reviewer-proposed edit rides along verbatim — apply it with judgment.
+  const clip = (s: string) => {
+    const flat = s.replace(/\s+/g, " ").trim();
+    return flat.length > 120 ? `${flat.slice(0, 119)}…` : flat;
+  };
+  const suggestion = c.suggestion
+    ? ` — suggested edit: “${clip(String(c.suggestion.before ?? ""))}” → “${clip(String(c.suggestion.after ?? ""))}”`
+    : "";
   // An anchored comment names its exact spot and carries the reply handle so
   // `showcase reply --to <id>` lands in the thread.
   if (c.anchor && c.id) {
@@ -185,9 +200,10 @@ export function watchLine(c: {
       ...(a.file ? [a.file] : []),
       ...(a.line !== undefined ? [`line ${a.line}`] : []),
       ...(a.step !== undefined ? [`step ${a.step + 1}`] : []),
+      ...(a.pos ? [`at ${a.pos.x}%, ${a.pos.y}%`] : []),
     ].join(" ");
     const quote = a.quote ? ` “${a.quote.length > 80 ? a.quote.slice(0, 79) + "…" : a.quote}”` : "";
-    return `showcase comment ${where} at ${loc || "a selection"}${quote}: “${text}” — reply with: showcase reply "…" --to ${c.id}`;
+    return `showcase comment ${where} at ${loc || "a selection"}${quote}: “${text}”${suggestion} — reply with: showcase reply "…" --to ${c.id}`;
   }
-  return `showcase comment ${where}: “${text}”`;
+  return `showcase comment ${where}: “${text}”${suggestion}`;
 }
