@@ -61,6 +61,7 @@ export interface McpDeps {
     verdict?: string;
     decisions?: unknown;
     manifest?: unknown;
+    chapters?: unknown;
     session?: string;
     sessionTitle?: string;
     agent?: string;
@@ -257,6 +258,7 @@ export function registerMcp(app: Hono, deps: McpDeps) {
           verdict: str(args.verdict),
           decisions: args.decisions,
           manifest: args.manifest,
+          chapters: args.chapters,
           session: str(args.session),
           sessionTitle: str(args.sessionTitle),
           agent: str(args.agent),

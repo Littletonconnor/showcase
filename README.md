@@ -40,17 +40,39 @@ showcase open             # jump your browser to the current session
 #   "diff my branch and review it"          "teach me Redis eviction"
 #   "recap our conversation on showcase"
 
+# or, with the plugin installed, one verb each (plannotator-style):
+#   /review [branch]     a decision-queue review of the diff
+#   /explain <thing>     a walkthrough / animated explainer
+#   /teach <topic>       a lesson with checkpoints + spaced review
+#   /last                put the agent's previous answer on the board to mark up
+#   /watch               park the agent on the feedback loop
+
 # the loop
 showcase wait             # block until the user comments (anchored, exactly-once)
 showcase reply "..." --to <id>   # answer INTO a thread at its anchor
 showcase review-due       # spaced-review queue across topics
 showcase mastery          # inspect learn-mode progress
+
+# plan review that just happens (Claude Code)
+showcase install-plan-hook   # ExitPlanMode now opens the plan on the board and
+                             # BLOCKS: annotate, then Approve plan or Request
+                             # changes — the verdict returns in the hook response
+
+# the same gate for ANY artifact (docs, configs, generated code, html mockups)
+showcase annotate REPORT.md  # opens it on the board, blocks for the verdict;
+                             # --hook emits {"decision":"block",...} for hook use
 ```
 
 `showcase help` lists the rest (publish, diff, lesson, decisions, gc, doctor, ...).
-In the browser: select text or click a line number on any card to leave an
-anchored comment; a check appears when it is sent and flips to a double check
-the moment the agent has actually read it.
+In the browser: select text, click a line number on any card (diffs included),
+click a spot on an image, or hit the 📍 **pin mode** to drop a note anywhere —
+including on a live html design mockup, where the pin reports what sits under
+it (`§section` + nearby text), not just coordinates. The composer has a
+**Suggest edit** mode that sends a concrete before→after the agent applies.
+The **Chat** dock (bottom-right) is the live back-and-forth: your messages and
+the agent's replies as one conversation, with a presence dot and delivery
+receipts — a check when sent, a double check the moment the agent has actually
+read it.
 
 ---
 
@@ -368,12 +390,35 @@ follow the standard agent-skills layout, so any of these works:
 # the skills CLI (Claude Code, Codex, Cursor, OpenCode, Copilot - shared .agents/skills/):
 npx skills@latest add Littletonconnor/showcase --skill teach
 
-# Claude Code plugin marketplace (managed + updatable, namespaced /showcase:* skills):
+# Claude Code plugin marketplace (managed + updatable — the /review, /explain,
+# /teach, /last, /watch commands plus the namespaced /showcase:* skills):
 /plugin marketplace add Littletonconnor/showcase
 
 # or plain copy:
 cp -r skills/teach ~/.agents/skills/
 ```
+
+The plugin's slash commands are the memorable spine — one verb per loop
+(`commands/*.md`): `/review [branch]` publishes a decision-queue review,
+`/explain <thing>` a walkthrough or animated explainer, `/teach <topic>` a
+lesson, `/last` puts the agent's previous answer on the board to mark up, and
+`/watch` parks the agent on the feedback loop. Each command bootstraps from the
+live playbook, so the recipe text stays server-owned.
+
+Plan review needs no command at all: `showcase install-plan-hook` wires a
+`PreToolUse` hook on `ExitPlanMode`, so every plan the agent proposes opens on
+the board automatically and the agent **blocks** until you annotate and submit
+a verdict — **Approve plan** allows it to proceed; **Request changes** returns
+your anchored notes in the hook response, the agent revises, and the review
+reopens as a new version of the same card **with a diff against the previous
+round**, so round 2 is "what changed", not a re-read. If the board is
+unreachable or you never answer (4-hour ceiling — long enough to walk away and
+come back), the hook steps aside and Claude Code's normal permission prompt
+takes over. `showcase plan <file|->` runs the same blocking review from any
+script or agent, and `showcase annotate <file|->` generalizes it to any
+artifact — markdown renders, html renders live, everything else shows as
+code — with a `--hook` mode that speaks the block/approve contract for
+Stop or PostToolUse hooks.
 
 Each skill's README states when to use it and, just as important, when to skip
 it. For always-on triggering guidance, add this managed block to your

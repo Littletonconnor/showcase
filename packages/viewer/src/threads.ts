@@ -14,6 +14,8 @@ export interface ComposerTarget {
   line?: number;
   file?: string;
   step?: number;
+  // A pin on an image part (percent of rendered width/height).
+  pos?: { x: number; y: number };
   // Viewport position the popover anchors to (fixed coordinates).
   x: number;
   y: number;
@@ -35,8 +37,13 @@ export function closeComposer(): void {
 
 // Post the anchored comment. author=user: this is a genuine trusted-origin
 // keystroke path (the quote rode in from the sandbox as data, but the TEXT is
-// typed here).
-export function postAnchoredComment(target: ComposerTarget, text: string): Promise<boolean> {
+// typed here). `suggestion` is the composer's suggest-edit mode — a proposed
+// before→after riding with the note.
+export function postAnchoredComment(
+  target: ComposerTarget,
+  text: string,
+  suggestion?: { before: string; after: string },
+): Promise<boolean> {
   return postJson(
     "/api/comments",
     {
@@ -48,7 +55,9 @@ export function postAnchoredComment(target: ComposerTarget, text: string): Promi
         ...(target.line !== undefined ? { line: target.line } : {}),
         ...(target.file ? { file: target.file } : {}),
         ...(target.step !== undefined ? { step: target.step } : {}),
+        ...(target.pos ? { pos: target.pos } : {}),
       },
+      ...(suggestion ? { suggestion } : {}),
     },
     { errorToast: "Couldn't send the comment" },
   );

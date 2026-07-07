@@ -34,7 +34,16 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cx } from "./cx.ts";
-import { BookOpen, Check, Copy, ExternalLink, Link2, MoreHorizontal, Trash2 } from "lucide-react";
+import {
+  BookOpen,
+  Check,
+  Copy,
+  ExternalLink,
+  Link2,
+  MapPin,
+  MoreHorizontal,
+  Trash2,
+} from "lucide-react";
 import {
   useActiveTheme,
   useResolvedMode,
@@ -293,6 +302,64 @@ function surfaceRef(id: string, title: string): string {
   return title.trim() ? `showcase surface ${id} "${title.trim()}"` : `showcase surface ${id}`;
 }
 
+// The badge labels that mark a BLOCKING review — a parked `showcase plan` /
+// `showcase annotate` process is long-polling for the verdict these verbs post.
+const VERDICT_BADGES = new Set(["Plan review", "Review"]);
+
+// Verdict verbs — the explicit submit the blocking gate waits on. Rendered
+// only when the surface carries a verdict badge (published by `showcase
+// plan` / the plan hook / `showcase annotate`): annotate first, then one of
+// these posts a plain author=user signal comment on the pipe — [plan] approve
+// unblocks the agent, [plan] request-changes blocks it with the annotation
+// batch as feedback.
+function PlanVerbs(props: { surfaceId: string }) {
+  const [sent, setSent] = useState<"approve" | "changes" | null>(null);
+  const send = async (kind: "approve" | "changes") => {
+    try {
+      await api("/api/comments", {
+        method: "POST",
+        body: JSON.stringify({
+          surface: props.surfaceId,
+          text: kind === "approve" ? "[plan] approve" : "[plan] request-changes",
+        }),
+      });
+      setSent(kind);
+      toast(
+        kind === "approve"
+          ? "Plan approved — the agent proceeds"
+          : "Sent — the agent revises the plan",
+      );
+    } catch {
+      toast("Couldn't send the verdict");
+    }
+  };
+  if (sent) {
+    return (
+      <span className="flex-none px-1.5 text-[11.5px] text-faint" data-plan-verdict={sent}>
+        {sent === "approve" ? "✓ Approved" : "Changes requested"}
+      </span>
+    );
+  }
+  return (
+    <span className="flex flex-none items-center gap-1" data-plan-verbs>
+      <button
+        type="button"
+        onClick={() => void send("changes")}
+        className="inline-flex items-center rounded-md px-2 py-1 text-[12px] font-medium text-amber-700 transition-colors hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950/40"
+      >
+        Request changes
+      </button>
+      <button
+        type="button"
+        onClick={() => void send("approve")}
+        className="inline-flex items-center rounded-md px-2 py-1 text-[12px] font-medium text-emerald-700 transition-colors hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+      >
+        Approve plan
+      </button>
+    </span>
+  );
+}
+
 function CardIdChip(props: { id: string; title: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -429,12 +496,33 @@ export function Card(props: { surface: Surface }) {
     }
   };
 
+  // Pin-anywhere mode: arms a trusted overlay on every part (design mockups
+  // included — the overlay never touches the sandboxed document), one click
+  // places a percent-coordinate pin and opens the composer, Escape cancels.
+  const [pinMode, setPinMode] = useState(false);
+  useEffect(() => {
+    if (!pinMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPinMode(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pinMode]);
+
   // Per-surface secondary actions in the footer toolbar. "Read" (the focused
   // one-at-a-time reader) is an explainer affordance, so it shows only on
   // non-finding cards — a review card wants density, not a slideshow. Copy
   // link / open / delete live in the ⋯ overflow.
   const surfaceActions = (
     <>
+      {!isReadonly() && !exportBundle() ? (
+        <IconAction
+          label={pinMode ? "Pin mode — click any part, Esc to cancel" : "Pin a note anywhere"}
+          onClick={() => setPinMode((v) => !v)}
+        >
+          <MapPin className={pinMode ? "text-blue-500" : undefined} />
+        </IconAction>
+      ) : null}
       {!isFinding ? (
         <IconAction label="Read — focused, one at a time" onClick={() => enterReading(surfaceId)}>
           <BookOpen />
@@ -521,6 +609,8 @@ export function Card(props: { surface: Surface }) {
               exportDoc={exportHtmlDocs?.get(i)}
               theme={surfaceTheme}
               mode={mode}
+              pinMode={pinMode}
+              onPinPlaced={() => setPinMode(false)}
             />
           ))}
         </div>
@@ -535,11 +625,20 @@ export function Card(props: { surface: Surface }) {
           <TooltipProvider delayDuration={300}>
             {!isReadonly() && !exportBundle() ? (
               <span className="flex-1 pl-1.5 text-[11px] text-faint select-none">
-                Select text (or click a line number) to comment
+                {pinMode
+                  ? "Pin mode — click anywhere on a part to drop a note (Esc cancels)"
+                  : VERDICT_BADGES.has(props.surface.badge?.label ?? "")
+                    ? "Annotate, then submit a verdict →"
+                    : "Select text (or click a line number) to comment"}
               </span>
             ) : (
               <span className="flex-1" />
             )}
+            {VERDICT_BADGES.has(props.surface.badge?.label ?? "") &&
+            !isReadonly() &&
+            !exportBundle() ? (
+              <PlanVerbs surfaceId={surfaceId} />
+            ) : null}
             {surfaceActions}
           </TooltipProvider>
         </div>

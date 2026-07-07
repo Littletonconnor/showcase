@@ -1,9 +1,10 @@
 // One place that turns failures into a one-line `showcase: …` message and a
 // non-zero exit. Every command and the shared HTTP client route user-facing
 // errors through here, so exit-code and message style stay consistent.
+import { red } from "./style.ts";
 
 export function fail(msg: string): never {
-  console.error(`showcase: ${msg}`);
+  console.error(`${red("showcase:")} ${msg}`);
   process.exit(1);
 }
 

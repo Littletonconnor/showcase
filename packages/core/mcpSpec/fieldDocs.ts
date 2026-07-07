@@ -55,7 +55,13 @@ export const d = {
   traceTs: "ISO timestamp",
   terminalText: "terminal part: raw output (ANSI SGR color escapes are rendered)",
   terminalCols: "terminal part: optional render width in columns",
-  partChartType: "chart part: bar | line | area | pie | treemap | scatter",
+  partChartType:
+    "chart part: bar | line | area | pie | treemap | scatter | bubble | minimap | matrix | arc. " +
+    "The last four are opt-in review-depth visuals — pick AT MOST ONE per PR, matched to its shape: " +
+    "bubble (churn×complexity hotspots: numeric x/y, point size from z, per-row tone) for a broad " +
+    "risk sweep; minimap (a one-strip file heat-map: segment width = y per x label) for a small PR's " +
+    "where-did-it-land glance; matrix (rows = x, columns = x2, cell intensity = y) for a refactor's " +
+    "co-change coupling; arc (nodes from x/x2 on a line, arc weight = y) for layered dependency flow.",
   partChartData:
     "chart part: row-oriented data — an array of objects, one per row/category. json part: the JSON value to render as a collapsible tree.",
   partCode: "code part: the source text, shiki-highlighted",
@@ -65,7 +71,8 @@ export const d = {
     "walkthrough part: a step-through code explainer — THE part for 'explain how X works in this " +
     "codebase'. The viewer renders a step player: prev/next + arrow keys + clickable step dots, an " +
     "annotation panel, a code pane where each step's `highlight` line ranges glow while the rest dim, " +
-    "and an optional shared `mermaid` diagram whose node (per-step `node`) tracks the step. Each step " +
+    "and an optional shared `mermaid` diagram whose node (per-step `node`) tracks the step — clicking " +
+    "a step's node in the diagram jumps the player to that step. Each step " +
     "= ONE hop of the call path: {title, body (the annotation — why this code matters), file (path " +
     "label), code (the REAL excerpt, kept tight: 10-25 lines), language, lineStart (1-based, so " +
     "numbering matches the file), highlight ([[from,to]] ABSOLUTE line ranges), node}. 3-12 steps. " +
@@ -93,6 +100,9 @@ export const d = {
     "feedback), reveal (the resolution, shown only after an attempt)}",
   partChartX: "chart part: the field naming the category (x axis / pie slice label)",
   partChartY: "chart part: the numeric series field, or an array of fields for multiple series",
+  partChartX2:
+    "chart part: the second category field — the matrix column / the arc target node (required for matrix/arc)",
+  partChartZ: "chart part: the numeric size field for bubble points (omit for uniform dots)",
   partChartStacked: "chart part: stack bars/areas instead of grouping (ignored for line/pie)",
   partChartColors: "chart part: explicit series/slice colors (safe CSS color tokens only)",
   partChartXLabel: "chart part: optional x-axis label",
@@ -125,6 +135,22 @@ export const d = {
     "Optional — 'flips to ✅/⛔ if …'. ONLY when there's a real fork (an unverified gap that could change the call, or a load-bearing assumption). Omit on a clean ship — never noise.",
   decisionEvidence:
     "Right-pane artifacts for this decision: surface parts (usually a `diff`, plus maybe a `mermaid` control-flow or `code`). EFFECTIVELY REQUIRED for any decision about specific code — a changed-line / whole-file call with no evidence is unadjudicable (the reviewer can't see what you're judging) and the server warns on it. Omit ONLY for a genuinely codeless call (a process/architecture point), where it renders full-width.",
+  reviewChapters:
+    "Optional guided read — organize the WHOLE changeset into importance-ordered chapters: the " +
+    "heart of the change first, its consequences next, glue last. Each chapter is {id?, title, " +
+    "overview (prose/markdown: what this chapter is, why read it now), files:[{path, summary?}], " +
+    "parts? (the live diffs it covers — usually ONE diff part over those files)}. Every chapter " +
+    "file MUST be in the manifest (an invented file rejects the publish); changed files no " +
+    "chapter covers are surfaced in an automatic trailing section and warned on, never dropped. " +
+    "Use it when the PR is big or multi-concern — it gives the reviewer a reading order; the " +
+    "decision queue stays the judgment layer.",
+  chapterId:
+    "Optional short, stable ref for this chapter (e.g. 'ch-heart'). Same contract as a decision " +
+    "id: keep it stable across re-publishes so read-state and chat pushback survive a revise.",
+  chapterParts:
+    "chapter parts: the live artifacts this chapter covers — usually ONE diff part (real `git " +
+    "diff` patch or files:[{before,after}]) spanning the chapter's files; a mermaid/code part " +
+    "when the shape needs it.",
   decisionProposal:
     "Optional concrete fix as {before, after, filename?, note?}: `before` is the current (changed) code, `after` is your proposed fix. Renders under the evidence as a 'Suggested fix' diff, so the reviewer sees the change AND the fix side by side. POPULATE IT whenever a concrete fix exists — especially on a block/decide — so a blocked decision shows how to unblock it.",
 };
@@ -144,10 +170,12 @@ export const MCP_PARTS_DESCRIPTION =
   "{kind:'trace', assetId} for an uploaded trace file (downloadable). terminal: {kind:'terminal', " +
   "text:'<output>', cols?, title?} renders monospace terminal output (ANSI SGR colors supported; " +
   "cursor-addressing TUIs are not resolved). chart: {kind:'chart', " +
-  "chartType:'bar'|'line'|'area'|'pie'|'treemap'|'scatter', data:[{…row}], x:'<categoryField>', " +
-  "y:'<numericField>'|['<f1>','<f2>'], stacked?, colors?, xLabel?, yLabel?, caption?} — row-oriented " +
-  "numeric data rendered with Recharts (data is an array of objects; x names the category field, y " +
-  "the numeric series — one field or several). json: {kind:'json', data:<any JSON value>} — a " +
+  "chartType:'bar'|'line'|'area'|'pie'|'treemap'|'scatter'|'bubble'|'minimap'|'matrix'|'arc', " +
+  "data:[{…row}], x:'<categoryField>', y:'<numericField>'|['<f1>','<f2>'], x2?, z?, stacked?, " +
+  "colors?, xLabel?, yLabel?, caption?} — row-oriented numeric data rendered by the trusted viewer " +
+  "(data is an array of objects; x names the category field, y the numeric series — one field or " +
+  "several; matrix/arc take the second category in x2, bubble sizes points from z). json: " +
+  "{kind:'json', data:<any JSON value>} — a " +
   "collapsible tree. code: {kind:'code', code:'<source>', language?, title?, lineStart?} — a " +
   "shiki-highlighted source file/excerpt. Optional diff layout " +
   "'unified'|'split'. Combine freely, e.g. [{kind:'html',...},{kind:'image',assetId},{kind:'trace',steps}].";

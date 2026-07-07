@@ -1,6 +1,7 @@
 // Help rendering, generated from the command registry and each command's
 // option spec — both the top-level overview and per-command `--help`.
 import type { Command, OptionSpec, OptionSpecs } from "./command.ts";
+import { bold, dim } from "./style.ts";
 
 const GROUP_ORDER = [
   "Run",
@@ -31,7 +32,8 @@ const ENVIRONMENT = `environment:
 // group lines up); omit it to size each block to its own contents.
 function column(rows: [string, string][], width?: number): string {
   const w = width ?? Math.max(0, ...rows.map(([left]) => left.length));
-  return rows.map(([left, right]) => `  ${left.padEnd(w)}  ${right}`).join("\n");
+  // Pad before styling so ANSI codes never skew the column.
+  return rows.map(([left, right]) => `  ${left.padEnd(w)}  ${dim(right)}`).join("\n");
 }
 
 // `showcase` / `showcase help`: the grouped command index.
@@ -51,11 +53,11 @@ export function renderTopLevelHelp(commands: Command[]): string {
     const cmds = groups.get(group);
     if (!cmds) continue;
     const rows = cmds.map((c) => [commandSignature(c), c.summary] as [string, string]);
-    sections.push(`${group.toLowerCase()}:\n${column(rows, width)}`);
+    sections.push(`${bold(group.toLowerCase())}:\n${column(rows, width)}`);
   }
 
   return [
-    HEADER,
+    bold(HEADER),
     "",
     "usage: showcase <command> [options]   (run `showcase <command> --help` for details)",
     "",
@@ -74,7 +76,7 @@ export function renderCommandHelp(cmd: Command, specs: OptionSpecs): string {
   const optionRows = Object.entries(specs)
     .filter(([, spec]) => spec.desc)
     .map(([name, spec]) => [optionSignature(name, spec), spec.desc!] as [string, string]);
-  if (optionRows.length > 0) out.push("", "options:", column(optionRows));
+  if (optionRows.length > 0) out.push("", bold("options:"), column(optionRows));
 
   if (cmd.help) out.push("", cmd.help.trim());
   out.push("");

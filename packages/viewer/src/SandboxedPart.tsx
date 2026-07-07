@@ -56,6 +56,12 @@ type SandboxedPartProps = {
   // Accessible name for the frame (WCAG: every iframe needs a title). Callers
   // pass the part kind plus its own title where one exists.
   title: string;
+  // Bridge messages from THIS frame's contentWindow (already source-checked and
+  // __showcase-tagged), beyond the resize the frame handles itself. The payload
+  // is still agent-reachable data — callers must validate every field they use.
+  // The frame element rides along so callers can translate in-frame rects to
+  // viewport coordinates (e.g. positioning the comment popover).
+  onBridgeMessage?: (data: Record<string, unknown>, frame: HTMLIFrameElement) => void;
 };
 
 // Dispatcher: the PDF export flattens rich parts into the document so they
@@ -83,6 +89,10 @@ function FramePart(props: SandboxedPartProps) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const activeTheme = useSurfaceTheme();
   const mode = useResolvedMode();
+  // Ref, not a dependency: the message effect keys off `doc` alone, and a
+  // caller-recreated callback must not tear down the listener mid-load.
+  const onBridgeRef = useRef(props.onBridgeMessage);
+  onBridgeRef.current = props.onBridgeMessage;
 
   const doc = useMemo(
     () =>
@@ -109,6 +119,8 @@ function FramePart(props: SandboxedPartProps) {
       if (!d || !d.__showcase) return;
       if (d.type === "resize") {
         applyFrameHeight(frame, d.height);
+      } else {
+        onBridgeRef.current?.(d as Record<string, unknown>, frame);
       }
     };
     window.addEventListener("message", onMessage);

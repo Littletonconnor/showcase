@@ -6,10 +6,163 @@ section 6 is the roadmap (what to build); sections 7–8 are open decisions and
 how to pick up work autonomously. Architecture detail lives in `AGENTS.md`.
 
 **👉 All three form factors are built and dogfooded — decision reviews, learn
-mode, and walkthrough explainers with anchored comments — and the
-simplification pass that followed them is shipped too (see immediately
-below).** The shipped summaries follow it; sections 1–8 are the stable
-guide/roadmap underneath.
+mode, and walkthrough explainers with anchored comments — and the passes that
+followed them are shipped too: the simplification pass and the
+remaining-backlog pass (see immediately below), which cleared the roadmap.**
+The shipped summaries follow; sections 1–8 are the stable guide/roadmap
+underneath.
+
+---
+
+## ✅ Remaining-backlog pass — SHIPPED (July 2026)
+
+The last open roadmap items, landed one commit each, all gates green
+(typecheck / test / viewer tests / lint / oracle):
+
+1. ✅ **Review-depth chart types** — the chart part gained the opt-in per-PR
+   visuals on the audited trusted path (Recharts + hand-rolled trusted SVG, no
+   D3, no new deps): `bubble` (churn×complexity hotspots, point area from the
+   new `z` field), `minimap` (one-strip file heat-map), `matrix` (co-change
+   adjacency over the new `x2` field), `arc` (layered arc diagram). Strict
+   validation rejects an unplottable matrix/arc; loose drops it; rendering caps
+   disclose truncation. PLAYBOOK/DESIGN_GUIDE teach one-visual-per-PR, matched
+   to the PR's shape.
+2. ✅ **Diagram-node → walkthrough-step jump** — the step↔diagram sync runs
+   both ways: clicking a step's node in the shared mermaid jumps the player to
+   that step (cycling through steps that share a node). Allowlisted node ids
+   only; the host re-validates the bridge message before acting.
+3. ✅ **In-file moved-code detection** — `movedCode.ts` pairs identical
+   deletion/addition runs within a file; DiffPart labels them "↕ N lines moved
+   within the file, unchanged (a–b → c–d)" above the hunks. Renderer spiked
+   first: annotating @pierre/diffs' SSR HTML would couple to library internals,
+   so the strip lives in the trusted origin like the manifest.
+4. ✅ **Part gallery** — `pnpm gallery` serves a dev-only /gallery.html: every
+   part kind through the real PartRenderer with fixture data (html parts via
+   the export-style pre-rendered sandbox doc). The Move 3 "Storybook-like
+   harness" item.
+5. ✅ **CLI color + tables** — zero-dep `style.ts` (TTY-gated ANSI, NO_COLOR /
+   FORCE_COLOR, ANSI-width-aware tables) applied across list/sessions/kits/
+   blueprints/health/board/publish/errors/help. The Move 1 "optional polish".
+6. ✅ **stdio MCP per-tool test matrix** — `test/mcpStdio.test.ts` drives the
+   real stdio server process over newline-delimited JSON-RPC: handshake, tool
+   registry, publish→get_surface round-trip, in-band -32602 validation,
+   resources, prompts, wait_for_feedback exactly-once. The Move 2 remainder.
+
+Follow-up (July 2026, plannotator round 7 — the research bake: everything
+verified from their docs/releases that we still lacked, folded in):
+✅ **Revision diffs between rounds** — when a plan (or any gated artifact)
+comes back for round N, the re-versioned card now carries a `diff` part
+against the previous round's text ("plan.md" for plans, the filename for
+artifacts), so the reviewer reads _what changed_, never the whole thing again.
+✅ **The 4-hour ceiling** — plannotator's hook timeout is 4 days; ours was 30
+minutes, which punished walking away. `DEFAULT_CEILING_S` is now 14400 (4h),
+`install-plan-hook` writes the hook timeout as ceiling+60, and timeout still
+defers silently to the normal permission flow.
+✅ **The generic annotate gate** — `showcase annotate <file|->` runs the same
+blocking review for ANY artifact: markdown renders as markdown, html as a
+LIVE html part (design review of rendered mockups, not source), everything
+else as code. Same session-per-cwd re-versioning, same "Review" badge footer
+verdicts, same annotation batch. `--hook` speaks plannotator's gate contract
+(empty stdout on approve; `{"decision":"block","reason":…}` on
+request-changes; always exit 0) so it drops into Stop or PostToolUse-Write
+hook recipes; plain mode keeps exit 0/2/3 and `--json` for scripts. The
+"Plan review"-only footer gate widened to `VERDICT_BADGES` = {Plan review,
+Review}. Found + fixed en route: the gate dropped the `userFeedback`
+piggyback riding its own publish/PUT response — but the piggyback is
+exactly-once, so a verdict or annotation posted while the publish was in
+flight was eaten and the review parked until the ceiling (repro'd 1-in-3
+under load; the engine now consumes piggybacked feedback before polling). Deliberately NOT taken from their releases: whole-doc direct-edit
+mode (annotations + suggestions cover it; revisit if suggest-edit feels
+cramped), the commits panel, and in-browser "ask AI" (the conversation rail +
+editor own that).
+
+Follow-up (July 2026, plannotator round 6 — the communication layer):
+✅ **The conversation rail** — a bottom-right chat dock in every session view,
+built ENTIRELY on the existing comment pipe (no new channel or wire type):
+user messages are plain session comments, agent session comments/replies
+render as chat bubbles, delivery receipts come from the same agentSeq cursor
+threads use, presence is the listening flag, and telemetry/signal comments
+([checkpoint]/[confused]/[plan]) stay hidden. **This deliberately reverses
+the earlier "no in-app chat UI" retirement at the owner's request** — the
+heavyweight conversation still lives in the editor; the dock makes the quick
+back-and-forth live in the browser.
+✅ **Pin-anywhere (comment-anywhere for design review)** — a 📍 footer toggle
+arms a trusted-origin overlay over every part; one click drops a percent-
+coordinate pin and opens the composer, Esc cancels, pins render as numbered
+dots. On sandboxed parts a bridge `locate` round-trip enriches the pin with
+what sits under it (nearest `data-section` id + nearby text, token-matched,
+capped) — so a pin on a live html mockup reads "at 34%, 56% §hero 'Start
+free trial'", which plannotator's static-image annotation cannot do. Covered
+by `e2e/conversation.spec.ts` (both flows, including the §section locate and
+the reply-flips-receipt semantics).
+
+Follow-up (July 2026, plannotator round 5 — the annotation layer completed):
+✅ **Reviewer code suggestions** — the anchored composer grew a Suggest-edit
+mode (available whenever the anchor carries a quote): the quote prefills an
+editable monospace `after`, and the comment rides with `suggestion:{before,
+after}` (core-coerced, capped; empty `after` = propose deletion). Threads
+render it as −/+ rows; feedback delivery carries it verbatim on every channel
+(piggyback `Feedback.suggestion`, `showcase wait/watch` lines, stdio
+`wait_for_feedback` — which also got its missing `id`/`anchor` fields fixed);
+the PLAYBOOK tells agents to apply it with judgment.
+✅ **Annotatable review prose** — selecting text in the brief, a decision, or
+a chapter shows a floating "Push back on this" chip → composer, posting
+`revise <ref>: "quote" — note` (the brief scopes as `revise the brief:`).
+✅ **Image pin annotations** — `CommentAnchor.pos` (percent coordinates,
+validated/rounded server-side): clicking an image part opens the composer at
+that spot, pinned threads render as numbered dots, and the anchor reads
+`at 34%, 56%` in feedback. Covered by `test/commentExtras.test.ts`, ImagePart/
+ThreadStrip component tests, and `e2e/annotations.spec.ts` (all three flows).
+
+Follow-up (July 2026, plannotator round 4 — the founding feature):
+✅ **the blocking plan-review hook.** `showcase install-plan-hook` wires a
+Claude Code `PreToolUse` hook on `ExitPlanMode` (project or `--user` scope;
+command pinned to the installing node binary): the plan publishes as a badged
+markdown surface (one card per cwd, re-versioned per round), the browser
+auto-opens (round 1 only; SSE live-updates after), and `showcase plan-hook`
+BLOCKS on the comment pipe until the footer verdicts the "Plan review" badge
+unlocks — **Approve plan** → `allow`; **Request changes** → `deny` with the
+anchored-annotation batch as the reason, so the agent revises and re-enters
+the loop. Typed `lgtm`/`approve` in the reply line also approves. Failure
+posture: wrong tool, dead board, or a timeout (30 min then; raised to 4 h in
+round 7) all exit silently and
+defer to the normal permission flow (the cursor is drained per round so a
+stale comment can never verdict a new plan). `showcase plan <file|->` is the
+same blocking review for scripts/other agents (exit 0/2/3 = approve/changes/
+timeout). This resolves the parked "agent wake/notify" question from the
+blocking side — the agent is parked, not notified. Covered by
+`test/planHook.test.ts` (4 process-level tests) and `e2e/planReview.spec.ts`.
+
+Follow-up (July 2026, plannotator round 3 — their v0.22 "Guided Review"):
+✅ **the guided read** — `Review.chapters`: the agent organizes the WHOLE
+changeset into importance-ordered chapters (the heart first, consequences
+next, glue last), each `{id, title, overview, files:[{path, summary}], parts}`
+with its live diff rendered inline beneath the decision queue. The manifest is
+the coverage oracle: a chapter naming a file outside the manifest REJECTS the
+publish ("a guide can never invent files"); non-mechanical files no chapter
+covers get a warning + an automatic "Everything else" section (never a silent
+drop). Chapter ids follow the decision-id contract (stable, copy-ref chip,
+`revise ch-…:` pushback); Mark-read drives a chapter burndown; clicking a line
+in a chapter diff pre-scopes the pushback input to `file:line "quote"`. On
+both MCP transports + REST; recipe in the PLAYBOOK; the demo review is
+chaptered; covered by `test/reviewChapters.test.ts`, ReviewView component
+tests, and `e2e/guidedReview.spec.ts`. Their commits-panel ("linear history
+rail") was considered and cut: the server has no repo access and chronological
+order is what importance-ordered chapters deliberately replace.
+
+Follow-up (July 2026, plannotator round 2): ✅ **inline diff line comments** —
+clicking a line's gutter inside the sandboxed @pierre/diffs render opens the
+anchored composer with file:line + the quoted line (composedPath through the
+open shadow roots; capture-phase mouseup guard; host-side re-validation;
+`e2e/diffComments.spec.ts` drives the loop). ✅ **One-verb slash commands** —
+the plugin ships `/review`, `/explain`, `/teach`, `/last`, `/watch` under
+`commands/`, each a thin bootstrap onto the live `/playbook` (the memorable
+command family plannotator has; `/last` is its "annotate my previous answer"
+equivalent).
+
+The once-parked agent wake/notify question was later resolved by the blocking
+plan-review hook (round 4 above) — the agent is parked on the answer, not
+notified after the fact.
 
 ---
 
@@ -230,9 +383,9 @@ walkthrough part with line-gutter comments, and the "The commands" README
 cheat sheet. Diagram polish shipped alongside the walkthrough part: ELK layout engine
 (opt-in per diagram via frontmatter `config.layout: elk` - documented in the
 design guide) and pan/zoom on every mermaid part (ctrl/cmd+scroll, drag,
-double-click reset). Still open: click a diagram node to jump the walkthrough
-to that step; D2 as an alternative renderer was evaluated and skipped (new
-heavy dep; mermaid+ELK covers the need locally).
+double-click reset). ✅ Click-a-diagram-node-to-jump shipped in the
+remaining-backlog pass (see top); D2 as an alternative renderer was evaluated
+and skipped (new heavy dep; mermaid+ELK covers the need locally).
 
 ### Anti-goals (unchanged from the plan)
 
@@ -450,11 +603,10 @@ complete. The stable base everything below assumes:
 
 ### 🔨 What's actually left
 
-Everything in §1's two flagship workflows is shipped. Two things remain, neither
-load-bearing:
-
-1. **Review-depth visuals** — the opt-in per-PR chart track below.
-2. **In-file moved-code detection** + an optional **Tour surface** — both below.
+Everything in §1's two flagship workflows is shipped, and the
+remaining-backlog pass (top of this file) closed the last open items here —
+the review-depth chart track and in-file moved-code detection are both
+**shipped**. What follows is kept as the design record.
 
 #### Review depth — fancier review visualizations (a track to develop)
 
@@ -473,18 +625,24 @@ Recharts lacks (matrix, arc, minimap). **No sandboxed D3 kit**: Recharts is
 already in the app, D3 would add ~250KB + a brand-new sandboxed-iframe attack
 surface for zero benefit, and treemap/scatter were already added this way.
 
-- **Opt-in depth visuals** — each extends the trusted chart path:
-  - **churn×complexity hotspot bubble** — Recharts scatter + a size (Z) axis.
-  - **coupling-delta bar** — Recharts stacked bar (already possible).
-  - **file minimap / heat-strip** — small custom-SVG React part.
-  - **adjacency / co-change matrix** — custom-SVG rect grid.
-  - **layered arc diagram** — custom-SVG `<path>` arcs.
+- ✅ **Opt-in depth visuals — SHIPPED** (remaining-backlog pass), each on the
+  trusted chart path:
+  - ✅ **churn×complexity hotspot bubble** — `chartType:"bubble"` (Recharts
+    scatter + a `z` size axis).
+  - ✅ **coupling-delta bar** — Recharts stacked bar (already possible; the
+    PLAYBOOK documents the recipe).
+  - ✅ **file minimap / heat-strip** — `chartType:"minimap"` (custom trusted
+    SVG).
+  - ✅ **adjacency / co-change matrix** — `chartType:"matrix"` (custom SVG,
+    `x2` column field).
+  - ✅ **layered arc diagram** — `chartType:"arc"` (custom-SVG `<path>` arcs).
   - **overview blast radius** — mermaid (already have).
     Swap in per PR (a big refactor wants the matrix; a one-file fix wants the
-    minimap) — never all at once.
-- **In-file moved-code detection** — `@pierre/diffs` detects file-level renames but
-  not in-file block moves; label "moved, unchanged" instead of delete+add. Spike
-  the renderer first. _Effort:_ unknown (renderer-gated).
+    minimap) — never all at once; the PLAYBOOK enforces one-visual-per-PR.
+- ✅ **In-file moved-code detection — SHIPPED** (remaining-backlog pass) —
+  `viewer/src/movedCode.ts` + the DiffPart "↕ moved, unchanged" strip. The
+  renderer spike concluded: label above the hunks (trusted origin, like the
+  manifest) rather than annotating @pierre/diffs' SSR HTML.
 - **✅ Tour surface — superseded by the `walkthrough` part** (a native step
   player with real excerpts, per-step line highlights, a synced diagram, and
   anchored comments), which covers the complex-PR narrative use directly; the
@@ -700,8 +858,8 @@ Things that must survive the split:
 (`packages/cli`, relocated as part of Move 0). The old single ~1400-line
 `bin/showcase.js` was reworked into a real CLI modeled on curly. It is strictly
 zero-dep and imports nothing from other packages (talks to the server over HTTP),
-so the package boundary holds without effort. _Optional polish remaining: add
-color/tables to the human output._ The shipped shape:
+so the package boundary holds without effort. _The color/tables polish shipped
+in the remaining-backlog pass (`cli/style.ts`)._ The shipped shape:
 
 - **Command router** ✅ — `bin/showcase.js` is now a thin launcher into
   `cli/main.ts`; a **command registry** (`cli/registry.ts`) holds one `Command`
@@ -753,12 +911,12 @@ already advertises **resources** (`showcase://surface/<id>`) and **prompts**
   asset listing (the thin client can't reach the store); stdio asset reads fetch
   the bytes via an authed binary `fetchAssetBlob`. `get_surface` + `update_surface`
   remain the read→revise iterate path.
-- _Remaining (optional):_ extend the per-tool test matrix to the stdio transport
-  process directly (the HTTP transport + shared core are covered in
-  `test/api.test.ts`), and keep tool descriptions sharp.
-- **Per-tool tests** ✅ (HTTP) — `test/api.test.ts` covers the input-validation
-  gate (missing field, bad enum, loose-part pass-through) and the session/asset
-  resource list + read; the stdio-process matrix is the optional remainder above.
+- ✅ **Per-tool tests, both transports** — `test/api.test.ts` covers the HTTP
+  input-validation gate (missing field, bad enum, loose-part pass-through) and
+  the session/asset resource list + read; `test/mcpStdio.test.ts` (remaining-
+  backlog pass) drives the real stdio process over newline-delimited JSON-RPC
+  (handshake, registry, round-trip, -32602 validation, resources, prompts,
+  wait_for_feedback exactly-once).
 - Consider, only if a need shows up: **elicitation/sampling** for the comment→agent
   loop. (An MCP-level health probe is now covered by `/api/health` / `showcase
 health`.)
@@ -783,8 +941,10 @@ Already React 19 + zustand + Tailwind v4 + vendored shadcn, Vite → one self-co
   iframe titles. `pnpm test:viewer` at the root; the Playwright oracle stays
   the integration gate.
 - Folds in two existing roadmap items as viewer-package work: the
-  **accessibility pass** (✅ shipped — see Quality & trust) and a **part
-  gallery / Storybook-like** harness for the renderers (still open).
+  **accessibility pass** (✅ shipped — see Quality & trust) and ✅ the **part
+  gallery** harness (shipped in the remaining-backlog pass — `pnpm gallery`
+  serves /gallery.html, every part kind through the real PartRenderer with
+  fixture data, dev-only).
 
 ##### Sequencing & open decisions
 
@@ -840,9 +1000,10 @@ pending a call on whether to pursue it.
 2. `git branch --show-current` — if not on a task branch, branch from `main`.
 3. Both flagship workflows are shipped — Workflow 1 (visual PR review, R1–R4) and
    Workflow 2 (learning & explainers, L1–L3); the supporting **static export** is
-   shipped too. Remaining work is the **review-depth / fancier-visualizations**
-   track (opt-in per-PR chart types). If an item is an "open decision" in §7,
-   confirm it first.
+   shipped too, and the **remaining-backlog pass** (top of this file) closed the
+   review-depth chart track, moved-code detection, the part gallery, the CLI
+   polish, and the stdio test matrix. The roadmap is clear; new work starts from
+   a fresh idea or an "open decision" in §7 — confirm those with the user first.
 4. Build in small commits; after each, run the §5 verify suite. For UI, screenshot
    and look.
 5. Keep the oracle green; if you change behavior it covers, update the oracle in

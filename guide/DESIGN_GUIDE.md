@@ -82,20 +82,29 @@ a `kind`:
   markdown part with one fenced block, and the kind shows up as `code` in the
   card metadata.
 - **`chart`** — row-oriented numeric data the viewer renders as a native SVG
-  chart (Recharts). `chartType` is `bar`, `line`, `area`, `pie`, `treemap`, or
-  `scatter`. `data` is an array of objects (one per row); `x` names the category
-  field (the x axis, or the slice label for pie); `y` names the numeric series —
-  a single field, or an array of fields to plot several series (set
-  `stacked: true` to stack bars or areas). Optional `xLabel`/`yLabel` annotate
-  the axes and `caption` sits below. Colors come from the live theme, so charts
-  re-theme with the board; the first series uses the board accent. Pass `colors`
-  (an array of CSS colors, one per series or per pie slice) to override — e.g.
-  `["#2f9e44", "#e03131"]` for green-added / red-removed churn. A per-row `tone`
-  field (a fixed palette, no color string to sanitize) carries a second visual
-  dimension: a **`treemap`** sizes each cell by its `y` value and tints it by
-  `tone` (`sensitive`→red / `logic`→amber / `mechanical`→gray) — a risk-weighted
-  file map where the eye is pulled to the big hot rectangle; a **`scatter`** plots
-  `x` vs `y` as a quadrant (`tone: "danger"` reddens a point).
+  chart (Recharts, plus hand-rolled trusted SVG for the relational shapes).
+  `chartType` is `bar`, `line`, `area`, `pie`, `treemap`, `scatter`, `bubble`,
+  `minimap`, `matrix`, or `arc`. `data` is an array of objects (one per row);
+  `x` names the category field (the x axis, or the slice label for pie); `y`
+  names the numeric series — a single field, or an array of fields to plot
+  several series (set `stacked: true` to stack bars or areas). Optional
+  `xLabel`/`yLabel` annotate the axes and `caption` sits below. Colors come
+  from the live theme, so charts re-theme with the board; the first series uses
+  the board accent. Pass `colors` (an array of CSS colors, one per series or
+  per pie slice) to override — e.g. `["#2f9e44", "#e03131"]` for green-added /
+  red-removed churn. A per-row `tone` field (a fixed palette, no color string
+  to sanitize) carries a second visual dimension: a **`treemap`** sizes each
+  cell by its `y` value and tints it by `tone` (`sensitive`→red /
+  `logic`→amber / `mechanical`→gray) — a risk-weighted file map where the eye
+  is pulled to the big hot rectangle; a **`scatter`** plots `x` vs `y` as a
+  quadrant (`tone: "danger"` reddens a point). The review-depth forms
+  (opt-in, at most one per PR): **`bubble`** is a generic numeric scatter whose
+  point area comes from the `z` field (churn×complexity hotspots);
+  **`minimap`** renders one horizontal heat-strip, segment width = `y` per `x`
+  label (the whole diff's footprint at a glance); **`matrix`** is a co-change
+  adjacency grid (rows = `x`, columns = `x2`, cell intensity = `y`); **`arc`**
+  lays the union of `x`/`x2` values on a baseline and draws arcs weighted by
+  `y` (layered dependency flow). `matrix`/`arc` require `x2`.
   Like image/json it is data, not markup — sent
   as values, rendered with escaped text nodes, so no sandbox is needed. Reach for
   it for metrics, distributions, and before/after comparisons.
@@ -110,7 +119,9 @@ language, lineStart, highlight, node}` — `body` is the annotation (plain text
   `lineStart` keeps the numbering matching the file, `highlight` is absolute
   `[[from,to]]` ranges. An optional top-level `mermaid` diagram is shared
   across steps; each step's `node` marks the active node (accent-styled), so
-  the map and the code move together. The reader can flag "I'm lost here" on
+  the map and the code move together — and the sync runs both ways: clicking a
+  step's node in the diagram jumps the player to that step (cycling forward
+  when several steps share a node). The reader can flag "I'm lost here" on
   any step — it reaches you as a `[confused]` feedback line naming the exact
   step, so wait for feedback after publishing and clarify what lost them.
   Like json/chart it is data end to end (annotations render as text nodes,

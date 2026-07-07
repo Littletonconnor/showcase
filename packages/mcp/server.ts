@@ -147,11 +147,11 @@ server.registerTool(
     description: MCP_TOOL_DESCRIPTIONS.publishDecisions,
     inputSchema: STDIO_MCP_INPUT_SCHEMAS.publishDecisions,
   },
-  async ({ brief, verdict, decisions, manifest, sessionTitle }) => {
+  async ({ brief, verdict, decisions, manifest, chapters, sessionTitle }) => {
     const result = await withSession(sessionTitle, (session) =>
       api(`/api/sessions/${session}/review`, {
         method: "POST",
-        body: JSON.stringify({ brief, verdict, decisions, manifest }),
+        body: JSON.stringify({ brief, verdict, decisions, manifest, chapters }),
       }).then(JSON.parse),
     );
     return text({ ...result, url: `${API}/?review=${result.sessionId}` });
@@ -407,6 +407,13 @@ server.registerTool(
     }
     return text({
       comments: result.comments.map((c: any) => ({
+        // id + anchor are the reply handle and the exact spot — the `reply`
+        // tool needs the id, and an anchored comment is scoped feedback.
+        ...(c.id ? { id: c.id } : {}),
+        ...(c.anchor ? { anchor: c.anchor } : {}),
+        // A reviewer-proposed edit — apply it (with judgment; `before` is
+        // whitespace-collapsed context, not a mechanical patch).
+        ...(c.suggestion ? { suggestion: c.suggestion } : {}),
         surfaceId: c.surfaceId,
         surfaceTitle: c.surfaceTitle,
         text: c.text,

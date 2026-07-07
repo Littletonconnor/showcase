@@ -3,6 +3,7 @@
 // Commands build both: the structured value and a human string, then call
 // emit() — so scripting (`--json`) and interactive use share one code path.
 import { BASE } from "./http.ts";
+import { bold, cyan, dim, underline, yellow } from "./style.ts";
 
 let jsonMode = false;
 
@@ -44,12 +45,12 @@ export function surfaceUrl(surface: Surfaceish): string {
 export function emitSurface(surface: Surfaceish): void {
   const url = surfaceUrl(surface);
   emit({ ...surface, url }, () => {
-    const label = surface.title ? `“${surface.title}” ` : "";
+    const label = surface.title ? `${bold(`“${surface.title}”`)} ` : "";
     const ver = surface.version && surface.version > 1 ? ` (v${surface.version})` : "";
-    let out = `published ${label}${ver}\n  ${url}\n  surface ${surface.id}`;
+    let out = `published ${label}${ver}\n  ${underline(cyan(url))}\n  ${dim(`surface ${surface.id}`)}`;
     const fb = surface.userFeedback;
     if (fb && fb.length > 0) {
-      out += `\nuser feedback (delivered once — act on it or it is lost):`;
+      out += `\n${yellow("user feedback (delivered once — act on it or it is lost):")}`;
       for (const f of fb) {
         const where = f.surfaceTitle ?? f.surfaceId;
         out += `\n  ${where ? `[${where}] ` : ""}${f.text}`;

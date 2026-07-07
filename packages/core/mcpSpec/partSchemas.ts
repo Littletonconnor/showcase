@@ -80,7 +80,18 @@ export const MCP_PART_JSON_SCHEMA = {
     },
     chartType: {
       type: "string",
-      enum: ["bar", "line", "area", "pie", "treemap", "scatter"],
+      enum: [
+        "bar",
+        "line",
+        "area",
+        "pie",
+        "treemap",
+        "scatter",
+        "bubble",
+        "minimap",
+        "matrix",
+        "arc",
+      ],
       description: d.partChartType,
     },
     // `data` is shared: an array of rows for chart parts, any JSON value for
@@ -91,6 +102,8 @@ export const MCP_PART_JSON_SCHEMA = {
       oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
       description: d.partChartY,
     },
+    x2: { type: "string", description: d.partChartX2 },
+    z: { type: "string", description: d.partChartZ },
     stacked: { type: "boolean", description: d.partChartStacked },
     colors: { type: "array", items: { type: "string" }, description: d.partChartColors },
     xLabel: { type: "string", description: d.partChartXLabel },
@@ -185,7 +198,18 @@ export const mcpPartSchema = z
     text: z.string().optional().describe(d.terminalText),
     cols: z.number().optional().describe(d.terminalCols),
     chartType: z
-      .enum(["bar", "line", "area", "pie", "treemap", "scatter"])
+      .enum([
+        "bar",
+        "line",
+        "area",
+        "pie",
+        "treemap",
+        "scatter",
+        "bubble",
+        "minimap",
+        "matrix",
+        "arc",
+      ])
       .optional()
       .describe(d.partChartType),
     data: z.unknown().optional().describe(d.partChartData),
@@ -194,6 +218,8 @@ export const mcpPartSchema = z
       .union([z.string(), z.array(z.string())])
       .optional()
       .describe(d.partChartY),
+    x2: z.string().optional().describe(d.partChartX2),
+    z: z.string().optional().describe(d.partChartZ),
     stacked: z.boolean().optional().describe(d.partChartStacked),
     colors: z.array(z.string()).optional().describe(d.partChartColors),
     xLabel: z.string().optional().describe(d.partChartXLabel),

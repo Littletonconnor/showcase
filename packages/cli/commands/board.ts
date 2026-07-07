@@ -7,6 +7,7 @@ import { api, BASE } from "../http.ts";
 import { emit } from "../output.ts";
 import { confirm, CONFIRM_OPTS } from "../prompt.ts";
 import { resolveSession } from "../session.ts";
+import { dim, green, red, table, yellow } from "../style.ts";
 import { formatBytes, formatDuration } from "../util.ts";
 
 // One-line board tally, shared by `board` and `gc`'s post-sweep summary.
@@ -20,7 +21,8 @@ function statusLine(s: any): string {
     plural(s.reviews, "review"),
     `${plural(a.count, "asset")} (${formatBytes(a.bytes)} / ${formatBytes(s.assetBudgetBytes)})`,
   ];
-  if (a.orphaned > 0) parts.push(`${a.orphaned} orphaned (${formatBytes(a.orphanedBytes)})`);
+  if (a.orphaned > 0)
+    parts.push(yellow(`${a.orphaned} orphaned (${formatBytes(a.orphanedBytes)})`));
   return parts.join(" · ");
 }
 
@@ -44,7 +46,7 @@ const list = defineCommand({
         result
           .map(
             (s: any) =>
-              `${s.title ?? s.id} (${s.surfaces.length} surface${s.surfaces.length === 1 ? "" : "s"})`,
+              `${s.title ?? s.id} ${dim(`(${s.surfaces.length} surface${s.surfaces.length === 1 ? "" : "s"})`)}`,
           )
           .join("\n"),
       );
@@ -56,12 +58,13 @@ const list = defineCommand({
     emit(surfaces, () =>
       surfaces.length === 0
         ? "(no surfaces)"
-        : surfaces
-            .map(
-              (s: any) =>
-                `${s.id}  ${s.title ?? "(untitled)"}${s.version > 1 ? `  v${s.version}` : ""}`,
-            )
-            .join("\n"),
+        : table(
+            surfaces.map((s: any) => [
+              s.id,
+              s.title ?? "(untitled)",
+              s.version > 1 ? dim(`v${s.version}`) : "",
+            ]),
+          ),
     );
   },
 });
@@ -76,9 +79,9 @@ const sessions = defineCommand({
     emit(all, () =>
       all.length === 0
         ? "(no sessions)"
-        : all
-            .map((s: any) => `${s.id}  ${s.title ?? "(untitled)"}  [${s.agent ?? "agent"}]`)
-            .join("\n"),
+        : table(
+            all.map((s: any) => [s.id, s.title ?? "(untitled)", dim(`[${s.agent ?? "agent"}]`)]),
+          ),
     );
   },
 });
@@ -90,7 +93,7 @@ const kits = defineCommand({
   usage: "showcase kits",
   async run() {
     const all = await api("/api/kits");
-    emit(all, () => all.map((k: any) => `${k.id}  —  ${k.summary ?? k.label ?? ""}`).join("\n"));
+    emit(all, () => table(all.map((k: any) => [k.id, dim(k.summary ?? k.label ?? "")])));
   },
 });
 
@@ -112,7 +115,7 @@ const blueprints = defineCommand({
   usage: "showcase blueprints",
   async run() {
     const all = await api("/api/blueprints");
-    emit(all, () => all.map((b: any) => `${b.id}  —  ${b.summary ?? b.label ?? ""}`).join("\n"));
+    emit(all, () => table(all.map((b: any) => [b.id, dim(b.summary ?? b.label ?? "")])));
   },
 });
 
@@ -206,9 +209,10 @@ const health = defineCommand({
   async run() {
     const h = await api("/api/health");
     emit(h, () => {
-      const head = `${h.status} · up ${formatDuration(h.uptimeMs)}${h.version ? ` · v${h.version}` : ""}`;
+      const status = h.status === "ok" ? green(h.status) : red(h.status);
+      const head = `${status} · up ${formatDuration(h.uptimeMs)}${h.version ? ` · v${h.version}` : ""}`;
       const lines = [head, statusLine(h.board)];
-      if (h.lastError) lines.push(`last error: ${h.lastError.message} (${h.lastError.at})`);
+      if (h.lastError) lines.push(red(`last error: ${h.lastError.message} (${h.lastError.at})`));
       return lines.join("\n");
     });
   },

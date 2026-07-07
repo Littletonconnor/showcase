@@ -86,4 +86,24 @@ describe("ThreadStrip", () => {
     );
     expect(conversed.container.querySelector("[aria-label='Resolve thread']")).toBeInTheDocument();
   });
+
+  it("renders a reviewer suggestion as −/+ rows and pins in the anchor label", () => {
+    const { container } = render(
+      <ThreadStrip
+        threads={[
+          threadOf({
+            text: "(suggested edit)",
+            anchor: { partIndex: 0, quote: "const a = 2;", pos: { x: 12.5, y: 40 } },
+            suggestion: { before: "const a = 2;", after: "const A = 2;" },
+          }),
+        ]}
+      />,
+    );
+    const rows = container.querySelector("[data-thread-suggestion]");
+    expect(rows?.textContent).toContain("−");
+    expect(rows?.textContent).toContain("const a = 2;");
+    expect(rows?.textContent).toContain("+");
+    expect(rows?.textContent).toContain("const A = 2;");
+    expect(container.textContent).toContain("at 12.5%, 40%");
+  });
 });

@@ -20,10 +20,47 @@ import { useLearn } from "./learn.ts";
 import { MarkdownPart } from "./MarkdownPart.tsx";
 import { MermaidPart } from "./MermaidPart.tsx";
 import { TerminalPart } from "./TerminalPart.tsx";
-import type { Thread } from "./threads.ts";
+import { openComposer, type Thread } from "./threads.ts";
 import { ThreadStrip } from "./ThreadStrip.tsx";
 import { TracePart } from "./TracePart.tsx";
 import { WalkthroughPart } from "./WalkthroughPart.tsx";
+
+// Ask a sandboxed part what sits at a percent coordinate (the bridge's locate
+// listener answers with the nearest data-section id + nearby text). The reply
+// is agent-reachable data: token-matched, source-checked, capped, and used
+// only as a quote string. 300ms budget — a silent frame degrades to a bare pin.
+function locateInFrame(
+  frame: HTMLIFrameElement,
+  x: number,
+  y: number,
+): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const win = frame.contentWindow;
+    if (!win) return resolve(undefined);
+    const token = Math.random().toString(36).slice(2);
+    const done = (quote?: string) => {
+      clearTimeout(timer);
+      window.removeEventListener("message", onMsg);
+      resolve(quote);
+    };
+    const timer = setTimeout(() => done(undefined), 300);
+    const onMsg = (ev: MessageEvent) => {
+      if (ev.source !== win) return;
+      const d = ev.data as { __showcase?: boolean; type?: string; token?: string } | null;
+      if (!d?.__showcase || d.type !== "located" || d.token !== token) return;
+      const raw = d as { section?: unknown; text?: unknown };
+      const section =
+        typeof raw.section === "string" && raw.section.trim()
+          ? `§${raw.section.trim().slice(0, 80)}`
+          : "";
+      const text =
+        typeof raw.text === "string" ? raw.text.replace(/\s+/g, " ").trim().slice(0, 120) : "";
+      done([section, text].filter(Boolean).join(" ") || undefined);
+    };
+    window.addEventListener("message", onMsg);
+    win.postMessage({ __showcase: true, type: "locate", token, x, y }, "*");
+  });
+}
 
 // One surface part, dispatched by kind, wrapped in the anchor div the
 // sandbox-selection bridge resolves selections against (frame -> closest
@@ -45,6 +82,13 @@ export function PartRenderer(props: {
   exportDoc: string | undefined;
   theme: string;
   mode: string;
+  // Pin-anywhere mode (armed from the card footer): a trusted transparent
+  // overlay sits over the part, one click becomes a percent-coordinate pin
+  // anchor, and the composer opens there. The overlay exists ONLY while armed
+  // so it never steals interaction from an explorable or a diff. Sandboxed
+  // content stays untouched — the overlay and pins live in the trusted origin.
+  pinMode?: boolean;
+  onPinPlaced?: () => void;
 }) {
   const { surface, index: i } = props;
   const part = surface.parts[i];
@@ -89,9 +133,16 @@ export function PartRenderer(props: {
       case "mermaid":
         return <MermaidPart part={part as MermaidPartData} />;
       case "diff":
-        return <DiffPart part={part as DiffPartData} />;
+        return <DiffPart part={part as DiffPartData} surfaceId={surface.id} partIndex={i} />;
       case "image":
-        return <ImagePart part={part as ImagePartData} />;
+        return (
+          <ImagePart
+            part={part as ImagePartData}
+            surfaceId={surface.id}
+            partIndex={i}
+            threads={props.threads}
+          />
+        );
       case "trace":
         return <TracePart part={part as TracePartData} />;
       case "terminal":
@@ -114,9 +165,66 @@ export function PartRenderer(props: {
         );
     }
   })();
+  // Pins over non-image parts (ImagePart places its own, image-relative, so a
+  // pin lands exactly where the image was clicked). Wrapper-relative percent
+  // coordinates; resolved threads drop their dot.
+  const pins =
+    part.kind === "image"
+      ? []
+      : props.threads.flatMap((t, n) =>
+          t.root.anchor?.pos && !t.root.resolved
+            ? [{ pos: t.root.anchor.pos, n: n + 1, text: t.root.text }]
+            : [],
+        );
+
+  const placePin = async (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const at = { x: e.clientX, y: e.clientY };
+    const x = Math.round(((at.x - rect.left) / rect.width) * 1000) / 10;
+    const y = Math.round(((at.y - rect.top) / rect.height) * 1000) / 10;
+    // Sandboxed parts can say what sits under the pin (nearest data-section +
+    // nearby text via the bridge's locate round-trip), so the agent reads
+    // "at 34%, 56% §hero 'Start free trial'" instead of bare coordinates.
+    const frame = e.currentTarget.parentElement?.querySelector("iframe") ?? null;
+    props.onPinPlaced?.();
+    const quote = frame ? await locateInFrame(frame, x, y) : undefined;
+    openComposer({
+      surfaceId: surface.id,
+      partIndex: i,
+      pos: { x, y },
+      ...(quote ? { quote } : {}),
+      x: at.x,
+      y: at.y,
+    });
+  };
+
   return (
     <div data-part-anchor data-part-index={i}>
-      {partEl}
+      {/* The relative box scopes pins + the overlay to the PART's geometry —
+          the thread strip below must not shift percent coordinates. */}
+      <div className="relative">
+        {partEl}
+        {pins.map((p, n) => (
+          <span
+            key={n}
+            data-part-pin
+            title={p.text}
+            style={{ left: `${p.pos.x}%`, top: `${p.pos.y}%` }}
+            className="absolute z-10 flex size-4.5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-blue-500 text-[10px] font-semibold text-white shadow-md ring-2 ring-white/80 dark:ring-black/40"
+          >
+            {p.n}
+          </span>
+        ))}
+        {props.pinMode && part.kind !== "image" ? (
+          <div
+            data-pin-overlay
+            title="Click to pin a note here — Esc to cancel"
+            onClick={placePin}
+            className="absolute inset-0 z-20 cursor-crosshair bg-blue-500/5 ring-2 ring-inset ring-blue-500/40"
+          />
+        ) : null}
+      </div>
       <ThreadStrip threads={props.threads} />
     </div>
   );

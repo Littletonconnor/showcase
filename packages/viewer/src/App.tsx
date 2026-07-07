@@ -63,6 +63,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "@/components/ui/sonner";
 import { CommentPopover } from "./CommentPopover.tsx";
+import { ConversationRail } from "./Conversation.tsx";
 import { renderNotes } from "./notes.ts";
 import { ConnectModal, Onboard } from "./Onboarding.tsx";
 import { ReadingView } from "./ReadingView.tsx";
@@ -893,6 +894,8 @@ function SessionView() {
           {showToc ? <div aria-hidden className="w-[224px] shrink-0" /> : null}
         </div>
       )}
+      {/* The live back-and-forth dock — reviews included (pushback lands here). */}
+      <ConversationRail />
     </div>
   );
 }

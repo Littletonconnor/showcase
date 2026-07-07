@@ -696,3 +696,31 @@ test("doctor fails with the fix when the server is down", async () => {
   assert.match(stdout, /✗ server/);
   assert.match(stdout, /showcase serve/);
 });
+
+test("color: FORCE_COLOR styles the help output, NO_COLOR wins, non-TTY default is plain", async () => {
+  const plain = await run("help");
+  assert.equal(plain.code, 0);
+  assert.ok(!plain.stdout.includes("\u001b["), "non-TTY output must carry no ANSI codes");
+
+  const colored = await runWith({ env: { FORCE_COLOR: "1" } }, "help");
+  assert.ok(colored.stdout.includes("\u001b[1m"), "FORCE_COLOR must turn styling on");
+
+  const off = await runWith({ env: { FORCE_COLOR: "1", NO_COLOR: "1" } }, "help");
+  assert.ok(!off.stdout.includes("\u001b["), "NO_COLOR must win over FORCE_COLOR");
+});
+
+test("sessions renders an aligned table in human mode", async () => {
+  const server = await serveApp();
+  try {
+    await post(`${server.url}/api/sessions`, { agent: "e2e", title: "Short" });
+    await post(`${server.url}/api/sessions`, { agent: "another-agent", title: "A longer title" });
+    const { code, stdout } = await runWith({ env: { SHOWCASE_URL: server.url } }, "sessions");
+    assert.equal(code, 0);
+    const lines = stdout.trimEnd().split("\n");
+    assert.equal(lines.length, 2);
+    // Both titles start at the same column — the id column is padded.
+    assert.equal(lines[0].indexOf("Short"), lines[1].indexOf("A longer title"));
+  } finally {
+    await server.close();
+  }
+});

@@ -131,4 +131,65 @@ describe("ReviewView", () => {
     expect(container.textContent).toContain("The brief reads like code.");
     expect(container.textContent).toContain("decision d-guard has no evidence");
   });
+
+  const chaptered = () =>
+    review({
+      manifest: [
+        {
+          path: "server/app.ts",
+          disposition: "has-decision",
+          decisionId: "d-guard",
+          added: 6,
+          removed: 1,
+        },
+        { path: "server/limits.ts", disposition: "reviewed-no-comment", added: 2, removed: 0 },
+        {
+          path: "package-lock.json",
+          disposition: "mechanical-skipped",
+          added: 90,
+          removed: 12,
+          note: "lockfile",
+        },
+      ],
+      chapters: [
+        {
+          id: "ch-heart",
+          title: "The heart: the guard moves up",
+          overview: "Why the request path changes.",
+          files: [{ path: "server/app.ts", summary: "guard before the read" }],
+        },
+      ],
+    });
+
+  it("renders the guided read: chapter, progress, ref, and the everything-else trailer", () => {
+    const { container } = render(<ReviewView review={chaptered()} sessionId="sess1" />);
+    expect(screen.getByRole("region", { name: "Guided read" })).toBeInTheDocument();
+    expect(container.textContent).toContain("The heart: the guard moves up");
+    expect(container.textContent).toContain("guard before the read");
+    expect(container.textContent).toContain("0 / 1 read");
+    expect(
+      screen.getByRole("button", { name: "Copy the ref for decision ch-heart" }),
+    ).toBeInTheDocument();
+    // The uncovered changed file surfaces; mechanical churn does not (it is
+    // accounted for in the manifest, which lists every file).
+    const trailer = container.querySelector('[data-chapter="everything-else"]');
+    expect(trailer?.textContent).toContain("Everything else — 1 changed file");
+    expect(trailer?.textContent).toContain("server/limits.ts");
+    expect(trailer?.textContent).not.toContain("package-lock.json");
+  });
+
+  it("Mark read drives the guided-read progress and toggles back", async () => {
+    const { container } = render(<ReviewView review={chaptered()} sessionId="sess1" />);
+    await userEvent.click(screen.getByRole("button", { name: "Mark chapter 1 read" }));
+    expect(container.textContent).toContain("all 1 chapters read");
+    await userEvent.click(screen.getByRole("button", { name: "Mark chapter 1 unread" }));
+    expect(container.textContent).toContain("0 / 1 read");
+  });
+
+  it("readonly hides the guided-read verbs but keeps the chapters", () => {
+    const { container } = render(<ReviewView review={chaptered()} readonly />);
+    expect(container.textContent).toContain("1 chapters");
+    expect(screen.queryByRole("button", { name: /Mark chapter/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Push back on this chapter" })).toBeNull();
+  });
 });
