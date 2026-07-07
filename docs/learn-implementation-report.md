@@ -218,20 +218,27 @@ card script, not typed by the user)` line: agent-authored script cannot
 
 ## Known gaps and suggested next steps
 
-- **Explorable interaction debounce** (plan open question 2): add a
-  trailing-debounce in the bridge so a slider drag cannot flood the comment
-  stream. Today this is authoring discipline in the demo explorables.
-- **Viewer telemetry chips**: `isTelemetryText` exists for rendering
-  telemetry comments as compact chips, but the viewer currently has no
-  comment thread UI at all (it was retired), so nothing consumes it yet.
-- **Session header mastery roll-up chips** (plan §6.5's
-  `3 solid / 1 shaky / 2 to go`): the syllabus legend carries the counts; a
-  header chip roll-up like review verdicts would be a nice follow-up.
-- **Confusion-flag affordance**: the event type, validation, and formatting
-  are wired end to end, but no viewer button posts it yet.
-- **Attempt state is per-browser** (localStorage): a second browser would
-  re-lock reveals already earned elsewhere. The durable record (telemetry) is
-  server-side; hydrating attempt state from it on load is the fix.
+All the code-level gaps on this list have since been closed (the two
+remaining items are process checks, not code):
+
+- ✅ **Explorable interaction debounce** (plan open question 2): closed in the
+  simplification pass — the bridge debounces `explorable_interaction` (400 ms
+  trailing, per surface+control).
+- ✅ **Viewer telemetry chips**: resolved by design rather than built — the
+  conversation rail deliberately hides telemetry/signal comments
+  (`[checkpoint]`/`[confused]`), and unanchored telemetry comments never render
+  in thread strips, so nothing needs chip rendering.
+- ✅ **Session header mastery roll-up chips** (plan §6.5's
+  `3 solid / 1 shaky / 2 to go`): shipped in the learn gap-closing round —
+  `/api/sessions` decorates lesson sessions (`kind: "learn"`, `learnProgress`
+  counts); the sidebar row chips them like review verdicts and the session
+  header carries the full roll-up.
+- ✅ **Confusion-flag affordance**: shipped in the learn gap-closing round —
+  checkpoints carry the same "I'm lost here" button walkthrough steps got,
+  posting a `confusion_flag` anchored to the exact checkpoint.
+- ✅ **Attempt state is per-browser**: closed in the simplification pass —
+  attempts hydrate from the session's telemetry comments (server-side durable
+  record), live over SSE; localStorage is gone.
 - **Distribution checks not verifiable in this environment**: the
   `npx skills@latest add` folder-copy and Claude Code
   `/plugin marketplace add` were not executed here (no access to the
@@ -242,8 +249,9 @@ card script, not typed by the user)` line: agent-authored script cannot
   explicit chat-degradation branch, but a real transcript from an independent
   agent run without showcase was not produced in this session; run one and
   attach it here.
-- **Learner level per topic** (open question 3): persist it in the mastery
-  topic with a per-session override.
+- ✅ **Learner level per topic** (open question 3): shipped in the learn
+  gap-closing round — a stated `learnerLevel` persists onto the mastery topic,
+  an omitted one inherits the stored level, and `get_learner_state` returns it.
 
 ## See it run
 
