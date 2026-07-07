@@ -25,8 +25,9 @@ export const LEARN_TOOL_DESCRIPTIONS = {
     "as mastery rises, or fixing a beat the learner flagged as confusing.",
   getLearnerState:
     "Read the learner's cross-session mastery state: per-topic concept records (untouched|shaky|solid, " +
-    "attempt counts, the misconceptions they actually hit, due dates) plus the interleaved due-for-" +
-    "review queue. Call it BEFORE opening a lesson so you start from reality (fade scaffolding on " +
+    "attempt counts, the misconceptions they actually hit, due dates), each topic's stored learner " +
+    "level, plus the interleaved due-for-review queue. Call it BEFORE opening a lesson so you start " +
+    "from reality (fade scaffolding on " +
     "solid prerequisites, remediate shaky ones), and to run review sessions: generate FRESH variant " +
     "checkpoints for due concepts — vary the surface context, target the same concept; never replay " +
     "stored questions verbatim.",

@@ -112,6 +112,7 @@ const mastery = defineCommand({
     const result = await api(`/api/mastery${q}`);
     const topics = (result.topics ?? []) as {
       topic: string;
+      level?: string;
       concepts: { id: string; label: string; state: string; attempts?: number; dueAt?: string }[];
     }[];
     emit(result, () => {
@@ -119,7 +120,7 @@ const mastery = defineCommand({
       return topics
         .map(
           (t) =>
-            `${t.topic}\n` +
+            `${t.topic}${t.level ? ` (${t.level})` : ""}\n` +
             t.concepts
               .map(
                 (c) =>

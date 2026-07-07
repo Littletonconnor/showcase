@@ -160,6 +160,26 @@ test("telemetry rides the comment pipe exactly-once and moves mastery + syllabus
   assert.deepEqual(due.due[0].misconceptions, ["true LRU"]);
 });
 
+test("the learner level persists per topic and rides get_learner_state", async () => {
+  const { app } = makeApp();
+  // The demo lesson states novice; the topic stores it.
+  await publishLesson(app);
+  let state = (await (await app.request("/api/mastery?topic=Redis%20eviction")).json()) as any;
+  assert.equal(state.topics[0].level, "novice");
+  // A later lesson that states a level re-pitches the topic...
+  const up = lessonBody() as any;
+  up.learnerLevel = "intermediate";
+  assert.equal((await app.request("/api/lessons", json(up))).status, 201);
+  state = (await (await app.request("/api/mastery?topic=Redis%20eviction")).json()) as any;
+  assert.equal(state.topics[0].level, "intermediate");
+  // ...and one that omits it inherits instead of resetting to novice.
+  const silent = lessonBody() as any;
+  delete silent.learnerLevel;
+  assert.equal((await app.request("/api/lessons", json(silent))).status, 201);
+  state = (await (await app.request("/api/mastery?topic=Redis%20eviction")).json()) as any;
+  assert.equal(state.topics[0].level, "intermediate");
+});
+
 test("a lesson session row carries kind=learn and the mastery roll-up", async () => {
   const { app, clock } = makeApp();
   const lesson = await publishLesson(app);

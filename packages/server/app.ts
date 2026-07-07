@@ -1071,7 +1071,12 @@ export function createApp({
           concepts: lesson.conceptGraph.concepts.map((c) => ({ id: c.id, label: c.label })),
           edges: lesson.conceptGraph.edges,
         },
-        { sessionId, syllabusSurfaceId: syllabusId },
+        {
+          sessionId,
+          syllabusSurfaceId: syllabusId,
+          // A stated level persists onto the topic; an omitted one inherits.
+          ...(lesson.learnerLevel ? { level: lesson.learnerLevel } : {}),
+        },
       );
     }
     return {
@@ -1235,6 +1240,7 @@ export function createApp({
     return {
       topics: topics.map((t) => ({
         topic: t.topic,
+        ...(t.level ? { level: t.level } : {}),
         updatedAt: t.updatedAt,
         concepts: t.conceptGraph.concepts.map((c) => {
           const r = t.records[c.id];

@@ -134,6 +134,21 @@ test("MasteryStore round-trips topics, records, and survives reload", async () =
   assert.equal(await store2.reset("redis"), false);
 });
 
+test("MasteryStore persists the learner level: explicit wins, omitted inherits", async () => {
+  const path = tmpStore();
+  const store = new MasteryStore(path, () => T0);
+  const graph = { concepts: [{ id: "lru", label: "LRU" }], edges: [] as [string, string][] };
+  await store.upsertTopic("redis", graph, { sessionId: "s1", level: "intermediate" });
+  assert.equal((await store.getTopic("redis"))?.level, "intermediate");
+  // A re-upsert without a level keeps the stored one (and survives reload)...
+  await store.upsertTopic("redis", graph, { sessionId: "s2" });
+  const store2 = new MasteryStore(path, () => T0);
+  assert.equal((await store2.getTopic("redis"))?.level, "intermediate");
+  // ...and a stated level overrides it.
+  await store2.upsertTopic("redis", graph, { level: "advanced" });
+  assert.equal((await store2.getTopic("redis"))?.level, "advanced");
+});
+
 test("MasteryStore never crashes on a corrupt file — warns and starts empty", async () => {
   const path = tmpStore();
   writeFileSync(path, "{ not json !!!");

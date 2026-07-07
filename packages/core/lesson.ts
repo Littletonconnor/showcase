@@ -55,7 +55,9 @@ export interface LessonBeat {
 
 export interface Lesson {
   topic: string;
-  learnerLevel: LearnerLevel;
+  // Optional: a stated level overrides (and re-persists) the topic's stored
+  // one for this session; omitted means "keep teaching at the stored level".
+  learnerLevel?: LearnerLevel;
   conceptGraph: { concepts: LessonConcept[]; edges: [string, string][] };
   beats: LessonBeat[];
 }
@@ -196,10 +198,14 @@ export function coerceLesson(raw: unknown): { lesson: Lesson } | Fail {
   if (!isObj(raw)) return fail("body must be an object");
   const topic = str(raw.topic).trim();
   if (!topic) return fail('"topic" is required');
-  const learnerLevel: LearnerLevel =
-    raw.learnerLevel === "intermediate" || raw.learnerLevel === "advanced"
+  // Absent (or garbage) stays absent — publishLesson falls back to the topic's
+  // persisted level, so an agent that omits it inherits rather than resets.
+  const learnerLevel: LearnerLevel | undefined =
+    raw.learnerLevel === "novice" ||
+    raw.learnerLevel === "intermediate" ||
+    raw.learnerLevel === "advanced"
       ? raw.learnerLevel
-      : "novice";
+      : undefined;
 
   const graphRaw = isObj(raw.conceptGraph) ? raw.conceptGraph : {};
   if (!Array.isArray(graphRaw.concepts) || graphRaw.concepts.length === 0) {
@@ -246,7 +252,14 @@ export function coerceLesson(raw: unknown): { lesson: Lesson } | Fail {
     if ("error" in parsed) return parsed;
     beats.push(parsed.beat);
   }
-  return { lesson: { topic, learnerLevel, conceptGraph: { concepts, edges }, beats } };
+  return {
+    lesson: {
+      topic,
+      ...(learnerLevel ? { learnerLevel } : {}),
+      conceptGraph: { concepts, edges },
+      beats,
+    },
+  };
 }
 
 export function coerceBeat(
