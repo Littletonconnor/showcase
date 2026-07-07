@@ -48,6 +48,34 @@ The last open roadmap items, landed one commit each, all gates green
    registry, publish→get_surface round-trip, in-band -32602 validation,
    resources, prompts, wait_for_feedback exactly-once. The Move 2 remainder.
 
+Follow-up (July 2026, plannotator round 7 — the research bake: everything
+verified from their docs/releases that we still lacked, folded in):
+✅ **Revision diffs between rounds** — when a plan (or any gated artifact)
+comes back for round N, the re-versioned card now carries a `diff` part
+against the previous round's text ("plan.md" for plans, the filename for
+artifacts), so the reviewer reads _what changed_, never the whole thing again.
+✅ **The 4-hour ceiling** — plannotator's hook timeout is 4 days; ours was 30
+minutes, which punished walking away. `DEFAULT_CEILING_S` is now 14400 (4h),
+`install-plan-hook` writes the hook timeout as ceiling+60, and timeout still
+defers silently to the normal permission flow.
+✅ **The generic annotate gate** — `showcase annotate <file|->` runs the same
+blocking review for ANY artifact: markdown renders as markdown, html as a
+LIVE html part (design review of rendered mockups, not source), everything
+else as code. Same session-per-cwd re-versioning, same "Review" badge footer
+verdicts, same annotation batch. `--hook` speaks plannotator's gate contract
+(empty stdout on approve; `{"decision":"block","reason":…}` on
+request-changes; always exit 0) so it drops into Stop or PostToolUse-Write
+hook recipes; plain mode keeps exit 0/2/3 and `--json` for scripts. The
+"Plan review"-only footer gate widened to `VERDICT_BADGES` = {Plan review,
+Review}. Found + fixed en route: the gate dropped the `userFeedback`
+piggyback riding its own publish/PUT response — but the piggyback is
+exactly-once, so a verdict or annotation posted while the publish was in
+flight was eaten and the review parked until the ceiling (repro'd 1-in-3
+under load; the engine now consumes piggybacked feedback before polling). Deliberately NOT taken from their releases: whole-doc direct-edit
+mode (annotations + suggestions cover it; revisit if suggest-edit feels
+cramped), the commits panel, and in-browser "ask AI" (the conversation rail +
+editor own that).
+
 Follow-up (July 2026, plannotator round 6 — the communication layer):
 ✅ **The conversation rail** — a bottom-right chat dock in every session view,
 built ENTIRELY on the existing comment pipe (no new channel or wire type):
@@ -96,7 +124,8 @@ BLOCKS on the comment pipe until the footer verdicts the "Plan review" badge
 unlocks — **Approve plan** → `allow`; **Request changes** → `deny` with the
 anchored-annotation batch as the reason, so the agent revises and re-enters
 the loop. Typed `lgtm`/`approve` in the reply line also approves. Failure
-posture: wrong tool, dead board, or a 30-min timeout all exit silently and
+posture: wrong tool, dead board, or a timeout (30 min then; raised to 4 h in
+round 7) all exit silently and
 defer to the normal permission flow (the cursor is drained per round so a
 stale comment can never verdict a new plan). `showcase plan <file|->` is the
 same blocking review for scripts/other agents (exit 0/2/3 = approve/changes/

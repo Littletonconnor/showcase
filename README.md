@@ -57,6 +57,10 @@ showcase mastery          # inspect learn-mode progress
 showcase install-plan-hook   # ExitPlanMode now opens the plan on the board and
                              # BLOCKS: annotate, then Approve plan or Request
                              # changes — the verdict returns in the hook response
+
+# the same gate for ANY artifact (docs, configs, generated code, html mockups)
+showcase annotate REPORT.md  # opens it on the board, blocks for the verdict;
+                             # --hook emits {"decision":"block",...} for hook use
 ```
 
 `showcase help` lists the rest (publish, diff, lesson, decisions, gc, doctor, ...).
@@ -406,10 +410,15 @@ Plan review needs no command at all: `showcase install-plan-hook` wires a
 the board automatically and the agent **blocks** until you annotate and submit
 a verdict — **Approve plan** allows it to proceed; **Request changes** returns
 your anchored notes in the hook response, the agent revises, and the review
-reopens as a new version of the same card. If the board is unreachable or you
-never answer (30-minute ceiling), the hook steps aside and Claude Code's
-normal permission prompt takes over. `showcase plan <file|->` runs the same
-blocking review from any script or agent.
+reopens as a new version of the same card **with a diff against the previous
+round**, so round 2 is "what changed", not a re-read. If the board is
+unreachable or you never answer (4-hour ceiling — long enough to walk away and
+come back), the hook steps aside and Claude Code's normal permission prompt
+takes over. `showcase plan <file|->` runs the same blocking review from any
+script or agent, and `showcase annotate <file|->` generalizes it to any
+artifact — markdown renders, html renders live, everything else shows as
+code — with a `--hook` mode that speaks the block/approve contract for
+Stop or PostToolUse hooks.
 
 Each skill's README states when to use it and, just as important, when to skip
 it. For always-on triggering guidance, add this managed block to your

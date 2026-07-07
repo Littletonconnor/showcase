@@ -5,7 +5,7 @@
 // with NO output so plan mode falls back to the normal permission flow.
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -146,6 +146,11 @@ test("a second round re-versions the SAME surface, and 'lgtm' approves", async (
     }
     assert.equal(updated.version, 2);
     assert.match(updated.parts[0].markdown, /Plan v2/);
+    // A revision round carries a what-changed diff against the last review.
+    assert.equal(updated.parts[1]?.kind, "diff");
+    assert.equal(updated.parts[1].files[0].filename, "plan.md");
+    assert.match(updated.parts[1].files[0].before, /Plan v1/);
+    assert.match(updated.parts[1].files[0].after, /Plan v2/);
 
     await post(`${server.url}/api/comments`, { surface: surface.id, text: "lgtm", author: "user" });
     const out = JSON.parse((await round2).stdout);
@@ -170,6 +175,108 @@ test("a non-ExitPlanMode payload and a dead board both defer silently", async ()
   });
   assert.equal(dead.code, 0);
   assert.equal(dead.stdout, "");
+});
+
+function runAnnotate(opts: {
+  env?: Record<string, string>;
+  args: string[];
+  stdin?: string;
+  cwd?: string;
+}) {
+  return new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
+    const child = execFile(
+      process.execPath,
+      [CLI, "annotate", ...opts.args],
+      { cwd: opts.cwd, env: { ...process.env, ...opts.env } },
+      (err, stdout, stderr) => {
+        resolve({ code: err ? (typeof err.code === "number" ? err.code : 1) : 0, stdout, stderr });
+      },
+    );
+    if (opts.stdin != null) child.stdin!.end(opts.stdin);
+  });
+}
+
+async function annotateSurface(base: string): Promise<{ session: any; surface: any }> {
+  for (let i = 0; i < 600; i++) {
+    const sessions = await get(`${base}/api/sessions`);
+    const session = sessions.find((s: any) => s.agent === "annotate");
+    if (session) {
+      const surfaces = await get(`${base}/api/sessions/${session.id}/surfaces`);
+      if (surfaces.length > 0) return { session, surface: surfaces[0] };
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error("annotate surface never appeared");
+}
+
+test("annotate --hook: approve is silent, annotations block with the notes", async () => {
+  const server = await serveApp();
+  try {
+    const env = { SHOWCASE_URL: server.url, SHOWCASE_NO_OPEN: "1" };
+    // Round 1: approve → empty stdout, exit 0 (the hook passes).
+    const approved = runAnnotate({ env, args: ["-", "--hook"], stdin: "# spec v1\n\nrule one" });
+    const { surface } = await annotateSurface(server.url);
+    assert.equal(surface.badge?.label, "Review");
+    assert.equal(surface.parts[0].kind, "markdown");
+    await post(`${server.url}/api/comments`, {
+      surface: surface.id,
+      text: "[plan] approve",
+      author: "user",
+    });
+    const ok = await approved;
+    assert.equal(ok.code, 0);
+    assert.equal(ok.stdout, "");
+
+    // Round 2: same artifact re-versions WITH a what-changed diff; an
+    // annotation + Request changes blocks with the notes on stdout.
+    const blocked = runAnnotate({ env, args: ["-", "--hook"], stdin: "# spec v2\n\nrule two" });
+    let updated: any;
+    for (let i = 0; i < 600; i++) {
+      updated = await get(`${server.url}/api/surfaces/${surface.id}`);
+      if (updated.version === 2) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.equal(updated.parts[1]?.kind, "diff");
+    await post(`${server.url}/api/comments`, {
+      surface: surface.id,
+      text: "rule two contradicts rule one",
+      author: "user",
+      anchor: { partIndex: 0, quote: "rule two" },
+    });
+    await post(`${server.url}/api/comments`, {
+      surface: surface.id,
+      text: "[plan] request-changes",
+      author: "user",
+    });
+    const out = await blocked;
+    assert.equal(out.code, 0);
+    const json = JSON.parse(out.stdout);
+    assert.equal(json.decision, "block");
+    assert.match(json.reason, /"rule two": rule two contradicts rule one/);
+  } finally {
+    await server.close();
+  }
+});
+
+test("annotate renders an html artifact as a live html part", async () => {
+  const server = await serveApp();
+  try {
+    const env = { SHOWCASE_URL: server.url, SHOWCASE_NO_OPEN: "1" };
+    const dir = mkdtempSync(join(tmpdir(), "showcase-annotate-"));
+    const file = join(dir, "mock.html");
+    writeFileSync(file, '<div data-section="hero"><h1>Hi</h1></div>');
+    const running = runAnnotate({ env, args: [file, "--hook"] });
+    const { surface } = await annotateSurface(server.url);
+    assert.equal(surface.parts[0].kind, "html");
+    await post(`${server.url}/api/comments`, {
+      surface: surface.id,
+      text: "lgtm",
+      author: "user",
+    });
+    assert.equal((await running).stdout, "");
+  } finally {
+    await server.close();
+  }
 });
 
 test("install-plan-hook writes the PreToolUse entry once, idempotently", async () => {

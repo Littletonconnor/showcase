@@ -1,17 +1,20 @@
-// The blocking plan-review loop (plannotator's founding feature, showcase-
-// shaped). A PreToolUse hook on ExitPlanMode publishes the plan to the board
-// as a markdown surface, opens the browser, and BLOCKS while the user
-// annotates (anchored comments) and submits a verdict — Approve plan or
-// Request changes, the footer verbs the "Plan review" badge unlocks. The
-// verdict returns in-band in the hook response: approve allows the tool call;
-// request-changes denies it with the annotation batch as the reason, so the
-// agent revises and calls ExitPlanMode again — the review reopens on the SAME
-// surface as a new version. The agent cannot miss the feedback and nothing
-// polls after the fact.
+// Blocking artifact review — plannotator's founding loop, showcase-shaped,
+// with one shared engine behind two commands:
 //
-// Failure posture: the hook must never break plan mode. Board unreachable,
-// malformed input, review timeout — all exit 0 with no output, which hands
-// Claude Code back to its normal permission flow.
+//   `plan` / `plan-hook`  — the ExitPlanMode PreToolUse hook: the plan opens
+//     on the board, the agent BLOCKS, and the verdict returns in the hook
+//     response (approve → allow; request-changes → deny with the annotation
+//     batch). A revision round re-versions the SAME card and adds a diff of
+//     what changed since the last review, so round 2 reads as a delta.
+//   `annotate`            — the generic gate for ANY artifact (markdown, code,
+//     or html rendered LIVE with pin-anywhere): publish, block, verdict.
+//     `--hook` emits the hook-native contract ({"decision":"block","reason"}
+//     on annotations, empty stdout on approve/timeout, always exit 0) so it
+//     drops into Stop / PostToolUse recipes; plain mode exits 0/2/3.
+//
+// Failure posture everywhere: the loop must never break the agent. Board
+// unreachable, malformed input, review timeout — degrade silently (hook) or
+// say so and exit (plain), never wedge.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -20,17 +23,22 @@ import { defineCommand } from "../command.ts";
 import type { Command } from "../command.ts";
 import { fail } from "../errors.ts";
 import { BASE, ensureServerUp, TOKEN } from "../http.ts";
-import { emit } from "../output.ts";
+import { emit, isJson, printJson } from "../output.ts";
+import { inferLang } from "../util.ts";
 
-const PLAN_AGENT = "plan-review";
 const APPROVE_SIGNAL = "[plan] approve";
 const CHANGES_SIGNAL = "[plan] request-changes";
 // Leniency for the footer reply line: a typed verdict works too.
 const APPROVE_WORDS = /^(lgtm|approved?|ship it)$/i;
+// Reviews take as long as the human takes (plannotator blocks for days) —
+// default four hours; SHOWCASE_PLAN_TIMEOUT overrides. On expiry the hook
+// defers to the normal permission flow, so a long ceiling costs nothing.
+const DEFAULT_CEILING_S = 14400;
+export const HOOK_TIMEOUT_S = DEFAULT_CEILING_S + 60;
 
 // Quiet client: unlike api(), a failure returns null instead of exiting —
-// the hook degrades silently. Still auto-starts a local server, so plan
-// review "just works" with no babysat tab.
+// the hook degrades silently. Still auto-starts a local server, so review
+// "just works" with no babysat tab.
 async function quiet(path: string, init: RequestInit = {}): Promise<any | null> {
   const send = () =>
     fetch(`${BASE}${path}`, {
@@ -52,16 +60,41 @@ function planTitle(plan: string): string {
 }
 
 // One annotation as a line the agent can act on — anchored comments carry the
-// exact scope the reviewer pointed at.
+// exact scope the reviewer pointed at, suggestions carry the proposed edit.
 function annotationLine(c: {
   text?: string;
-  anchor?: { file?: string; line?: number; quote?: string };
+  anchor?: { file?: string; line?: number; quote?: string; pos?: { x: number; y: number } };
+  suggestion?: { before?: string; after?: string };
 }): string {
   const a = c.anchor ?? {};
-  const where = [a.file, a.line !== undefined ? `line ${a.line}` : null].filter(Boolean).join(" ");
+  const where = [
+    a.file,
+    a.line !== undefined ? `line ${a.line}` : null,
+    a.pos ? `at ${a.pos.x}%, ${a.pos.y}%` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
   const quote = typeof a.quote === "string" && a.quote ? `"${a.quote}"` : "";
   const scope = [where, quote].filter(Boolean).join(" ");
-  return scope ? `- ${scope}: ${c.text ?? ""}` : `- ${c.text ?? ""}`;
+  const suggestion = c.suggestion
+    ? ` [suggested edit: "${c.suggestion.before ?? ""}" → "${c.suggestion.after ?? ""}"]`
+    : "";
+  const body = `${c.text ?? ""}${suggestion}`;
+  return scope ? `- ${scope}: ${body}` : `- ${body}`;
+}
+
+// Same line for the piggyback shape (feedbackView), where the anchor arrives
+// pre-formatted as a string.
+function feedbackLine(f: {
+  text?: string;
+  anchor?: string;
+  suggestion?: { before?: string; after?: string };
+}): string {
+  const suggestion = f.suggestion
+    ? ` [suggested edit: "${f.suggestion.before ?? ""}" → "${f.suggestion.after ?? ""}"]`
+    : "";
+  const body = `${f.text ?? ""}${suggestion}`;
+  return f.anchor ? `- ${f.anchor}: ${body}` : `- ${body}`;
 }
 
 export interface PlanOutcome {
@@ -70,38 +103,48 @@ export interface PlanOutcome {
   url: string;
 }
 
-// Publish (or re-version) the plan surface and block until a verdict lands.
+interface GateSpec {
+  agent: string; // session key per cwd
+  sessionTitle: string;
+  badgeLabel: string; // unlocks the footer verdict verbs
+  // Pick this artifact's surface within the session (annotate keeps one card
+  // per file); null → create fresh.
+  matchSurface: (list: any[]) => any | null;
+  // Build title+parts, seeing the previous round's full surface so a revision
+  // can carry a what-changed diff.
+  build: (previous: { title?: string; parts?: any[] } | null) => {
+    title: string;
+    parts: unknown[];
+  };
+}
+
+// Publish (or re-version) the gated surface and block until a verdict lands.
 // Returns null when the board can't be reached — the caller degrades.
-async function runPlanReview(plan: string): Promise<PlanOutcome | null> {
+async function runGatedReview(spec: GateSpec): Promise<PlanOutcome | null> {
   const cwd = process.cwd();
   const sessions = await quiet("/api/sessions");
   if (!Array.isArray(sessions)) return null;
-  let session = sessions.find((s: any) => s.agent === PLAN_AGENT && s.cwd === cwd);
+  let session = sessions.find((s: any) => s.agent === spec.agent && s.cwd === cwd);
   session ??= await quiet("/api/sessions", {
     method: "POST",
-    body: JSON.stringify({
-      agent: PLAN_AGENT,
-      title: `Plan review — ${cwd.split(/[\\/]/).pop() ?? "repo"}`,
-      cwd,
-    }),
+    body: JSON.stringify({ agent: spec.agent, title: spec.sessionTitle, cwd }),
   });
   if (!session) return null;
 
   // Drain the cursor so a leftover comment from an abandoned round can never
-  // approve or deny THIS plan.
+  // approve or deny THIS review.
   await quiet(`/api/comments?session=${session.id}&author=user&wait=0`);
 
-  // One surface per session, re-versioned each round — the reviewer's tab
-  // live-updates in place, and the version dropdown holds the history.
-  const content = {
-    title: planTitle(plan),
-    parts: [{ kind: "markdown", markdown: plan }],
-    badge: { tone: "info", label: "Plan review" },
-  };
   const existing = await quiet(`/api/sessions/${session.id}/surfaces`);
-  const current = Array.isArray(existing) && existing.length > 0 ? existing[0] : null;
-  const surface = current
-    ? await quiet(`/api/surfaces/${current.id}`, { method: "PUT", body: JSON.stringify(content) })
+  const match = Array.isArray(existing) ? spec.matchSurface(existing) : null;
+  // The previous round's full content, so build() can diff against it.
+  const previous = match ? await quiet(`/api/surfaces/${match.id}`) : null;
+  const content = {
+    ...spec.build(previous),
+    badge: { tone: "info", label: spec.badgeLabel },
+  };
+  const surface = match
+    ? await quiet(`/api/surfaces/${match.id}`, { method: "PUT", body: JSON.stringify(content) })
     : await quiet("/api/surfaces", {
         method: "POST",
         body: JSON.stringify({ ...content, session: session.id }),
@@ -110,24 +153,115 @@ async function runPlanReview(plan: string): Promise<PlanOutcome | null> {
   const url = `${BASE}/session/${session.id}/s/${surface.id}`;
   // Open only on round 1 — on a revise the reviewer's tab is already open and
   // live-updates over SSE.
-  if (!current) openBrowser(url);
+  if (!match) openBrowser(url);
 
-  const ceiling = Math.max(30, Number(process.env.SHOWCASE_PLAN_TIMEOUT ?? 1800) || 1800);
-  const deadline = Date.now() + ceiling * 1000;
   const notes: string[] = [];
+  const consume = (list: any[], line: (item: any) => string): PlanOutcome | null => {
+    for (const item of list) {
+      const text = String(item.text ?? "").trim();
+      if (text === APPROVE_SIGNAL || APPROVE_WORDS.test(text))
+        return { decision: "approve", notes, url };
+      if (text === CHANGES_SIGNAL) return { decision: "request-changes", notes, url };
+      notes.push(line(item));
+    }
+    return null;
+  };
+  // Comments that land while the publish is in flight ride back on ITS
+  // response (the piggyback is exactly-once) — dropping them would eat a
+  // verdict or an annotation and park the review until the ceiling.
+  const early = consume(surface.userFeedback ?? [], feedbackLine);
+  if (early) return early;
+
+  const ceiling = Math.max(
+    30,
+    Number(process.env.SHOWCASE_PLAN_TIMEOUT ?? DEFAULT_CEILING_S) || DEFAULT_CEILING_S,
+  );
+  const deadline = Date.now() + ceiling * 1000;
   while (Date.now() < deadline) {
     const chunk = Math.min(60, Math.ceil((deadline - Date.now()) / 1000));
     const result = await quiet(`/api/comments?session=${session.id}&author=user&wait=${chunk}`);
     if (!result) return null; // server vanished mid-review — degrade
-    for (const comment of result.comments ?? []) {
-      const text = String(comment.text ?? "").trim();
-      if (text === APPROVE_SIGNAL || APPROVE_WORDS.test(text))
-        return { decision: "approve", notes, url };
-      if (text === CHANGES_SIGNAL) return { decision: "request-changes", notes, url };
-      notes.push(annotationLine(comment));
-    }
+    const outcome = consume(result.comments ?? [], annotationLine);
+    if (outcome) return outcome;
   }
   return { decision: "timeout", notes, url };
+}
+
+// A revision round shows WHAT CHANGED since the reviewer's last verdict — the
+// delta is the thing they need to re-read, not the whole document again. The
+// diff part brings line comments + moved-code labels along for free.
+function withRevisionDiff(
+  parts: unknown[],
+  previousText: string | undefined,
+  nextText: string,
+  filename: string,
+): unknown[] {
+  if (!previousText || previousText === nextText) return parts;
+  return [...parts, { kind: "diff", files: [{ filename, before: previousText, after: nextText }] }];
+}
+
+function runPlanReview(plan: string): Promise<PlanOutcome | null> {
+  const cwd = process.cwd();
+  return runGatedReview({
+    agent: "plan-review",
+    sessionTitle: `Plan review — ${cwd.split(/[\\/]/).pop() ?? "repo"}`,
+    badgeLabel: "Plan review",
+    matchSurface: (list) => (list.length > 0 ? list[0] : null),
+    build: (previous) => {
+      const prevMd = previous?.parts?.find((p: any) => p.kind === "markdown")?.markdown as
+        | string
+        | undefined;
+      return {
+        title: planTitle(plan),
+        parts: withRevisionDiff([{ kind: "markdown", markdown: plan }], prevMd, plan, "plan.md"),
+      };
+    },
+  });
+}
+
+// The artifact gate: markdown reads as prose, html renders LIVE (sandboxed,
+// pin-anywhere and the locate round-trip both work on it), anything else is
+// highlighted source.
+function artifactParts(name: string, text: string): { parts: unknown[]; sourceText?: string } {
+  const ext = (name.split(".").pop() ?? "").toLowerCase();
+  if (ext === "md" || ext === "markdown" || name === "stdin") {
+    return { parts: [{ kind: "markdown", markdown: text }], sourceText: text };
+  }
+  if (ext === "html" || ext === "htm") {
+    // Live render only — a source diff of a mockup is noise; the reviewer
+    // sees the new version render in place.
+    return { parts: [{ kind: "html", html: text }] };
+  }
+  const language = inferLang(name);
+  return {
+    parts: [{ kind: "code", code: text, title: name, ...(language ? { language } : {}) }],
+    sourceText: text,
+  };
+}
+
+function runAnnotateReview(file: string, text: string): Promise<PlanOutcome | null> {
+  const name = file === "-" ? "stdin" : (file.split(/[\\/]/).pop() ?? file);
+  const title = `Review: ${name}`;
+  const cwd = process.cwd();
+  return runGatedReview({
+    agent: "annotate",
+    sessionTitle: `Annotations — ${cwd.split(/[\\/]/).pop() ?? "repo"}`,
+    badgeLabel: "Review",
+    // One card per artifact, re-versioned per round.
+    matchSurface: (list) => list.find((s: any) => s.title === title) ?? null,
+    build: (previous) => {
+      const { parts, sourceText } = artifactParts(name, text);
+      const prev = previous?.parts?.find((p: any) => p.kind === "markdown" || p.kind === "code") as
+        | { markdown?: string; code?: string }
+        | undefined;
+      return {
+        title,
+        parts: sourceText
+          ? withRevisionDiff(parts, prev?.markdown ?? prev?.code, sourceText, name)
+          : parts,
+      };
+    },
+  });
 }
 
 // The PreToolUse hook body. Reads Claude Code's hook payload from stdin and
@@ -199,7 +333,7 @@ const plan = defineCommand({
     "publish a plan for blocking review — annotate in the browser, then approve or request changes",
   usage: "showcase plan <file|->",
   positionals: true,
-  help: "Publishes the plan as a markdown surface (badge: Plan review), opens the browser, and blocks until the footer verdict lands: Approve plan or Request changes (annotations ride along). Exit code 0 = approved, 2 = changes requested, 3 = timed out (SHOWCASE_PLAN_TIMEOUT seconds, default 1800). Claude Code users: `showcase install-plan-hook` wires this into ExitPlanMode so it happens automatically.",
+  help: "Publishes the plan as a markdown surface (badge: Plan review), opens the browser, and blocks until the footer verdict lands: Approve plan or Request changes (annotations ride along). A revision round re-versions the same card and adds a what-changed diff. Exit code 0 = approved, 2 = changes requested, 3 = timed out (SHOWCASE_PLAN_TIMEOUT seconds, default 14400). Claude Code users: `showcase install-plan-hook` wires this into ExitPlanMode so it happens automatically.",
   async run({ positionals }) {
     const src = positionals[0];
     if (!src) fail("usage: showcase plan <file|->  (- reads the plan from stdin)");
@@ -221,6 +355,73 @@ const plan = defineCommand({
             : "Review timed out — no verdict.";
       return [head, ...outcome.notes].join("\n");
     });
+    if (outcome.decision === "request-changes") process.exitCode = 2;
+    if (outcome.decision === "timeout") process.exitCode = 3;
+  },
+});
+
+const annotate = defineCommand({
+  name: "annotate",
+  group: "Feedback",
+  summary: "gate any artifact on a blocking review — markdown, code, or LIVE html",
+  usage: "showcase annotate <file|-> [--hook]",
+  positionals: true,
+  options: {
+    hook: {
+      type: "boolean",
+      desc: 'agent-hook mode: {"decision":"block","reason":…} on annotations, silent approve, exit 0',
+    },
+  },
+  help: `Publishes the file for review (markdown → prose, .html → a LIVE sandboxed render with pin-anywhere, anything else → highlighted source), opens the browser, and blocks for the footer verdict. A re-run for the same file re-versions its card with a what-changed diff.
+
+Plain mode exits 0 (approved) / 2 (changes requested, notes printed) / 3 (timeout). --json emits {"decision":"approved"|"request-changes"|"timeout", notes}. --hook emits the agent-hook contract on stdout and ALWAYS exits 0: approve/timeout print nothing (the hook passes), annotations print {"decision":"block","reason":"<the notes>"} so the agent is blocked and fed the feedback.
+
+Recipes (Claude Code settings.json):
+  gate every file the agent writes (PostToolUse on Write):
+    { "matcher": "Write", "hooks": [{ "type": "command",
+      "command": "showcase annotate \\"$CLAUDE_TOOL_INPUT_file_path\\" --hook", "timeout": ${HOOK_TIMEOUT_S} }] }`,
+  async run({ positionals, flags }) {
+    const src = positionals[0];
+    if (!src) fail("usage: showcase annotate <file|->  (- reads from stdin)");
+    let text: string;
+    try {
+      text = readFileSync(src === "-" ? 0 : src, "utf8");
+    } catch {
+      if (flags.hook) return; // hooks never break the agent
+      fail(`cannot read ${src === "-" ? "stdin" : src}`);
+    }
+    if (!text.trim()) {
+      if (flags.hook) return;
+      fail("the artifact is empty");
+    }
+    let outcome: PlanOutcome | null = null;
+    try {
+      outcome = await runAnnotateReview(src, text);
+    } catch {
+      outcome = null;
+    }
+    if (flags.hook) {
+      // The stdout contract: silence passes the hook; a block carries the notes.
+      if (outcome?.decision === "request-changes") {
+        const reason =
+          `The user annotated ${src === "-" ? "the artifact" : src} on showcase:\n` +
+          (outcome.notes.join("\n") || "- (no written notes — ask what should change)");
+        console.log(JSON.stringify({ decision: "block", reason }));
+      }
+      return;
+    }
+    if (!outcome) fail(`server not reachable at ${BASE} — start it with: showcase serve`);
+    if (isJson()) {
+      printJson({ decision: outcome.decision, notes: outcome.notes, url: outcome.url });
+    } else {
+      const head =
+        outcome.decision === "approve"
+          ? "Approved."
+          : outcome.decision === "request-changes"
+            ? "Changes requested:"
+            : "Review timed out — no verdict.";
+      console.log([head, ...outcome.notes].join("\n"));
+    }
     if (outcome.decision === "request-changes") process.exitCode = 2;
     if (outcome.decision === "timeout") process.exitCode = 3;
   },
@@ -272,9 +473,9 @@ const installPlanHook = defineCommand({
     const command = `"${process.execPath}" "${process.argv[1]}" plan-hook`;
     settings.hooks.PreToolUse.push({
       matcher: "ExitPlanMode",
-      // The hook's own ceiling (1800s) + slack, so Claude Code doesn't kill a
-      // review the user is still reading.
-      hooks: [{ type: "command", command, timeout: 1860 }],
+      // The hook's own ceiling + slack, so Claude Code doesn't kill a review
+      // the user is still reading.
+      hooks: [{ type: "command", command, timeout: HOOK_TIMEOUT_S }],
     });
     mkdirSync(dir, { recursive: true });
     writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`);
@@ -289,4 +490,4 @@ const installPlanHook = defineCommand({
   },
 });
 
-export const planCommands: Command[] = [plan, planHook, installPlanHook];
+export const planCommands: Command[] = [plan, annotate, planHook, installPlanHook];

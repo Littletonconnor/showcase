@@ -302,12 +302,16 @@ function surfaceRef(id: string, title: string): string {
   return title.trim() ? `showcase surface ${id} "${title.trim()}"` : `showcase surface ${id}`;
 }
 
-// Plan-review verbs — the explicit submit the blocking ExitPlanMode hook
-// waits on. Rendered only when the surface carries the "Plan review" badge
-// (published by `showcase plan` / the plan hook): annotate the plan first,
-// then one of these posts a plain author=user signal comment on the pipe —
-// [plan] approve allows the tool call, [plan] request-changes denies it with
-// the annotation batch as the agent's feedback.
+// The badge labels that mark a BLOCKING review — a parked `showcase plan` /
+// `showcase annotate` process is long-polling for the verdict these verbs post.
+const VERDICT_BADGES = new Set(["Plan review", "Review"]);
+
+// Verdict verbs — the explicit submit the blocking gate waits on. Rendered
+// only when the surface carries a verdict badge (published by `showcase
+// plan` / the plan hook / `showcase annotate`): annotate first, then one of
+// these posts a plain author=user signal comment on the pipe — [plan] approve
+// unblocks the agent, [plan] request-changes blocks it with the annotation
+// batch as feedback.
 function PlanVerbs(props: { surfaceId: string }) {
   const [sent, setSent] = useState<"approve" | "changes" | null>(null);
   const send = async (kind: "approve" | "changes") => {
@@ -623,14 +627,16 @@ export function Card(props: { surface: Surface }) {
               <span className="flex-1 pl-1.5 text-[11px] text-faint select-none">
                 {pinMode
                   ? "Pin mode — click anywhere on a part to drop a note (Esc cancels)"
-                  : props.surface.badge?.label === "Plan review"
-                    ? "Annotate the plan, then submit a verdict →"
+                  : VERDICT_BADGES.has(props.surface.badge?.label ?? "")
+                    ? "Annotate, then submit a verdict →"
                     : "Select text (or click a line number) to comment"}
               </span>
             ) : (
               <span className="flex-1" />
             )}
-            {props.surface.badge?.label === "Plan review" && !isReadonly() && !exportBundle() ? (
+            {VERDICT_BADGES.has(props.surface.badge?.label ?? "") &&
+            !isReadonly() &&
+            !exportBundle() ? (
               <PlanVerbs surfaceId={surfaceId} />
             ) : null}
             {surfaceActions}

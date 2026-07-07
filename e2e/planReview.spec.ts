@@ -36,7 +36,7 @@ test("the Plan review badge unlocks footer verdicts that post the signals", asyn
   const planCard = page.locator(`.card[data-id="${surface.id}"]`);
   await expect(planCard).toBeVisible();
   await expect(planCard.locator("[data-plan-verbs]")).toBeVisible();
-  await expect(planCard).toContainText("Annotate the plan, then submit a verdict");
+  await expect(planCard).toContainText("Annotate, then submit a verdict");
   // Only badged plan surfaces get the verbs.
   await expect(page.locator(`.card[data-id="${plain.id}"] [data-plan-verbs]`)).toHaveCount(0);
 
