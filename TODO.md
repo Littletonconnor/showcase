@@ -111,7 +111,9 @@ the plugin ships `/review`, `/explain`, `/teach`, `/last`, `/watch` under
 command family plannotator has; `/last` is its "annotate my previous answer"
 equivalent).
 
-Still parked (a user decision, not built): the agent wake/notify path.
+The once-parked agent wake/notify question was later resolved by the blocking
+plan-review hook (round 4 above) — the agent is parked on the answer, not
+notified after the fact.
 
 ---
 
