@@ -4,10 +4,13 @@
 // restores the same post-attempt rendering a live click produces.
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Checkpoint } from "@showcase/core/types";
 import { CheckpointPart, ExplorableLock } from "./CheckpointPart.tsx";
 import { hydrateAttempts, useLearn } from "./learn.ts";
+import { postJson } from "./postJson.ts";
+
+vi.mock("./postJson.ts", () => ({ postJson: vi.fn(async () => null) }));
 
 const mcq = (over: Partial<Checkpoint> = {}): Checkpoint => ({
   id: "cp-1",
@@ -96,6 +99,22 @@ describe("CheckpointPart", () => {
     expect(container.querySelector("[data-reveal]")).toHaveTextContent("SECRET-REVEAL-TEXT");
     // The hydrated string answer still maps back to the chosen option.
     expect(container.textContent).toContain("The wrong model behind this pick: the wrong model");
+  });
+
+  it("'I'm lost here' posts an anchored confusion_flag and confirms", async () => {
+    render(<CheckpointPart surfaceId="s1" checkpoint={mcq()} />);
+    await userEvent.click(screen.getByRole("button", { name: /lost here/ }));
+    expect(vi.mocked(postJson)).toHaveBeenCalledWith("/api/telemetry", {
+      surface: "s1",
+      event: {
+        v: 1,
+        type: "confusion_flag",
+        anchor: "checkpoint cp-1: Which answer is right?",
+      },
+    });
+    // The button confirms in place, and flagging is not an attempt: no reveal.
+    expect(screen.getByText("Sent to the agent")).toBeInTheDocument();
+    expect(document.querySelector("[data-reveal]")).toBeNull();
   });
 
   it("an in-memory attempt is not clobbered by hydration", () => {
