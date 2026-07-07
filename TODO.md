@@ -48,6 +48,26 @@ The last open roadmap items, landed one commit each, all gates green
    registry, publish→get_surface round-trip, in-band -32602 validation,
    resources, prompts, wait_for_feedback exactly-once. The Move 2 remainder.
 
+Follow-up (July 2026, plannotator round 6 — the communication layer):
+✅ **The conversation rail** — a bottom-right chat dock in every session view,
+built ENTIRELY on the existing comment pipe (no new channel or wire type):
+user messages are plain session comments, agent session comments/replies
+render as chat bubbles, delivery receipts come from the same agentSeq cursor
+threads use, presence is the listening flag, and telemetry/signal comments
+([checkpoint]/[confused]/[plan]) stay hidden. **This deliberately reverses
+the earlier "no in-app chat UI" retirement at the owner's request** — the
+heavyweight conversation still lives in the editor; the dock makes the quick
+back-and-forth live in the browser.
+✅ **Pin-anywhere (comment-anywhere for design review)** — a 📍 footer toggle
+arms a trusted-origin overlay over every part; one click drops a percent-
+coordinate pin and opens the composer, Esc cancels, pins render as numbered
+dots. On sandboxed parts a bridge `locate` round-trip enriches the pin with
+what sits under it (nearest `data-section` id + nearby text, token-matched,
+capped) — so a pin on a live html mockup reads "at 34%, 56% §hero 'Start
+free trial'", which plannotator's static-image annotation cannot do. Covered
+by `e2e/conversation.spec.ts` (both flows, including the §section locate and
+the reply-flips-receipt semantics).
+
 Follow-up (July 2026, plannotator round 5 — the annotation layer completed):
 ✅ **Reviewer code suggestions** — the anchored composer grew a Suggest-edit
 mode (available whenever the anchor carries a quote): the quote prefills an

@@ -240,6 +240,27 @@ document.addEventListener('mouseup', function () {
     }, '*');
   }, 0);
 });
+// Pin-anywhere support: the host overlay knows only percent coordinates; on
+// request it asks THIS document what sits at that point, so a pin on a design
+// mockup carries nearby text (and a data-section id when the author tagged
+// one) instead of bare numbers. The reply is data — the host caps and renders
+// it as text, exactly like a selection quote.
+window.addEventListener('message', function (e) {
+  var d = e.data;
+  if (!d || !d.__showcase || d.type !== 'locate') return;
+  var x = (Number(d.x) / 100) * document.documentElement.clientWidth;
+  var y = (Number(d.y) / 100) * document.documentElement.clientHeight;
+  var el = document.elementFromPoint(x, y);
+  var section = el && el.closest ? el.closest('[data-section]') : null;
+  var text = el && el.textContent ? el.textContent.replace(/\\s+/g, ' ').trim().slice(0, 120) : '';
+  parent.postMessage({
+    __showcase: true,
+    type: 'located',
+    token: String(d.token || ''),
+    section: section ? String(section.getAttribute('data-section') || '').slice(0, 80) : '',
+    text: text,
+  }, '*');
+});
 // Cmd+Option+Up/Down switches sessions in the sidebar, but keydowns fire in
 // whichever document holds focus — once the user clicks into a snippet, this
 // sandboxed iframe swallows them. Forward just that combo to the host.

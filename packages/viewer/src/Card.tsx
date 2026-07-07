@@ -34,7 +34,16 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cx } from "./cx.ts";
-import { BookOpen, Check, Copy, ExternalLink, Link2, MoreHorizontal, Trash2 } from "lucide-react";
+import {
+  BookOpen,
+  Check,
+  Copy,
+  ExternalLink,
+  Link2,
+  MapPin,
+  MoreHorizontal,
+  Trash2,
+} from "lucide-react";
 import {
   useActiveTheme,
   useResolvedMode,
@@ -483,12 +492,33 @@ export function Card(props: { surface: Surface }) {
     }
   };
 
+  // Pin-anywhere mode: arms a trusted overlay on every part (design mockups
+  // included — the overlay never touches the sandboxed document), one click
+  // places a percent-coordinate pin and opens the composer, Escape cancels.
+  const [pinMode, setPinMode] = useState(false);
+  useEffect(() => {
+    if (!pinMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPinMode(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pinMode]);
+
   // Per-surface secondary actions in the footer toolbar. "Read" (the focused
   // one-at-a-time reader) is an explainer affordance, so it shows only on
   // non-finding cards — a review card wants density, not a slideshow. Copy
   // link / open / delete live in the ⋯ overflow.
   const surfaceActions = (
     <>
+      {!isReadonly() && !exportBundle() ? (
+        <IconAction
+          label={pinMode ? "Pin mode — click any part, Esc to cancel" : "Pin a note anywhere"}
+          onClick={() => setPinMode((v) => !v)}
+        >
+          <MapPin className={pinMode ? "text-blue-500" : undefined} />
+        </IconAction>
+      ) : null}
       {!isFinding ? (
         <IconAction label="Read — focused, one at a time" onClick={() => enterReading(surfaceId)}>
           <BookOpen />
@@ -575,6 +605,8 @@ export function Card(props: { surface: Surface }) {
               exportDoc={exportHtmlDocs?.get(i)}
               theme={surfaceTheme}
               mode={mode}
+              pinMode={pinMode}
+              onPinPlaced={() => setPinMode(false)}
             />
           ))}
         </div>
@@ -589,9 +621,11 @@ export function Card(props: { surface: Surface }) {
           <TooltipProvider delayDuration={300}>
             {!isReadonly() && !exportBundle() ? (
               <span className="flex-1 pl-1.5 text-[11px] text-faint select-none">
-                {props.surface.badge?.label === "Plan review"
-                  ? "Annotate the plan, then submit a verdict →"
-                  : "Select text (or click a line number) to comment"}
+                {pinMode
+                  ? "Pin mode — click anywhere on a part to drop a note (Esc cancels)"
+                  : props.surface.badge?.label === "Plan review"
+                    ? "Annotate the plan, then submit a verdict →"
+                    : "Select text (or click a line number) to comment"}
               </span>
             ) : (
               <span className="flex-1" />

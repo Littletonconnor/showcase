@@ -61,10 +61,14 @@ showcase install-plan-hook   # ExitPlanMode now opens the plan on the board and
 
 `showcase help` lists the rest (publish, diff, lesson, decisions, gc, doctor, ...).
 In the browser: select text, click a line number on any card (diffs included),
-or click a spot on an image to leave an anchored comment — with a **Suggest
-edit** mode that sends a concrete before→after the agent applies. A check
-appears when a comment is sent and flips to a double check the moment the
-agent has actually read it.
+click a spot on an image, or hit the 📍 **pin mode** to drop a note anywhere —
+including on a live html design mockup, where the pin reports what sits under
+it (`§section` + nearby text), not just coordinates. The composer has a
+**Suggest edit** mode that sends a concrete before→after the agent applies.
+The **Chat** dock (bottom-right) is the live back-and-forth: your messages and
+the agent's replies as one conversation, with a presence dot and delivery
+receipts — a check when sent, a double check the moment the agent has actually
+read it.
 
 ---
 
