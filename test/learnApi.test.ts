@@ -160,6 +160,44 @@ test("telemetry rides the comment pipe exactly-once and moves mastery + syllabus
   assert.deepEqual(due.due[0].misconceptions, ["true LRU"]);
 });
 
+test("a lesson session row carries kind=learn and the mastery roll-up", async () => {
+  const { app, clock } = makeApp();
+  const lesson = await publishLesson(app);
+
+  // Fresh lesson: everything untouched.
+  let rows = (await (await app.request("/api/sessions")).json()) as any[];
+  let row = rows.find((r) => r.id === lesson.sessionId);
+  assert.equal(row.kind, "learn");
+  assert.deepEqual(row.learnProgress, { solid: 0, shaky: 0, due: 0, untouched: 2 });
+
+  // A wrong attempt moves one concept to shaky...
+  await app.request(
+    "/api/telemetry",
+    json({
+      surface: lesson.beats[0].surfaceId,
+      event: {
+        v: 1,
+        type: "checkpoint_attempt",
+        checkpointId: "cp-lru-1",
+        conceptId: "lru",
+        kind: "mcq",
+        answer: ["a"],
+        correct: false,
+        latencyMs: 1000,
+      },
+    }),
+  );
+  rows = (await (await app.request("/api/sessions")).json()) as any[];
+  row = rows.find((r) => r.id === lesson.sessionId);
+  assert.deepEqual(row.learnProgress, { solid: 0, shaky: 1, due: 0, untouched: 1 });
+
+  // ...and once its review date arrives, the roll-up flips it to due.
+  clock.now = new Date(T0.getTime() + 3 * 86400000);
+  rows = (await (await app.request("/api/sessions")).json()) as any[];
+  row = rows.find((r) => r.id === lesson.sessionId);
+  assert.deepEqual(row.learnProgress, { solid: 0, shaky: 0, due: 1, untouched: 1 });
+});
+
 test("malformed and sandbox-disallowed telemetry is dropped, never stored", async () => {
   const { app } = makeApp();
   const lesson = await publishLesson(app);
