@@ -298,7 +298,7 @@ function SurfaceBadgeChip(props: { badge: SurfaceBadge }) {
 // get_surface with the id to read its current content). The pill still shows the
 // id so it reads as an identifier. The ref is for scoped terminal requests; the
 // footer reply line covers the quick in-browser note.
-function surfaceRef(id: string, title: string): string {
+export function surfaceRef(id: string, title: string): string {
   return title.trim() ? `showcase surface ${id} "${title.trim()}"` : `showcase surface ${id}`;
 }
 

@@ -1071,7 +1071,12 @@ export function createApp({
           concepts: lesson.conceptGraph.concepts.map((c) => ({ id: c.id, label: c.label })),
           edges: lesson.conceptGraph.edges,
         },
-        { sessionId, syllabusSurfaceId: syllabusId },
+        {
+          sessionId,
+          syllabusSurfaceId: syllabusId,
+          // A stated level persists onto the topic; an omitted one inherits.
+          ...(lesson.learnerLevel ? { level: lesson.learnerLevel } : {}),
+        },
       );
     }
     return {
@@ -1235,6 +1240,7 @@ export function createApp({
     return {
       topics: topics.map((t) => ({
         topic: t.topic,
+        ...(t.level ? { level: t.level } : {}),
         updatedAt: t.updatedAt,
         concepts: t.conceptGraph.concepts.map((c) => {
           const r = t.records[c.id];
@@ -1955,14 +1961,32 @@ export function createApp({
     // A decision-queue review session has no surfaces — carry its verdict so the
     // row can chip it, mark it as a review, and link to /?review=<id>.
     const reviewVerdict = new Map(reviews.map((r) => [r.sessionId, r.verdict]));
+    // A lesson session chips its mastery roll-up the way a review chips its
+    // verdict — the same statesForTopic counts the syllabus legend renders from,
+    // keyed by each topic's latest lesson session.
+    const learnProgress = new Map<
+      string,
+      { solid: number; shaky: number; due: number; untouched: number }
+    >();
+    if (masteryStore) {
+      for (const t of await masteryStore.listTopics()) {
+        if (!t.sessionId) continue;
+        const tally = { solid: 0, shaky: 0, due: 0, untouched: 0 };
+        for (const state of Object.values(await masteryStore.statesForTopic(t.topic))) {
+          tally[state]++;
+        }
+        learnProgress.set(t.sessionId, tally);
+      }
+    }
     const counts = new Map<string, number>();
     for (const s of surfaces) counts.set(s.sessionId, (counts.get(s.sessionId) ?? 0) + 1);
     return c.json(
       sessions.map((s) => ({
         ...s,
         surfaceCount: counts.get(s.id) ?? 0,
-        kind: reviewVerdict.has(s.id) ? "review" : "visual",
+        kind: reviewVerdict.has(s.id) ? "review" : learnProgress.has(s.id) ? "learn" : "visual",
         ...(reviewVerdict.has(s.id) ? { reviewVerdict: reviewVerdict.get(s.id) } : {}),
+        ...(learnProgress.has(s.id) ? { learnProgress: learnProgress.get(s.id) } : {}),
         // Current agent presence so a freshly-loaded viewer shows the right
         // listening state without waiting for the next transition event.
         listening: isListening(s.id),

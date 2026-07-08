@@ -226,6 +226,14 @@ test("the animate kit plays a stepped explainer", async ({ page, request }) => {
   // Press play — it builds up to the last step.
   await frame.locator(".anim-play").click();
   await expect(frame.locator("#s2")).toBeVisible({ timeout: 10_000 });
+
+  // The per-step ref chip: the sandbox posts only {step, label}; the HOST
+  // composes the scoped ref, copies it, and toasts. Assert both halves.
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await frame.locator(".anim-ref").click();
+  await expect(page.getByText("Step 3 ref copied")).toBeVisible();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copied).toBe(`showcase surface ${surface.id} "Explainer" step 3: "three"`);
 });
 
 test("a multi-file diff shows a manifest header and collapses generated files", async ({

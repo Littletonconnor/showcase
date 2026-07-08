@@ -5,6 +5,7 @@
 // Skipping records telemetry but shows NO reveal — skip is not a fast path to
 // the answer (anti-goal: answer-dumping).
 import { useMemo, useState } from "react";
+import { Check, HelpCircle } from "lucide-react";
 import type { Checkpoint } from "@showcase/core/types";
 import { Button } from "@/components/ui/button";
 import { cx } from "./cx.ts";
@@ -71,7 +72,21 @@ export function CheckpointPart(props: { surfaceId: string; checkpoint: Checkpoin
   const [freeText, setFreeText] = useState("");
   const [confidence, setConfidence] = useState(0.5);
   const [startedAt] = useState(() => Date.now());
+  const [flagged, setFlagged] = useState(false);
   const readonly = isReadonly();
+
+  // "I'm lost here" — the same confusion affordance walkthrough steps carry
+  // (types.ts confusion_flag): it reaches the agent as a [confused] line naming
+  // this exact checkpoint, so it can pause and probe instead of moving on.
+  const flagConfusion = () => {
+    postTelemetry(props.surfaceId, {
+      v: 1,
+      type: "confusion_flag",
+      anchor: `checkpoint ${cp.id}: ${cp.prompt}`.slice(0, 200),
+    });
+    setFlagged(true);
+    setTimeout(() => setFlagged(false), 2500);
+  };
 
   const hasOptions = !!cp.options && cp.options.length > 0;
   const clientGraded = hasOptions || !!cp.expected;
@@ -163,6 +178,22 @@ export function CheckpointPart(props: { surfaceId: string; checkpoint: Checkpoin
           )
         ) : null}
         {skipped ? <span className="text-[11px] text-faint">skipped</span> : null}
+        <span className="flex-1" />
+        {!readonly ? (
+          <button
+            type="button"
+            onClick={flagConfusion}
+            title="Tell the agent this checkpoint lost you — it gets the exact spot"
+            className="inline-flex flex-none items-center gap-1 rounded-md px-1.5 py-1 text-[11px] text-faint transition-colors hover:bg-muted/50 hover:text-muted-foreground"
+          >
+            {flagged ? (
+              <Check className="size-3.5 text-emerald-500" />
+            ) : (
+              <HelpCircle className="size-3.5" />
+            )}
+            {flagged ? "Sent to the agent" : "I’m lost here"}
+          </button>
+        ) : null}
       </div>
 
       <div className="text-[13.5px] leading-relaxed text-foreground">

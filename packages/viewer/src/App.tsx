@@ -5,6 +5,7 @@ import {
   Copy,
   Download,
   GitPullRequest,
+  GraduationCap,
   Link2,
   MoreHorizontal,
   Pencil,
@@ -561,12 +562,38 @@ const REVIEW_CHIP = {
   comment: { label: "Review", cls: "bg-brand-subtle text-brand" },
 } as const;
 
-// The per-session glyph: a pull-request mark for a PR review, a workflow/diagram
-// mark for a visualization or explainer. Replaces the old per-agent brand mark —
-// a session reads as what it contains, not who authored it.
+// The per-session glyph: a pull-request mark for a PR review, a graduation cap
+// for a lesson, a workflow/diagram mark for a visualization or explainer.
+// Replaces the old per-agent brand mark — a session reads as what it contains,
+// not who authored it.
 function SessionKindIcon(props: { kind?: SessionKind }) {
-  const Icon = props.kind === "review" ? GitPullRequest : Workflow;
+  const Icon =
+    props.kind === "review" ? GitPullRequest : props.kind === "learn" ? GraduationCap : Workflow;
   return <Icon className="size-3.5" />;
+}
+
+// A lesson session's row chip: what needs attention first (due for review),
+// else how far along the topic is. Vocabulary matches the syllabus legend.
+function learnChip(p: NonNullable<SessionRow["learnProgress"]>) {
+  const total = p.solid + p.shaky + p.due + p.untouched;
+  if (p.due > 0) {
+    return { label: `${p.due} due`, cls: "bg-amber-500/15 text-amber-700 dark:text-amber-300" };
+  }
+  if (p.solid > 0) {
+    return {
+      label: `${p.solid}/${total} solid`,
+      cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+    };
+  }
+  if (p.shaky > 0) {
+    return { label: `${p.shaky} shaky`, cls: "bg-brand-subtle text-brand" };
+  }
+  return null;
+}
+
+// The full legend line — the tooltip on the chip and the session-header roll-up.
+export function learnSummary(p: NonNullable<SessionRow["learnProgress"]>) {
+  return `${p.solid} solid · ${p.shaky} shaky · ${p.due} due · ${p.untouched} to go`;
 }
 
 function SessionItem(props: { session: SessionRow }) {
@@ -581,6 +608,7 @@ function SessionItem(props: { session: SessionRow }) {
   const isUnread = unread.has(props.session.id);
   const reviewVerdict = props.session.reviewVerdict;
   const isReview = !!reviewVerdict;
+  const learn = props.session.learnProgress ? learnChip(props.session.learnProgress) : null;
   const isVacant = props.session.surfaceCount === 0 && !isReview;
   // On phones the offcanvas should close once you pick a session. A review
   // session selects like any other — its decision queue renders inline in the
@@ -708,6 +736,16 @@ function SessionItem(props: { session: SessionRow }) {
                 )}
               >
                 {REVIEW_CHIP[reviewVerdict].label}
+              </span>
+            ) : learn ? (
+              <span
+                title={learnSummary(props.session.learnProgress!)}
+                className={cx(
+                  "flex-none rounded-full px-1.5 text-[10px] font-medium group-hover/menu-item:opacity-0",
+                  learn.cls,
+                )}
+              >
+                {learn.label}
               </span>
             ) : props.session.surfaceCount > 0 ? (
               <span
@@ -860,7 +898,7 @@ function SessionView() {
                   surfaceCount > 0
                     ? ` · ${surfaceCount} surface${surfaceCount === 1 ? "" : "s"}`
                     : ""
-                }`
+                }${current.learnProgress ? ` · ${learnSummary(current.learnProgress)}` : ""}`
               : ""}
           </span>
           <ActivityTicker sessionId={selected} />

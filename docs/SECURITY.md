@@ -85,7 +85,9 @@ The one channel from a sandbox frame to the trusted parent is `postMessage`
 `packages/viewer/src/bridge.ts`). It is the narrowest necessary surface:
 
 - Every message must carry the `__showcase` marker and a known `type` (`resize`,
-  `send-prompt`, `open-link`, `copy`, `switch-session`). Anything else is dropped.
+  `send-prompt`, `open-link`, `copy`, `copy-step`, `switch-session`,
+  `text-selected` / `selection-cleared`, `telemetry`, `review-reviewed`,
+  `located`). Anything else is dropped.
 - Host-affecting types are gated on **frame ownership** — `frameForSource` /
   `isOwnFrame` confirm the message came from an iframe the viewer actually
   embedded, not a nested or spoofed frame.
@@ -95,7 +97,11 @@ The one channel from a sandbox frame to the trusted parent is `postMessage`
   keystrokes in the trusted composer. This keeps untrusted surface content from
   forging the feedback signal the agent treats as the human's intent.
 - `open-link` opens externally; `copy` writes the clipboard (the parent has the
-  API the opaque-origin frame lacks). Neither grants API access.
+  API the opaque-origin frame lacks). Neither grants API access. `copy-step`
+  (the animate kit's per-step ref chip) sends only a step number and a capped
+  label; the HOST composes the ref text — the sandbox never learns the surface
+  id/title, and a forged message can at worst place a capped plain string on
+  the clipboard behind a visible toast.
 
 ## The trusted-origin perimeter
 

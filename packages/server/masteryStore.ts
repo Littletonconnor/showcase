@@ -21,6 +21,7 @@ import {
   type StoredConceptGraph,
   type SyllabusState,
 } from "@showcase/core/mastery";
+import type { LearnerLevel } from "@showcase/core/lesson";
 import type { CheckpointKind } from "@showcase/core/types";
 import { readJsonFile, writeJsonFile } from "./jsonFile.ts";
 
@@ -88,7 +89,7 @@ export class MasteryStore {
   async upsertTopic(
     topic: string,
     graph: StoredConceptGraph,
-    live?: { sessionId?: string; syllabusSurfaceId?: string },
+    live?: { sessionId?: string; syllabusSurfaceId?: string; level?: LearnerLevel },
   ): Promise<MasteryTopic> {
     await this.load();
     const now = this.clock();
@@ -107,6 +108,7 @@ export class MasteryStore {
         : existing?.syllabusSurfaceId
           ? { syllabusSurfaceId: existing.syllabusSurfaceId }
           : {}),
+      ...(live?.level ? { level: live.level } : existing?.level ? { level: existing.level } : {}),
       updatedAt: now.toISOString(),
     };
     // Keep labels current for concepts still in the graph.

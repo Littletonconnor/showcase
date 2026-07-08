@@ -14,6 +14,37 @@ underneath.
 
 ---
 
+## ✅ Learn-mode gap-closing round — SHIPPED (July 2026)
+
+The "Known gaps and suggested next steps" list in
+`docs/learn-implementation-report.md` is now closed (one commit per gap, all
+gates green — typecheck / test / viewer tests / lint / oracle):
+
+1. ✅ **Session mastery roll-up** — `/api/sessions` decorates each topic's
+   latest lesson session with `kind: "learn"` + `learnProgress` (the same
+   solid/shaky/due/untouched counts the syllabus legend renders from); the
+   sidebar row chips it like a review verdict ("2 due" amber first, else
+   "3/7 solid", else "1 shaky"; full legend in the tooltip + session header),
+   with a graduation-cap row glyph. Live for free: mastery moves re-render
+   the syllabus, whose surface-updated event already refreshes the rows.
+2. ✅ **"I'm lost here" on checkpoints** — the confusion affordance walkthrough
+   steps had, now on the checkpoint header: posts a `confusion_flag` anchored
+   to the exact checkpoint (id + prompt), confirms in place, and is
+   deliberately not an attempt (no reveal, no mastery movement).
+3. ✅ **Learner level persisted per topic** — a stated `learnerLevel` persists
+   onto the `MasteryTopic`; an omitted one inherits the stored level instead
+   of resetting to novice (coerceLesson keeps "absent" absent);
+   `get_learner_state` returns it and `showcase mastery` prints it. Resolves
+   the plan's open question 3 as the report suggested.
+
+The other report gaps were already closed by earlier passes (attempt
+hydration, the interaction debounce) or resolved by design (telemetry
+comments are deliberately hidden, not chip-rendered); the two process items
+(marketplace-install verification, a chat-only teach transcript) remain and
+are not code.
+
+---
+
 ## ✅ Remaining-backlog pass — SHIPPED (July 2026)
 
 The last open roadmap items, landed one commit each, all gates green
@@ -673,8 +704,12 @@ deepen Workflow 2. Each is independent and opt-in to pick up; grouped by theme.
   content, so when a ref lands the agent reads what's on it and `update_surface`s it
   in place; the old `MCP_INSTRUCTIONS` claim that `list_surfaces` returned content
   is fixed (it's the title index; `get_surface` is the content). The explainer
-  stays a plain document; the conversation stays in the editor. _Next refinement
-  (optional): per-step copy buttons inside the `animate` kit for step-level scope._
+  stays a plain document; the conversation stays in the editor. _The once-optional
+  next refinement is ✅ shipped too: the `animate` kit's control bar carries a
+  per-step copy chip — the sandbox posts only `{step, label}` (a new allowlisted
+  `copy-step` bridge message), and the HOST composes/copies
+  `showcase surface <id> "<title>" step N: "<label>"` in the trusted origin, so
+  explainer feedback scopes to the exact step._
 
 **Housekeeping**
 

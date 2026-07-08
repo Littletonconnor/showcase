@@ -10,6 +10,7 @@
 // GENERATIVE checkpoint kinds — recognition alone (mcq) never reaches solid,
 // because generation is the stronger retention signal (P1/P3).
 
+import type { LearnerLevel } from "./lesson.ts";
 import type { CheckpointKind } from "./types.ts";
 
 export type MasteryState = "untouched" | "shaky" | "solid";
@@ -61,6 +62,10 @@ export interface MasteryTopic {
   // the syllabus card in place as mastery moves.
   sessionId?: string;
   syllabusSurfaceId?: string;
+  // The learner's pitched level, persisted from the last lesson that stated
+  // one — get_learner_state returns it so the next session starts here instead
+  // of re-asking (a lesson that states its own level overrides per-session).
+  level?: LearnerLevel;
   updatedAt: string;
 }
 

@@ -83,7 +83,8 @@ export const d = {
     "expected?, askConfidence?, reveal, gate?}",
   lessonTopic: 'The lesson subject, e.g. "Redis eviction policies" — also the mastery-store key',
   lessonLevel:
-    "novice | intermediate | advanced — sets the worked-example-to-problem fading arc (default novice)",
+    "novice | intermediate | advanced — sets the worked-example-to-problem fading arc. Persists onto " +
+    "the topic (get_learner_state returns it); omit to keep teaching at the topic's stored level",
   lessonGraph:
     "The 4-9 concepts this lesson teaches with prerequisite edges. Enumerate each concept's 2-3 " +
     "canonical misconceptions BEFORE writing beats — checkpoint distractors should tag them.",
