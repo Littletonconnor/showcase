@@ -12,7 +12,7 @@
     {
       "name": "showcase",
       "source": "./",
-      "description": "showcase workflows: the publish/feedback bootstrap (showcase), one-format sessions (session-presets), the learning vertical (teach), and the repo's skill conventions (adding-a-skill).",
+      "description": "showcase workflows: the publish/feedback bootstrap (showcase), one-format sessions (session-presets), the learning vertical (teach), syncing the slash commands into Claude Code or Cursor (sync-commands), and the repo's skill conventions (adding-a-skill).",
       "author": {
         "name": "Connor Littleton"
       }

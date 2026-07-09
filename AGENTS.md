@@ -54,9 +54,10 @@ behind enforced boundaries. `core` ← everyone; `cli` talks to `server` over HT
 - `guide/` — runtime agent instructions (repo-level, not a package). `test/`,
   `e2e/`, `scripts/`, `docs/` stay repo-level too. `skills/` + `commands/` are
   the installable plugin surface (`.claude-plugin/`): the skills, and the
-  one-verb slash commands (`/review`, `/explain`, `/teach`, `/last`, `/watch`)
-  that front the flagship loops — each bootstraps from the live `/playbook`,
-  so recipe text stays server-owned.
+  one-verb slash commands (`/showcase-review`, `/showcase-explain`,
+  `/showcase-teach`, `/showcase-last`, `/showcase-watch`) that front the
+  flagship loops — each bootstraps from the live `/playbook`, so recipe text
+  stays server-owned.
 
 ## Invariants worth keeping
 

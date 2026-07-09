@@ -186,10 +186,11 @@ clicking a line's gutter inside the sandboxed @pierre/diffs render opens the
 anchored composer with file:line + the quoted line (composedPath through the
 open shadow roots; capture-phase mouseup guard; host-side re-validation;
 `e2e/diffComments.spec.ts` drives the loop). ✅ **One-verb slash commands** —
-the plugin ships `/review`, `/explain`, `/teach`, `/last`, `/watch` under
-`commands/`, each a thin bootstrap onto the live `/playbook` (the memorable
-command family plannotator has; `/last` is its "annotate my previous answer"
-equivalent).
+the plugin ships `/showcase-review`, `/showcase-explain`, `/showcase-teach`,
+`/showcase-last`, `/showcase-watch` under `commands/` (prefixed to avoid
+clashing with other tools' commands), each a thin bootstrap onto the live
+`/playbook` (the memorable command family plannotator has; `/showcase-last` is
+its "annotate my previous answer" equivalent).
 
 The once-parked agent wake/notify question was later resolved by the blocking
 plan-review hook (round 4 above) — the agent is parked on the answer, not
