@@ -41,11 +41,11 @@ showcase open             # jump your browser to the current session
 #   "recap our conversation on showcase"
 
 # or, with the plugin installed, one verb each (plannotator-style):
-#   /review [branch]     a decision-queue review of the diff
-#   /explain <thing>     a walkthrough / animated explainer
-#   /teach <topic>       a lesson with checkpoints + spaced review
-#   /last                put the agent's previous answer on the board to mark up
-#   /watch               park the agent on the feedback loop
+#   /showcase-review [branch]   a decision-queue review of the diff
+#   /showcase-explain <thing>   a walkthrough / animated explainer
+#   /showcase-teach <topic>     a lesson with checkpoints + spaced review
+#   /showcase-last              put the agent's previous answer on the board to mark up
+#   /showcase-watch             park the agent on the feedback loop
 
 # the loop
 showcase wait             # block until the user comments (anchored, exactly-once)
@@ -383,27 +383,34 @@ learn-mode tools (`publish_lesson`, `update_lesson`, `get_learner_state`,
 
 ### Install the skills
 
-The repo's skills (`showcase`, `session-presets`, `teach`, `adding-a-skill`)
-follow the standard agent-skills layout, so any of these works:
+The repo's skills (`showcase`, `session-presets`, `teach`, `sync-commands`,
+`adding-a-skill`) follow the standard agent-skills layout, so any of these
+works:
 
 ```sh
 # the skills CLI (Claude Code, Codex, Cursor, OpenCode, Copilot - shared .agents/skills/):
 npx skills@latest add Littletonconnor/showcase --skill teach
 
-# Claude Code plugin marketplace (managed + updatable — the /review, /explain,
-# /teach, /last, /watch commands plus the namespaced /showcase:* skills):
+# Claude Code plugin marketplace (managed + updatable — the /showcase-review,
+# /showcase-explain, /showcase-teach, /showcase-last, /showcase-watch commands
+# plus the namespaced /showcase:* skills):
 /plugin marketplace add Littletonconnor/showcase
 
 # or plain copy:
 cp -r skills/teach ~/.agents/skills/
 ```
 
-The plugin's slash commands are the memorable spine — one verb per loop
-(`commands/*.md`): `/review [branch]` publishes a decision-queue review,
-`/explain <thing>` a walkthrough or animated explainer, `/teach <topic>` a
-lesson, `/last` puts the agent's previous answer on the board to mark up, and
-`/watch` parks the agent on the feedback loop. Each command bootstraps from the
-live playbook, so the recipe text stays server-owned.
+The plugin's slash commands are the memorable spine — one verb per loop,
+prefixed so they never clash with other tools' commands (`commands/*.md`):
+`/showcase-review [branch]` publishes a decision-queue review,
+`/showcase-explain <thing>` a walkthrough or animated explainer,
+`/showcase-teach <topic>` a lesson, `/showcase-last` puts the agent's previous
+answer on the board to mark up, and `/showcase-watch` parks the agent on the
+feedback loop. Each command bootstraps from the live playbook, so the recipe
+text stays server-owned. Not on Claude Code (or want them outside the plugin)?
+The `sync-commands` skill copies these command files into Claude Code's or
+Cursor's commands directory (or any custom one) — ask your agent to "sync the
+showcase commands".
 
 Plan review needs no command at all: `showcase install-plan-hook` wires a
 `PreToolUse` hook on `ExitPlanMode`, so every plan the agent proposes opens on
